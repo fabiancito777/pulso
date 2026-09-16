@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Pulso v2 · estilos del shell
+   `base.css` es la hoja de la v1 (tokens, tarjetas, botones, chips, el dibujo de
+   discos…). Se mantiene tal cual para que lo portado se vea igual; se irá
+   podando a medida que las vistas pasen a componentes.
+   ========================================================================== */
+
+.v2-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.v2-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(160%) blur(14px);
+}
+
+.v2-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+}
+
+.v2-main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.v2-tabs {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(160%) blur(16px);
+}
+
+.v2-tabs .chip:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- estado de la migración ---------- */
+.rm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rm-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.rm-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--muted-2);
+}
+
+.rm-dot.portado {
+  background: var(--ok);
+}
+
+.rm-dot.curso {
+  background: var(--warn);
+}
+
+.rm-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}

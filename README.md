@@ -4,13 +4,21 @@ App de entrenamiento personal en **HTML + CSS + JS vanilla**, sin dependencias, 
 servidores propios. Todos los datos viven en tu dispositivo (`localStorage`). El coach con IA es
 opcional y usa **tu propia API key de Gemini**.
 
+> ⚠️ **Estás en la rama `v2`.** Aquí la app se está portando a **Vite + TypeScript + Preact** y la
+> v1 vive congelada en `legacy/`. El README que sigue describe la **v1** y sigue siendo válido para
+> todo lo que todavía no se ha portado. Para esta rama manda **`AGENTS.md`** (contexto, comandos
+> `npm run dev|test|verify`, convenciones y estado de la migración) y **`AGENTS-v1.md`** conserva el
+> detalle de diseño de la v1.
+
 ---
 
 ## Cómo abrirla
 
-**Opción A · doble clic**
+**Opción A · doble clic** (rama `main`, la app completa)
 Abre `index.html` en el navegador. Funciona directamente: la API de Gemini permite CORS desde
 `file://`, así que el coach AI también funciona así.
+
+**Opción B · v2 en desarrollo** (`npm install && npm run dev`) — solo lo ya portado.
 
 **Opción B · servidor local (recomendado)**
 Garantiza que `localStorage` siempre esté disponible (algunos navegadores lo restringen en `file://`):

@@ -2,8 +2,14 @@
 .playwright-mcp/
 _shots/
 
-# dependencias de desarrollo (la app no usa ninguna)
+# dependencias y build de v2
 node_modules/
+dist/
+
+# cachés de herramientas
+eslintcache
+*.tsbuildinfo
+.vite/
 
 # sistema operativo
 .DS_Store

@@ -1,21 +1,39 @@
 {
   "name": "pulso",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.1",
   "private": true,
-  "description": "App de entrenamiento personal en HTML + CSS + JS vanilla. La app NO tiene dependencias ni build: todo lo de este package.json es herramienta de desarrollo (scripts + node_modules opcional).",
+  "type": "module",
+  "description": "Pulso v2 — la misma app de entrenamiento, con Vite + TypeScript + Preact. La v1 (HTML+JS vanilla) vive congelada en legacy/ y sigue siendo la app de la rama main.",
   "scripts": {
-    "serve": "node tools/serve.mjs",
-    "check": "node tools/check.mjs",
-    "selftest": "node tools/selftest.mjs",
-    "verify": "node tools/check.mjs && node tools/selftest.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.2",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^22.20.3",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.7",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
-  "keywords": [
-    "entrenamiento",
-    "vanilla-js",
-    "pwa"
-  ],
   "license": "UNLICENSED"
 }

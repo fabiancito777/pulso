@@ -1,0 +1,6 @@
+dist/
+node_modules/
+legacy/
+_shots/
+.playwright-mcp/
+package-lock.json
