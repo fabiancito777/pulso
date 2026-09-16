@@ -6,8 +6,17 @@
 import { useEffect, useState } from 'preact/hooks';
 
 import { ROADMAP, type PortState } from '@/app/roadmap';
+import { equipLabel, enabledEquipment, groupLabel, isAvailable } from '@/domain/data';
+import { customExercises } from '@/domain/library';
 import type { PlateModeKey, Theme } from '@/domain/types';
-import { rememberPlateMode, settings, storageAvailable, TOOL_MODE_KEY } from '@/state/store';
+import {
+  equipment,
+  exercises,
+  rememberPlateMode,
+  settings,
+  storageAvailable,
+  TOOL_MODE_KEY,
+} from '@/state/store';
 import { Plates } from '@/ui/Plates';
 
 const TABS = ['Hoy', 'Entrenar', 'Rutinas', 'Calendario', 'Coach', 'Progreso', 'Ajustes'] as const;
@@ -22,6 +31,47 @@ function applyTheme(theme: Theme, accent: string) {
   const root = document.documentElement;
   root.dataset.theme = theme;
   root.style.setProperty('--accent', accent);
+}
+
+function LibraryCard() {
+  const all = exercises.value;
+  const equip = equipment.value;
+  const available = all.filter((ex) => isAvailable(ex, equip));
+  const enabled = enabledEquipment(equip);
+
+  return (
+    <section class="card">
+      <div class="row between mb-s">
+        <b>Biblioteca y material</b>
+        <span class="tiny muted">catálogo portado de la v1</span>
+      </div>
+      <div class="kv">
+        <span class="k">Ejercicios</span>
+        <span class="v">
+          {all.length} · {all.filter((e) => e.allowed).length} permitidos · {available.length}{' '}
+          disponibles
+        </span>
+      </div>
+      <div class="kv">
+        <span class="k">Propios</span>
+        <span class="v">{customExercises(all).length}</span>
+      </div>
+      <div class="kv">
+        <span class="k">Material activo</span>
+        <span class="v">{enabled.length} piezas</span>
+      </div>
+      <div class="tiny muted mt-s">
+        {enabled.length ? enabled.map((k) => equipLabel(k)).join(' · ') : 'ninguna pieza activada'}
+      </div>
+      <div class="tiny muted">
+        Ejemplo con tu material:{' '}
+        {available
+          .slice(0, 2)
+          .map((ex) => `${ex.name} (${groupLabel(ex.group)})`)
+          .join(' · ')}
+      </div>
+    </section>
+  );
 }
 
 export function App() {
@@ -72,6 +122,8 @@ export function App() {
             </div>
           ) : null}
         </section>
+
+        <LibraryCard />
 
         <section class="card">
           <div class="row between mb-s">

@@ -6,8 +6,9 @@ sin build) y su documentación completa —decisiones de diseño, reglas de la s
 descanso, coach IA— está en **`AGENTS-v1.md`**: sigue siendo válida para todo lo que todavía no
 se ha portado, así que si dudas de *por qué* algo funciona así, mira ahí primero.
 
-> Última actualización: 16-sep-2026 · arranque de la v2: toolchain, dominio puro (utilidades +
-> calculadora de discos) con tests, ajustes reactivos y shell de la app.
+> Última actualización: 16-sep-2026 · arranque de la v2: toolchain, dominio puro (utilidades,
+> calculadora de discos, catálogo de ejercicios y material) con tests, ajustes/material/biblioteca
+> reactivos y shell de la app.
 
 ---
 
@@ -60,6 +61,7 @@ npm run preview      # sirve el build
 | `npm run test` | Vitest (dominio puro; hoy 33 comprobaciones) |
 | `npm run verify` | typecheck + lint + test + build (lo que hay que dejar verde) |
 | `npm run format` | Prettier sobre todo lo que no sea `legacy/` |
+| `node tools/port-catalog.mjs` | **Regenera** `src/domain/catalog.ts` desde `legacy/js/data.js` (luego `npx prettier --write src/domain/catalog.ts`) |
 
 Notas de entorno:
 - El servidor de Vite manda `no-store`, así que **no** te pasa lo de la v1 con la caché del
@@ -76,9 +78,17 @@ index.html          → entrada de Vite (carga src/main.tsx)
 src/main.tsx        → monta <App /> en #app e importa los estilos
 src/app/            → shell de la app (App.tsx) y roadmap.ts (estado de la migración)
 src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado global
+    num / format / units / dates / text        utilidades base
+    plates.ts                                  calculadora de discos (solver)
+    catalog.ts                                 catálogo GENERADO desde la v1 (no se edita a mano)
+    data.ts                                    API del catálogo (grupos, material, disponibilidad)
+    library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
+    defaults.ts                                ajustes e inventario por defecto
+    types.ts                                   contrato del dominio y del estado
 src/state/          → estado y persistencia (store.ts) + signals
 src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx)
 src/styles/         → base.css (heredada de la v1) + v2.css (shell)
+tools/              → scripts de migración (port-catalog.mjs)
 legacy/             → v1 congelada (referencia y fuente de la migración)
 ```
 
@@ -116,6 +126,12 @@ localStorage['pulso.state']  (mismo formato que la v1)
 ## 4. Convenciones (respétalas al portar)
 
 - **Rutas y alias**: `@/…` apunta a `src/` (definido en `tsconfig.json` y en `vite.config.ts`).
+- **`catalog.ts` es generado**: no se edita a mano. Se cambia `legacy/js/data.js` (o el generador) y se
+  vuelve a lanzar `node tools/port-catalog.mjs`. Lo que se añade a mano va en `data.ts`, y
+  `data.test.ts` vigila la integridad (grupos/material inexistentes, ids repetidos, rangos al revés).
+- **Material en los ejercicios**: `equip` es `''` (peso corporal) o `'a&b|c'` = exige `a` **y**
+  (`b` **o** `c`). Se consulta con `isAvailable`/`missingEquipment`/`equipTags` pasando el mapa de
+  material por parámetro (`{ clave: boolean }`), nunca leyendo el estado desde el dominio.
 - **Imports de tipos** con `import type` (`verbatimModuleSyntax` está activo).
 - **Números en inputs**: usa `inputNum()` de `src/domain/format.ts` para el `value` de un
   `<input type="number">`. `fmtN()` usa la coma de es-ES y el navegador **descarta** ese valor (el
@@ -177,4 +193,6 @@ Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delica
 | 16-sep-2026 | `src/ui/Plates.tsx` + `src/ui/LoadView.tsx`: la calculadora de discos ya funciona en la v2 (modo, ±, alternativas, inventario usado y el dibujo con pilas) y recuerda el modo por ejercicio | Primer bloque end-to-end en el stack nuevo; sirve de referencia para portar el resto. |
 | 16-sep-2026 | `src/app/App.tsx` (shell + estado de migración visible) y `src/styles/v2.css` sobre `base.css` | Poder abrir la v2 y ver qué está portado y qué no, sin depender de la documentación. |
 | 16-sep-2026 | Añadido `useGrouping: true` explícito en los formateadores | V8/Intl ya no separa millares de 4 dígitos por defecto: 1000 kg se leían "1000" en vez de "1.000". |
+| 16-sep-2026 | Catálogo portado: `catalog.ts` (generado con `tools/port-catalog.mjs` desde `legacy/js/data.js`) + `data.ts` (grupos, material, presets, disponibilidad) + `text.ts` (norm/slug/similarity) + `library.ts` (`mergeSeed`) con 24 comprobaciones nuevas | El catálogo son ~300 líneas de datos que se colaban a mano con erratas (grupo o material inexistente, ids repetidos): ahora se genera y hay tests de integridad. De paso aparecieron dos datos curiosos que quedan fijados en los tests: el catálogo tiene **49** piezas de material (48 + `paralelas`, no 50 como decía la doc de la v1) y **10** ejercicios de cardio/movilidad con `rest: 0` a propósito (se miden en minutos). |
+| 16-sep-2026 | `src/state/store.ts`: material (`equipment`) y biblioteca (`exercises`, ya fusionada con lo guardado) como signals, con `setEquipment` y `setExerciseAllowed` | Para que el dominio puro sea usable desde la UI sin volver a leer el estado a mano, y para que la tarjeta de biblioteca muestre datos reales (136 ejercicios, 45 disponibles con el material por defecto). |
 | 16-sep-2026 | Movido el tooling de la v1 (`tools/serve|check|selftest.mjs`) fuera de esta rama | Esas comprobaciones eran para `js/*.js` y el auto-test del navegador; en v2 su equivalente es typecheck + lint + Vitest + build. Siguen en `main`. |

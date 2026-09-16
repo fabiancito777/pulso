@@ -33,14 +33,14 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v1: 'store.js',
     v2: 'src/state/store.ts',
     state: 'en curso',
-    note: 'Ajustes reactivos con signals y lectura tolerante. Falta equipo, ejercicios, rutinas, sesiones y calendario.',
+    note: 'Ajustes, material y biblioteca reactivos con signals y lectura tolerante. Faltan rutinas, sesiones y calendario.',
   },
   {
     area: 'Biblioteca y material',
     v1: 'data.js',
-    v2: 'src/domain/data.ts (pendiente)',
-    state: 'pendiente',
-    note: '136 ejercicios, 49 piezas de material, plantillas y presets. Es el siguiente bloque grande: datos + tipos.',
+    v2: 'src/domain/catalog.ts + data.ts + library.ts',
+    state: 'portado',
+    note: '136 ejercicios, 49 piezas de material, plantillas y presets, generados desde la v1 y verificados con comprobaciones de integridad.',
   },
   {
     area: 'Sesión activa y descanso',

@@ -26,8 +26,8 @@ export default tseslint.config(
     },
   },
   {
-    /* los ficheros de configuración no están en el tsconfig del proyecto */
-    files: ['**/*.js'],
+    /* los scripts de configuración y herramientas no están en el tsconfig del proyecto */
+    files: ['**/*.{js,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: { ...globals.node } },
   },

@@ -27,6 +27,80 @@ export type PlateModeKey = 'bar' | 'db1' | 'db2' | 'none';
 
 export type Theme = 'amoled' | 'dark' | 'light';
 export type Level = 'principiante' | 'intermedio' | 'avanzado';
+export type ExerciseType = 'compuesto' | 'aislado' | 'cardio' | 'movilidad';
+
+/* ---------- catálogo (lo genera `tools/port-catalog.mjs` en `catalog.ts`) ---------- */
+
+/** Una pieza del catálogo de material. */
+export interface EquipmentItem {
+  key: string;
+  label: string;
+  hint: string;
+  cat: string;
+}
+
+export interface MuscleGroup {
+  key: string;
+  label: string;
+  color: string;
+}
+
+/** Opción con clave (nivel, tema, objetivo, nivel de razonamiento…). */
+export interface OptionItem {
+  key: string;
+  label: string;
+  hint?: string;
+}
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  hint: string;
+}
+
+export interface RoutineTemplate {
+  id: string;
+  name: string;
+  hint: string;
+  /** [grupo muscular, cuántos ejercicios] */
+  recipe: [string, number][];
+}
+
+export interface DayType {
+  key: string;
+  label: string;
+}
+
+/**
+ * Un ejercicio de la biblioteca. El estado guarda esta misma forma (los que crea
+ * el usuario llevan `custom: true`).
+ */
+export interface Exercise {
+  id: string;
+  name: string;
+  group: string;
+  /** `''` = peso corporal · `'a&b|c'` = requiere a Y (b o c) */
+  equip: string;
+  type: ExerciseType;
+  sets: number;
+  repMin: number;
+  repMax: number;
+  rest: number;
+  /** permitido / prohibido por el usuario */
+  allowed: boolean;
+  custom: boolean;
+  bw: boolean;
+  tags: string[];
+  tips: string;
+}
+
+/** Opcionales de `E()` en la v1 (el generador los conserva tal cual). */
+export interface ExerciseOpts {
+  allowed?: boolean;
+  bw?: boolean;
+  tags?: string[];
+  tips?: string;
+}
 
 export interface AiSettings {
   apiKey: string;

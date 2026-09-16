@@ -8,8 +8,11 @@
  */
 import { signal } from '@preact/signals';
 
+import { SEED_EXERCISES } from '@/domain/catalog';
+import { defaultEquipment, type EquipmentMap } from '@/domain/data';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
-import type { AppState, PlateModeKey, Settings } from '@/domain/types';
+import { mergeSeed } from '@/domain/library';
+import type { AppState, Exercise, PlateModeKey, Settings } from '@/domain/types';
 
 export const STATE_KEY = 'pulso.state';
 export const STATE_VERSION = 1;
@@ -68,6 +71,7 @@ export function readState(): AppState {
       version: typeof parsed.version === 'number' ? parsed.version : STATE_VERSION,
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
       settings: withDefaults(parsed.settings, DEFAULT_SETTINGS),
+      equipment: isPlainObject(parsed.equipment) ? { ...parsed.equipment } : defaultEquipment(),
     };
   } catch (err) {
     console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
@@ -84,8 +88,12 @@ export function writeState(state: AppState): void {
   }
 }
 
+/* El estado se lee una sola vez al arrancar; a partir de ahí manda el memory state
+   y localStorage solo se toca al escribir (lectura-modificación-escritura). */
+const initial = readState();
+
 /** Ajustes en memoria, reactivos: cualquier componente que lea `.value` se repinta solo. */
-export const settings = signal<Settings>(readState().settings);
+export const settings = signal<Settings>(initial.settings);
 
 export function patchSettings(patch: Partial<Settings>): Settings {
   const state = readState();
@@ -102,3 +110,40 @@ export function rememberPlateMode(key: string, mode: PlateModeKey): void {
 }
 
 export const TOOL_MODE_KEY = '__tool__';
+
+/* ---------- material ---------- */
+
+/** Material activo (`{ clave: boolean }`), reactivo. */
+export const equipment = signal<EquipmentMap>(
+  (initial.equipment as EquipmentMap | undefined) ?? defaultEquipment(),
+);
+
+export function setEquipment(key: string, on: boolean): void {
+  const next = { ...equipment.value, [key]: on };
+  const state = readState();
+  state.equipment = next;
+  writeState(state);
+  equipment.value = next;
+}
+
+/* ---------- biblioteca de ejercicios ---------- */
+
+/**
+ * Biblioteca ya fusionada con lo guardado (se lee al arrancar, igual que la v1).
+ * Los ejercicios de biblioteca son la semilla; los del usuario (`custom`) y los
+ * flags permitido/prohibido vienen del estado y se conservan.
+ */
+export const exercises = signal<Exercise[]>(mergeSeed(SEED_EXERCISES, initial.exercises));
+
+export function findExercise(id: string): Exercise | null {
+  return exercises.value.find((e) => e.id === id) ?? null;
+}
+
+export function setExerciseAllowed(id: string, allowed: boolean): void {
+  const next = exercises.value.map((e) => (e.id === id ? { ...e, allowed } : e));
+  const state = readState();
+  /* solo se guarda el flag: el resto de la biblioteca se deriva de la semilla */
+  state.exercises = next.filter((e) => e.custom || e.allowed === false);
+  writeState(state);
+  exercises.value = next;
+}
