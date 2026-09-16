@@ -4,7 +4,9 @@ Documento de contexto para trabajar en esta app. Si el hilo se alarga o se pierd
 contexto, **lee primero esto**: aquí está lo vital (arquitectura, convenciones, decisiones de
 diseño y por qué se hicieron así) y el registro de revisiones/cambios.
 
-> Última actualización: 15-sep-2026 · revisión de bugs **y arreglo** de todos ellos (ver §7).
+> Última actualización: 16-sep-2026 · revisión de bugs y arreglo (§7) + ronda de detalles de
+> experiencia en la sesión (§5, "Sesión activa" y "Timer de descanso") + dibujo nuevo de la
+> calculadora de discos (§5, "Calculadora de discos").
 
 ---
 
@@ -23,14 +25,23 @@ Se abre con doble clic en `index.html` (funciona en `file://`) o servida en loca
 
 ```bash
 # servidor local (recomendado: algunos navegadores restringen localStorage en file://)
-python -m http.server 8080     # http://localhost:8080
+npm run serve                  # tools/serve.mjs → http://localhost:8080 (sin caché, MIME correcto)
+python -m http.server 8080     # alternativa sin Node (manda menos cabeceras: ver nota de entorno)
 ```
 
-**No hay `package.json`, ni linter, ni framework de tests.** La verificación es:
+**La app no tiene dependencias ni build**, pero sí herramientas de desarrollo en `tools/` (Node 18+,
+sin `npm install`):
+
+| Comando | Qué hace |
+|---|---|
+| `npm run serve` | Servidor estático de desarrollo (`Cache-Control: no-store` + MIME correcto). Acepta puerto: `node tools/serve.mjs 8081`. |
+| `npm run check` | Comprobaciones estáticas propias: sintaxis de los `js/*.js`, assets de `index.html`, `SHELL` del service worker, `data-act`/`data-act-change`/`data-act-input` sin handler, `U.icon()` inexistente y orden de carga. **Es el guardián de las convenciones de §4.** |
+| `npm run selftest` | El auto-test en Chrome headless, con código de salida (falla si no pasan todas). `--chrome <ruta>`, `--port`, `--verbose`. |
+| `npm run verify` | `check` + `selftest`. La puerta rápida antes de dar algo por bueno. |
 
 | Herramienta | Cómo | Qué hace |
 |---|---|---|
-| Auto-test | `index.html?selftest=1` (o `#selftest`) | 66 comprobaciones (equipo, discos y modos de la calculadora, 1RM, planificador, ciclo completo de sesión, descanso en el recuadro, duración del pitido de fin, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del coach, render de todas las vistas y capa de acciones). Muestra el informe, pone el resultado en `document.title` y **exporta y restaura tus datos al terminar**. Debe pasar también con datos y modos ya guardados (no dependas del estado previo). |
+| Auto-test | `index.html?selftest=1` (o `#selftest`) | 77 comprobaciones (equipo, discos y modos de la calculadora, 1RM, planificador, ciclo completo de sesión, reglas del descanso (última serie / desmarcar / anuncio del siguiente ejercicio), arrastre del peso entre series, descanso en el recuadro pegajoso, duración del pitido de fin, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del coach, render de todas las vistas y capa de acciones). Muestra el informe, pone el resultado en `document.title` y **exporta y restaura tus datos al terminar**. Debe pasar también con datos y modos ya guardados (no dependas del estado previo). |
 | Modo demo | `index.html?demo=1` | Carga 8 semanas de sesiones de ejemplo + plan semanal. Se quitan desde Ajustes → Datos. |
 | `node --check js/*.js` | terminal | Comprobación de sintaxis (la que uso antes de cada verificación). |
 | `_check.html` | abrir en el navegador | Comprueba la sintaxis de cada `js/*.js` con `new Function(src)`. |
@@ -43,8 +54,9 @@ forman parte de la app (no se referencian desde `index.html`).
 tocas un flujo con `U.modal`, verifícalo a mano en el navegador (los pasos que usé están en §7).
 
 > Nota de entorno: `python -m http.server` no manda `Cache-Control`, así que el navegador puede
-> servir los JS desde su caché heurística y **probar código viejo**. Para verificar cambios,
-> sirve en un puerto nuevo (otro origen ⇒ otra caché) o haz un hard reload.
+> servir los JS desde su caché heurística y **probar código viejo**. Para verificar cambios usa
+> `npm run serve` (manda `no-store`), o sirve en un puerto nuevo (otro origen ⇒ otra caché), o haz
+> un hard reload.
 
 ---
 
@@ -73,7 +85,8 @@ existir (se define en `views-settings.js`, que carga antes).
 | `js/coach.js` | `App.coach` (C) | Cliente Gemini, `buildContext()`, planificador local, `parseJSON` tolerante, mapeo de respuestas IA, `applyWeek`. |
 | `js/views-*.js` | `App.views.<tab>` | Cada vista es `{ title, tab, icon, sub(), render(root) }`. |
 | `js/app.js` | `App` | Router por hash, delegación de eventos, tema/acento, `App.ui` (pickers, editores, detalle de sesión, calculadora, temporizador), arranque, `selfTest()`. |
-| `sw.js` | — | Service worker: **shell offline** (precarga + network-first con respaldo en caché) y notificaciones de fin de descanso en segundo plano (`postMessage({type:'notify'})`) + `notificationclick`. ⚠️ Si añades un `js/*.js` o un CSS nuevo, súmalo a `SHELL` en `sw.js`. |
+| `sw.js` | — | Service worker: **shell offline** (precarga + network-first con respaldo en caché) y notificaciones de fin de descanso en segundo plano (`postMessage({type:'notify'})`) + `notificationclick`. ⚠️ Si añades un `js/*.js` o un CSS nuevo, súmalo a `SHELL` en `sw.js` (`npm run check` lo avisa si se te olvida). |
+| `tools/*.mjs` | — | Herramientas de **desarrollo** en Node sin dependencias: `serve.mjs` (estático sin caché), `check.mjs` (comprobaciones estáticas) y `selftest.mjs` (auto-test en Chrome headless). No forman parte de la app. |
 
 ### Flujo de datos
 
@@ -150,22 +163,65 @@ Por eso:
 
 ### Sesión activa
 `state.active` guarda la sesión en curso (entradas → series con `weight/reps/done/ts/rpe`).
-`T.start()` prellenado con `S.a.suggestWeight()` (Epley de la última vez + `settings.increment`).
-`T.finish()` filtra solo las series marcadas, calcula RPE medio, guarda en `sessions`, marca el
-día como `done` en el calendario, apaga el wake lock y notifica. `T.discard()` la tira.
+`T.start()` prellenado con `S.a.suggestWeight()` (Epley de la última vez + `settings.increment`);
+**si no hay historial el peso queda vacío** (no 0), para que un ejercicio a peso corporal no
+parezca que pesa 0 kg. `T.finish()` filtra solo las series marcadas, calcula RPE medio, guarda en
+`sessions`, marca el día como `done` en el calendario, apaga el wake lock y notifica.
+`T.discard()` la tira.
+
+**Reglas de las series (detalles pedidos por el usuario, no las "arregles" sin querer):**
+
+- **El valor se arrastra hacia ABAJO.** Editar el peso (o las reps) de la serie N lo aplica a las
+  series siguientes sin marcar de ese ejercicio; **nunca a las de arriba ni a las ya marcadas**
+  (`T.propagateSet`, llamado desde `train:set-field`). Los inputs de debajo se refrescan a mano en
+  el DOM para no tener que re-renderizar (que cerraría el teclado). El **RPE no se arrastra**.
+- **El peso se puede borrar**: `''` es "sin peso", distinto de `0`.
+- **El RPE por serie** aparece como tercera columna **solo si `settings.showRpe`** está activo
+  (`set-row.with-rpe`); se acota a 1-10 y viaja a la sesión guardada (el detalle la muestra).
+- **Marcar series**: el descanso automático depende de `T.toggleSet` (ver el apartado siguiente).
+  Al marcar una serie se copian sus valores a la siguiente **si está vacía**.
+- **Desmarcar una serie cancela el descanso** en curso (la serie no está hecha).
+- **Botones que no aplican desaparecen o se deshabilitan**: borrar serie con una sola serie, y las
+  flechas de reordenar en el primero/último ejercicio. Un botón que no responde parece roto.
+- **Al añadir ejercicios o una rutina** la vista hace scroll al primero nuevo y lo resalta un
+  momento (`focusEntry`, clase `.new`). Sin eso quedan pantallas más abajo y parece que no se
+  añadieron.
 
 ### Timer de descanso (por qué es por timestamp)
 `T.rest` guarda `{ endsAt, total, running, label }` en memoria y espeja `{endsAt,total,label}` en
 `localStorage` (`pulso.rest`). **No hay contador acumulado**: el tiempo restante se calcula con
 `endsAt - Date.now()`, así que sigue siendo correcto aunque la pestaña quede en segundo plano o
-el móvil se bloquee. `T.loop()` (cada 500 ms desde `app.js`) solo pinta y dispara el aviso de fin
-una vez (`doneFired`).
+el móvil se bloquee. `T.loop()` (cada 500 ms desde `app.js`) solo pinta, lanza los ticks de los últimos 3 s
+(`settings.countdownTick`) y dispara el aviso de fin una vez (`doneFired`).
 
+- **Cuándo arranca el descanso al marcar una serie** (`T.toggleSet` + `nextLabel`):
+  · si al ejercicio le quedan series → arranca y el aviso nombra **el propio ejercicio**;
+  · si era su **última** serie pero **queda otro ejercicio pendiente** → arranca igual (es el
+    momento de cambiar de máquina) y el aviso nombra **el siguiente ejercicio**;
+  · si era la última serie de la sesión → **no arranca nada**;
+  · desmarcar una serie **cancela** el descanso en curso.
+  La duración sigue siendo la del ejercicio que acabas de terminar (`restSec`), no la del
+  siguiente: en una superserie el primer ejercicio lleva 15 s de transición y el segundo el
+  descanso largo, que es justo lo que se quiere al cerrar el par.
 - El descanso se muestra **dentro** del recuadro de sesión (`#session-rest`); si el usuario está
   en otra pestaña de la app (no hay `#session-rest`), cae a la barra compacta `#restbar`.
+- **El recuadro es pegajoso** (`.rest-card` → `position:sticky` con `top:var(--appbar-h)`):
+  mientras hay descanso se queda pegado bajo la barra superior, así el tiempo sigue a la vista
+  aunque estés en el último ejercicio de la lista. `--appbar-h` lo publica `syncAppbarHeight()`
+  (app.js) en cada render y al redimensionar; `z-index:35` lo mantiene por debajo de la appbar
+  (40) para que esta lo tape al pasar por encima.
+- **Botón "Resumen"/"Descanso"** en el propio recuadro (`rest:view`): alterna entre la cuenta
+  atrás y el resumen de la sesión (tiempo, volumen, series hechas). En la vista de resumen el
+  descanso pasa a una línea compacta (`#sr-mini-time` + `#sr-mini-label`) dentro del recuadro
+  pegajoso, y `rest.paint()` la pinta en vez de la barra flotante: si ves el recuadro grande O la
+  línea compacta, **no** aparece la barra de abajo (las tres ramas de `paint()` son excluyentes).
+- **+15s con el descanso ya terminado** arranca una cuenta nueva desde ahora (`T.rest.add`):
+  antes se sumaba a un `endsAt` ya pasado y el botón del aviso de "completado" no hacía nada.
 - **El descanso no lo configura el usuario**: lo define cada ejercicio en la biblioteca
   (compuestos 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s) y el coach IA puede ajustarlo
   por sesión. El ajuste `autoRest` solo activa/desactiva el arranque automático al marcar serie.
+  Para alargarlo o acortarlo en vivo están los botones ∓15 s (en la barra compacta, `rest-sub`
+  todavía no está; solo `rest-add`).
 - El aviso de fin es **pitido + vibración + notificación**. Ver el apartado siguiente, que es el
   punto delicado de toda la app.
 
@@ -204,6 +260,10 @@ tiempo de carga. `U.beep()` respeta `settings.sound === false` y `settings.volum
 respeta `settings.vibrate`. Tipos de pitido: `end` (5 avisos, ~3,5 s → fin de descanso), `tick`,
 `done` (fin de sesión), `tap`.
 
+`settings.countdownTick` (por defecto `true`, interruptor en Ajustes → Apariencia) añade un `tick`
+suave en los últimos 3 s del descanso desde `T.loop()`, con `R.lastTick` para no repetirlo (el bucle
+corre cada 500 ms). Se resetea al arrancar/ampliar/recortar/parar el descanso.
+
 ### Calculadora de discos (v2: modos de carga)
 Todo se calcula en kg (`invKg()`, `T.plates()`) y cada disco mantiene su unidad original para
 mostrar "20,41 kg · 45 lb".
@@ -237,6 +297,20 @@ el concepto de **huecos** (sitios donde entra un disco):
   suelta) y se recuerda entre sesiones.
 - `T.maxLoadable({ mode })` devuelve `{ barKg, sideKg, totalKg, mode, per }` (**ojo: `totalKg`**, no
   `total`); el `sideKg` es por hueco, y en `db2` el `totalKg` ya es por mancuerna.
+- **Cómo se enseña el reparto** (modal `ui.plates`): el dibujo es fiel al modo —barra, UNA
+  mancuerna o las DOS— con cada disco en su extremo y el mango/barra en el centro (`.load-vis` y
+  `.lv-chip`, colores reutilizados de `.plate.pXX`). Con **pocos** discos por hueco (hasta 6) se
+  dibuja uno a uno, en orden de carga (el más pesado pegado al mango); con **muchos**
+  (`res.discsPerHole > 6`, p. ej. 60 kg en barra = 13 por lado) se agrupan por medida en una pila
+  con "×N" (`.lv-back` asoma una franja de 5 px por disco, tope de 3 niveles). Es a propósito: la fila llegaba a
+  medir 984 px dentro de un modal de 579 y, al recortarse, parecía que un lado iba vacío. `T.plates`
+  devuelve además `discsPerHole`, `discsTotal` y `usage` (`used` vs `have` por medida) porque en
+  `db2` el mismo reparto va en los 4 extremos: "3 discos de 3 kg por extremo" son **12 discos**
+  reales y el modal lo dice ("12 en total · 6 por mancuerna", "12 de tus 16 discos de 3 kg · te
+  quedan 4"). Las filas hablan en palabras ("3 discos de 3 kg"), el máximo se etiqueta «Máximo por
+  mancuerna» y el campo del mango dice «Mango» (no «Barra»). Si un número no cuadra con la realidad,
+  lo primero que hay que mirar es Ajustes → Discos (se cuentan **pares**) y Ajustes → Barras (peso del
+  mango; por defecto 0 kg).
 - **Defecto del inventario** (`D.PLATES_DEFAULT`): 3 kg ×8 pares, 2,5 kg ×4, 1,25 kg ×4, 5 lb ×4,
   2,5 lb ×4. **Barras a 0 kg** (`D.BARS_DEFAULT`): una barra de plástico no pesa, todo el peso lo
   ponen los discos; los tres campos (barra, barra EZ, mango de mancuerna) son editables por si algún
@@ -418,3 +492,12 @@ eliminar dejando 0 modales abiertos. Consola: 0 errores.
 | 16-sep-2026 | Inventario y equipo por defecto nuevos (`D.PLATES_DEFAULT`, `BARS_DEFAULT` a 0 kg, `DEFAULT_EQUIPMENT` con mancuernas ajustables + discos + dominadas + paralelas) y migración única `inventario-v2` (`pulso.applied-setup`) | Ajustar la app al material real del usuario sin pisarle los cambios que haga después a mano. |
 | 16-sep-2026 | `paint(root)` en el timer de descanso (la vista le pasa su contenedor) | `document.getElementById('session-rest')` podía pintar otra copia del mismo id (p. ej. el render del auto-test) y dejaba el recuadro vacío. |
 | 16-sep-2026 | Auto-test ampliado a 66 comprobaciones (modos de la calculadora, caps por modo, beep de ~3,5 s, precisión del solver) y ahora independiente de los modos guardados | El test anterior no cubría nada de esto y fallaba si el usuario había guardado un modo a mano. |
+| 16-sep-2026 | Descanso: no arranca en la última serie del ejercicio salvo que queden series en otro (entonces sí, anunciando el siguiente ejercicio); desmarcar cancela; `+15s` funciona tras terminar el descanso; ticks en los últimos 3 s (`settings.countdownTick`) | Detalles de experiencia pedidos por el usuario: el descanso no tiene sentido al terminar un ejercicio, pero sí al cambiar de máquina, y el aviso debe decir a qué vas en vez de a qué acabas de ir. |
+| 16-sep-2026 | Recuadro de descanso **pegajoso** (`--appbar-h` + `syncAppbarHeight()`) y botón que alterna descanso ↔ resumen (`rest:view`, `#sr-mini-time`) | Con 11 ejercicios el tiempo de descanso se iba de la pantalla al bajar por la lista. |
+| 16-sep-2026 | Arrastre del valor hacia abajo entre series (`T.propagateSet`) con refresco directo de los inputs | Pedido del usuario: cambiar el peso en la serie 1 debe aplicarse a las siguientes, y desde la 3 solo de la 3 en adelante. |
+| 16-sep-2026 | Peso vacío en vez de `0` cuando no hay historial (`prefill`/`blankSet`) | Un 0 en todas las series parecía un dato obligatorio y falseaba la lectura de los ejercicios a peso corporal. |
+| 16-sep-2026 | Columna de **RPE por serie** (solo con `settings.showRpe`), acotada a 1-10 y visible en el detalle de la sesión | El interruptor "Mostrar RPE" existía desde el principio pero no mostraba nada (ni había dónde apuntarlo). |
+| 16-sep-2026 | Rama `chore/dev-stack`: `tools/` con herramientas de desarrollo **sin dependencias** (`serve.mjs` con `no-store`, `check.mjs` con comprobaciones propias, `selftest.mjs` en Chrome headless con código de salida), `package.json` solo con scripts (`serve`/`check`/`selftest`/`verify`), `.editorconfig` y `node_modules/`+`_shots/` ignorados. `check.mjs` destapó dos cosas y se arreglaron: el botón "Cargar datos de ejemplo" de Progreso usaba `data-act="settings:demo"` **sin handler** (no hacía nada) y `cal:week-plan` estaba registrado sin usarse (eliminado). | El proyecto no tenía linter ni forma de verificar sin abrir el navegador a mano, y las convenciones de §4 (`data-act` con handler, iconos existentes, `SHELL` completo) se rompían en silencio. Las herramientas son de desarrollo: la app sigue sin dependencias, sin build y abriéndose con doble clic. |
+| 16-sep-2026 | Calculadora de discos con muchos discos por hueco: se agrupan por medida en una pila con "×N" (`.lv-back`) y se quita la fila de chips de abajo, que repetía lo mismo | La fila de discos medía 984 px dentro de un modal de 579: se veía cortada y parecía que un lado de la barra iba vacío (60 kg = 13 discos por lado). El caso de mancuernas de 18 kg (3 por extremo) se sigue viendo disco a disco. |
+| 16-sep-2026 | Calculadora de discos: **dibujo fiel al modo** (barra, una mancuerna o las dos, con los discos en sus extremos y el mango en el centro) en vez de la barra única con etiquetas en el medio; `T.plates` ahora devuelve `discsPerHole`, `discsTotal` y `usage` (discos usados vs disponibles) y el modal lo enseña en palabras ("3 discos de 3 kg por extremo", "12 en total · 6 por mancuerna", "12 de tus 16 discos de 3 kg · te quedan 4"); etiquetas del campo mango y "Máximo por mancuerna" corregidas (antes decía "Barra" y "Máximo en este modo") | En "2 mancuernas" el dibujo parecía una barra con 3 discos en el centro y el usuario no podía saber que necesitaba 12 discos: el cálculo era correcto (18 kg = 3 discos de 3 kg por extremo en cada mancuerna) y parecía erróneo. Ahora el reparto se ve dónde va y contra qué inventario. |
+| 16-sep-2026 | Botones que no aplican: borrar serie oculto con una sola serie, flechas de reordenar deshabilitadas en los extremos, scroll + resaltado al añadir ejercicios, y el descanso usa el nombre del **siguiente** ejercicio | Varios toques no daban respuesta o dejaban el resultado fuera de la pantalla. |

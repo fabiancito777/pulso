@@ -21,7 +21,10 @@
     };
   }
   function blankSet(weight, reps, targetReps) {
-    return { weight: U.num(weight), reps: reps === '' || reps === undefined ? '' : U.num(reps), done: false, ts: null, rpe: null, target: targetReps };
+    /* sin peso se queda VACÍO (no 0): el input ya muestra su placeholder y
+       tratarlo como 0 ensuciaba el volumen de los ejercicios a peso corporal */
+    var w = (weight === '' || weight === undefined || weight === null) ? '' : U.num(weight);
+    return { weight: w, reps: reps === '' || reps === undefined ? '' : U.num(reps), done: false, ts: null, rpe: null, target: targetReps };
   }
   /* rellena las series vacías con la sugerencia de progresión */
   function prefill(entry) {
@@ -29,8 +32,10 @@
     entry.sets = entry.sets.map(function (set) {
       var s = set || {};
       if (s.weight === undefined || s.weight === null || s.weight === '') {
-        s.weight = sug.weight ? sug.weight : 0;
-        s.suggested = true;
+        /* sin historial se deja vacío: un 0 en todas las series parecía un dato
+           obligatorio y daba a entender que el ejercicio pesaba 0 kg */
+        s.weight = sug.weight ? sug.weight : '';
+        s.suggested = !!sug.weight;
       }
       if (s.reps === undefined || s.reps === null || s.reps === '') s.reps = sug.reps || entry.repMin;
       s.done = !!s.done;
@@ -133,7 +138,22 @@
       Object.keys(patch).forEach(function (k) { set[k] = patch[k]; });
     });
   };
-  /* marca/desmarca una serie completada; lanza el descanso automático */
+  /* qué toca después: el mismo ejercicio si le quedan series, o el siguiente
+     con series pendientes (útil al cambiar de ejercicio, p. ej. superseries) */
+  function nextLabel(a, idx) {
+    var i = U.int(idx), cur = a.entries[i];
+    if (cur && cur.sets.some(function (s) { return !s.done; })) return cur.name;
+    for (var k = i + 1; k < a.entries.length; k++) {
+      if (a.entries[k].sets.some(function (s) { return !s.done; })) return a.entries[k].name;
+    }
+    return '';
+  }
+  /* marca/desmarca una serie completada; lanza el descanso automático
+     · entre series del mismo ejercicio, si ya era la última, NO descansa;
+     · pero al terminar un ejercicio SÍ descansa si queda otro por hacer, y el
+       aviso anuncia cuál es el siguiente (el momento de cambiar de máquina);
+     · marcar la última serie de la sesión tampoco descansa;
+     · desmarcar una serie cancela el descanso en curso (no está hecha). */
   T.toggleSet = function (idx, setIdx, on) {
     var a = T.active();
     if (!a) return null;
@@ -143,10 +163,32 @@
     if (!set) return null;
     set.done = on === undefined ? !set.done : !!on;
     set.ts = set.done ? new Date().toISOString() : null;
-    if (set.done && S.settings().autoRest) T.rest.start(en.restSec || S.settings().restDefault, en.name);
-    if (set.done) U.audio.ensure();
+    if (set.done) {
+      U.audio.ensure();
+      /* nextLabel devuelve cadena vacía cuando no queda nada pendiente en toda
+         la sesión (última serie): ahí no hay descanso que hacer */
+      var next = nextLabel(a, idx);
+      if (next && S.settings().autoRest) {
+        T.rest.start(en.restSec || S.settings().restDefault, next);
+      }
+    } else if (T.restState.running) {
+      T.rest.stop();
+    }
     S.setActive(a);
-    return { entry: en, set: set };
+    return { entry: en, set: set, resting: T.restState.running };
+  };
+  /* arrastra un cambio hacia ABAJO: cambiar la serie 1 lo aplica a las
+     siguientes; cambiarlo desde la 3, solo de la 3 en adelante. Nunca toca las
+     de arriba ni las ya marcadas (esas ya se hicieron). */
+  T.propagateSet = function (idx, setIdx, field, value) {
+    return T.update(function (a) {
+      var en = a.entries[U.int(idx)];
+      if (!en || (field !== 'weight' && field !== 'reps')) return;
+      for (var j = U.int(setIdx) + 1; j < en.sets.length; j++) {
+        if (en.sets[j].done) continue;
+        en.sets[j][field] = value;
+      }
+    });
   };
   T.setRestFor = function (idx, sec) {
     return T.update(function (a) { a.entries[U.int(idx)].restSec = U.int(sec, 90); });
@@ -212,7 +254,7 @@
      Cálculo por timestamp: correcto aunque la app pase a segundo plano o
      el móvil se bloquee; al terminar avisa con pitido, vibración y
      notificación (service worker si la app no está visible). */
-  var R = { endsAt: 0, total: 0, running: false, label: '', doneFired: false, doneAt: 0 };
+  var R = { endsAt: 0, total: 0, running: false, label: '', doneFired: false, doneAt: 0, lastTick: null };
   T.restState = R;
   function persistRest() {
     U.st.set('rest', R.running ? { endsAt: R.endsAt, total: R.total, label: R.label } : null);
@@ -272,6 +314,7 @@
       R.endsAt = Date.now() + sec * 1000;
       R.running = true;
       R.doneFired = false;
+      R.lastTick = null;
       R.label = label || '';
       persistRest();
       scheduleRestNotice();
@@ -280,19 +323,30 @@
       return R;
     },
     add: function (sec) {
-      if (!R.running) R.endsAt = Date.now();
-      R.endsAt += U.int(sec, 15) * 1000;
-      R.total = Math.max(R.total, Math.round((R.endsAt - Date.now()) / 1000));
+      var s = U.int(sec, 15);
+      /* si el descanso ya terminó (se está viendo el aviso de "completado"),
+         +15s arranca una cuenta NUEVA desde ahora: antes se sumaba a un final ya
+         pasado y el botón parecía no hacer nada */
+      if (!R.running || R.endsAt <= Date.now()) {
+        R.endsAt = Date.now() + s * 1000;
+        R.total = s;
+      } else {
+        R.endsAt += s * 1000;
+        R.total = Math.max(R.total, Math.round((R.endsAt - Date.now()) / 1000));
+      }
       R.running = true;
       R.doneFired = false;
+      R.lastTick = null;
       persistRest();
       scheduleRestNotice();
+      keepAlive(R.label ? 'Descanso · ' + R.label : 'Descanso');
       T.rest.paint();
       U.beep('tick');
     },
     sub: function (sec) {
       R.endsAt = Math.max(Date.now() + 1000, R.endsAt - U.int(sec, 15) * 1000);
       R.total = Math.max(1, Math.round((R.endsAt - Date.now()) / 1000));
+      R.lastTick = null;
       persistRest();
       scheduleRestNotice();
       T.rest.paint();
@@ -301,6 +355,7 @@
     stop: function () {
       R.running = false;
       R.doneFired = false;
+      R.lastTick = null;
       persistRest();
       cancelRestNotice();
       T.rest.paint();
@@ -311,7 +366,7 @@
       var saved = U.st.get('rest', null);
       if (!saved) return;
       if (saved.endsAt > Date.now()) {
-        R.endsAt = saved.endsAt; R.total = saved.total; R.label = saved.label || ''; R.running = true;
+        R.endsAt = saved.endsAt; R.total = saved.total; R.label = saved.label || ''; R.running = true; R.lastTick = null;
         scheduleRestNotice();
         keepAlive(R.label ? 'Descanso · ' + R.label : 'Descanso');
       } else { U.st.del('rest'); }
@@ -333,6 +388,17 @@
       var over = left === 0;
       var what = R.label ? U.esc(U.trunc(R.label, 40)) : '';
 
+      /* vista de resumen: el descanso vive en una línea compacta del resumen y
+         NO se pinta la barra flotante (el recuadro pegajoso sigue a la vista) */
+      var miniT = root ? root.querySelector('#sr-mini-time') : document.getElementById('sr-mini-time');
+      if (miniT) {
+        miniT.textContent = U.fmt.mmss(left);
+        miniT.classList.toggle('over', over);
+        var miniL = root ? root.querySelector('#sr-mini-label') : document.getElementById('sr-mini-label');
+        if (miniL) miniL.textContent = over ? 'descanso terminado' : (R.label ? 'siguiente: ' + U.trunc(R.label, 30) : 'descanso');
+        return;
+      }
+
       /* dentro del recuadro de sesión en curso */
       if (card) {
         bar.innerHTML = ''; bar.__built = false;
@@ -350,6 +416,7 @@
                   '<button class="btn sm" data-act="rest-sub" data-sec="15">-15s</button>' +
                   '<button class="btn sm" data-act="rest-add" data-sec="15">+15s</button>' +
                   '<button class="btn sm ghost" data-act="rest-skip">' + (over ? 'Continuar' : 'Saltar') + '</button>' +
+                  '<button class="btn sm quiet" data-act="rest:view" title="Ver el resumen de la sesión">Resumen</button>' +
                 '</div>' +
               '</div>' +
             '</div>';
@@ -391,9 +458,15 @@
     var wasRunning = R.running;
     if (R.running) {
       var left = T.rest.remaining();
+      /* ticks suaves en los últimos 3 s (aviso opcional de que se acaba) */
+      if (left > 0 && left <= 3 && S.settings().countdownTick !== false && R.lastTick !== left) {
+        R.lastTick = left;
+        U.beep('tick');
+      }
       if (left === 0 && !R.doneFired) {
         R.doneFired = true;
         R.doneAt = Date.now();
+        R.lastTick = null;
         U.beep('end');
         U.vibrate([160, 80, 160, 80, 160]);
         notifyEnd();
@@ -407,7 +480,7 @@
       }
     }
     T.rest.paint();
-    if (wasRunning && !R.running && document.getElementById('session-rest') && window.App.render) window.App.render();
+    if (wasRunning && !R.running && (document.getElementById('session-rest') || document.getElementById('sr-mini-time')) && window.App.render) window.App.render();
     var a = T.active();
     var chip = U.$('#btn-session-clock');
     if (chip) chip.hidden = !a;
@@ -540,7 +613,8 @@
       unit: unit, mode: spec.key, modeLabel: spec.label, per: spec.per, places: spec.places,
       handleKg: handle, barKg: handle, target: target, targetKg: targetKg, perSide: [],
       sideKg: 0, achieveKg: handle, diffKg: 0, exact: false, noPlates: !spec.places,
-      caps: T.plateCaps(spec.key), maxKg: handle, belowKg: null, aboveKg: null
+      caps: T.plateCaps(spec.key), maxKg: handle, belowKg: null, aboveKg: null,
+      discsPerHole: 0, discsTotal: 0, usage: []
     };
     if (!spec.places) {
       /* no hay discos que poner: el peso pedido se usa tal cual */
@@ -564,6 +638,16 @@
       var c = counts[i] || 0;
       if (c > 0) out.perSide.push({ kg: it.p.kg, n: c, srcW: it.p.srcW, srcUnit: it.p.srcUnit });
     });
+    /* Cuántos discos hacen falta en TOTAL y cómo quedan frente al inventario.
+       Con dos mancuernas el mismo reparto se repite en los 4 extremos, así que
+       hay que decirlo: "3 discos de 3 kg" por extremo son 12 discos reales, y
+       el usuario necesita saber si le alcanzan (y cuántos le sobran). */
+    out.discsPerHole = U.sum(out.perSide, function (p) { return p.n; });
+    out.discsTotal = out.discsPerHole * spec.places;
+    out.usage = out.caps.map(function (it, i) {
+      var c = counts[i] || 0;
+      return { kg: it.p.kg, srcW: it.p.srcW, srcUnit: it.p.srcUnit, used: c * spec.places, have: it.p.n * 2 };
+    }).filter(function (u) { return u.used > 0; });
     out.sideKg = U.round(sums[pick], 3);
     out.achieveKg = U.round(handle + 2 * out.sideKg, 3);
     out.diffKg = U.round(targetKg - out.achieveKg, 3);

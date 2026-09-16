@@ -242,7 +242,6 @@
     App.render();
     U.toast(st === 'rest' ? 'Día marcado como descanso' : 'Día actualizado', { type: 'ok', ms: 1600 });
   };
-  App.actions['cal:week-plan'] = function () { V.autoPlan(false); };
 
   App.views = App.views || {};
   App.views.calendario = V;

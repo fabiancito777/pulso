@@ -218,6 +218,16 @@
     } });
   };
   V.exercise = function (id) { if (id) exId = id; return exId; };
+  /* El botón "Cargar datos de ejemplo" del estado vacío: hacía falta un handler
+     (se quedó sin registrar y no hacía nada, solo el aviso de la consola).
+     Mismo camino que `?demo=1`, pero sin recargar la página. */
+  App.actions['settings:demo'] = function () {
+    var n = S.demoData(8);
+    C.planWeek({ useAI: false }).then(function (p) { C.applyWeek(p); }).catch(function () { /* sin plan: las sesiones ya están */ }).then(function () {
+      App.render();
+      U.toast('Datos de ejemplo: ' + n + ' sesiones cargadas', { type: 'ok', ms: 4000 });
+    });
+  };
 
   App.views = App.views || {};
   App.views.progreso = V;

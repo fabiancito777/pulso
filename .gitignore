@@ -1,5 +1,9 @@
 # artefactos de pruebas locales (Playwright / capturas)
 .playwright-mcp/
+_shots/
+
+# dependencias de desarrollo (la app no usa ninguna)
+node_modules/
 
 # sistema operativo
 .DS_Store

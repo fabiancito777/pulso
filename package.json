@@ -1,0 +1,21 @@
+{
+  "name": "pulso",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App de entrenamiento personal en HTML + CSS + JS vanilla. La app NO tiene dependencias ni build: todo lo de este package.json es herramienta de desarrollo (scripts + node_modules opcional).",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "check": "node tools/check.mjs",
+    "selftest": "node tools/selftest.mjs",
+    "verify": "node tools/check.mjs && node tools/selftest.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "entrenamiento",
+    "vanilla-js",
+    "pwa"
+  ],
+  "license": "UNLICENSED"
+}

@@ -36,6 +36,19 @@ En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pa
   terminar vuelve a mostrar el progreso de la sesión. Si navegas a otra pestaña queda como barra flotante
   compacta. El cómputo es por timestamp, así que la cuenta atrás es correcta aunque la pestaña quede en
   segundo plano o el móvil se bloquee.
+- **El recuadro de descanso se queda pegado** bajo la barra superior mientras dura: con una rutina larga
+  puedes estar en el último ejercicio y seguir viendo el tiempo. Un botón en el propio recuadro
+  (**Resumen / Descanso**) alterna entre la cuenta atrás y el resumen de la sesión (tiempo, volumen y
+  series hechas); en la vista de resumen el descanso queda como una línea compacta.
+- **El descanso solo arranca cuando tiene sentido**: no salta al marcar la **última** serie de un
+  ejercicio (no hay nada entre medias), pero **sí** al terminarlo si te queda otro por hacer —y entonces
+  el aviso nombra el **siguiente ejercicio**, que es cuando de verdad cambias de máquina—. En la última
+  serie de la sesión no arranca nada, desmarcar una serie lo cancela, `+15 s` con el descanso ya
+  terminado arranca una cuenta nueva y los últimos 3 segundos suenan con ticks suaves (Ajustes →
+  Apariencia).
+- **Editar una serie se aplica hacia abajo**: cambiar el peso (o las reps) de la serie 2 lo copia a las
+  siguientes de ese ejercicio; nunca a las de arriba ni a las ya marcadas (esas ya se hicieron). Así no
+  repites el mismo peso cuatro veces.
 - **El descanso no se configura a mano**: lo define cada ejercicio en la biblioteca (compuestos grandes
   ~180-240 s, auxiliares ~90-120 s, aislamientos ~60-75 s) y el coach IA puede ajustarlo por sesión.
   En la pantalla de sesión solo se muestra el tiempo sugerido.
@@ -48,7 +61,10 @@ En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pa
   worker** desde que empieza el descanso, de modo que salta aunque la app quede congelada o cerrada.
   Durante la sesión la pantalla se mantiene encendida (Wake Lock) y se recupera al volver a la app.
 - **Autollenado progresivo**: cada serie se rellena con el peso sugerido a partir de tu última sesión
-  del mismo ejercicio (fórmula de Epley) + tu incremento configurado.
+  del mismo ejercicio (fórmula de Epley) + tu incremento configurado. Si no tienes historial el campo
+  queda **vacío** (no en 0), así que un ejercicio a peso corporal no parece pesar 0 kg.
+- **RPE por serie opcional** (Ajustes → Entreno): añade una tercera columna para apuntar el esfuerzo de
+  cada serie (1-10); se guarda con la sesión y aparece en el detalle.
 - **Calculadora de discos** integrada (y como herramienta suelta) con **modo de carga**: barra, **1
   mancuerna** (unilateral) o **2 mancuernas** cargables. El mismo inventario no rinde igual en cada caso
   (dos mancuernas necesitan el doble de discos para el mismo peso), así que calcula discos **por lado o
@@ -195,18 +211,37 @@ js/views-coach.js       · chat y acciones rápidas
 js/views-stats.js       · progreso y gráficos
 js/views-settings.js    · todos los ajustes
 js/app.js               · router, delegación de eventos, tema, modales/helpers de UI, arranque y auto-test
+tools/                  · herramientas de desarrollo en Node, SIN dependencias (servir, comprobar, auto-test)
+package.json            · solo scripts de desarrollo (la app no usa Node, ni deps, ni build)
 ```
 
 Sin módulos ES a propósito: se puede abrir con doble clic (`file://`) sin CORS ni bundler.
 
 ---
 
+## Herramientas de desarrollo
+
+Todo esto es **opcional** y **sin dependencias** (solo Node 18+): la app sigue abriéndose con doble
+clic sobre `index.html`. No hay `npm install` que hacer.
+
+| Comando | Qué hace |
+|---|---|
+| `npm run serve` | Servidor local con `Cache-Control: no-store` y MIME correcto (evita el clásico "estoy probando código viejo"). Acepta puerto: `node tools/serve.mjs 8081`. |
+| `npm run check` | Comprobaciones estáticas propias: sintaxis de los `js/*.js`, assets de `index.html`, SHELL del service worker, `data-act` sin handler (el aviso "acción sin handler"), iconos inexistentes y orden de carga. |
+| `npm run selftest` | Auto-test en Chrome **headless**: falla si no pasan todas las comprobaciones. Acepta `--chrome "ruta"`, `--port`, `--verbose`. |
+| `npm run verify` | `check` + `selftest`: la puerta rápida antes de dar algo por bueno. |
+
+Sobre el editor: hay `.editorconfig` (UTF-8, LF, 2 espacios) para que no se peleen sangrías ni saltos.
+
+---
+
 ## Notas de desarrollo
 
-- **Auto-test integrado**: añade `?selftest=1` (o `#selftest`) a la URL. Ejecuta 66 comprobaciones
-  (equipo, discos, 1RM, planificador, ciclo completo de sesión, calendario, analítica, JSON tolerante,
-  markdown, unidades, rutinas, contexto del coach y render de todas las vistas) y muestra el informe.
-  Restaura tus datos al terminar. No cubre los flujos de modal: verifícalos a mano.
+- **Auto-test integrado**: añade `?selftest=1` (o `#selftest`) a la URL. Ejecuta 77 comprobaciones
+  (equipo, discos, 1RM, planificador, ciclo completo de sesión, reglas del descanso y arrastre del
+  peso entre series, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del
+  coach y render de todas las vistas) y muestra el informe. Restaura tus datos al terminar. No cubre
+  los flujos de modal: verifícalos a mano.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo, aplica un plan semanal y deja la app
   con datos para probar gráficos y calendario. Se quitan desde *Ajustes → Datos*.
 - Añadir un ejercicio a la biblioteca: una línea en `D.SEED_EXERCISES` de `js/data.js`:

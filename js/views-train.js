@@ -157,22 +157,30 @@
   function setRow(en, i, j) {
     var s = en.sets[j] || {};
     var ex = S.byId(en.exId);
+    var rpe = !!S.settings().showRpe;
     var isTime = ex && (ex.tags || []).some(function (t) { return t === 'segundos' || t === 'minutos'; });
-    return '<div class="set-row' + (s.done ? ' done' : '') + '">' +
+    return '<div class="set-row' + (s.done ? ' done' : '') + (rpe ? ' with-rpe' : '') + '">' +
       '<span class="set-idx">' + (j + 1) + '</span>' +
       '<input class="input num" type="number" inputmode="decimal" step="' + (S.settings().units === 'lb' ? '5' : '2.5') + '" min="0" placeholder="' + (ex && ex.bw ? 'PC' : '0') + '" value="' + inputNum(s.weight) + '"' +
         ' data-act-change="train:set-field" data-i="' + i + '" data-j="' + j + '" data-field="weight" aria-label="peso serie ' + (j + 1) + '">' +
       '<input class="input num" type="number" inputmode="numeric" step="1" min="0" placeholder="' + (isTime ? 'seg' : 'reps') + '" value="' + inputNum(s.reps) + '"' +
         ' data-act-change="train:set-field" data-i="' + i + '" data-j="' + j + '" data-field="reps" aria-label="repeticiones serie ' + (j + 1) + '">' +
+      (rpe ? '<input class="input num" type="number" inputmode="decimal" step="0.5" min="1" max="10" placeholder="–" value="' + inputNum(s.rpe) + '"' +
+        ' data-act-change="train:set-field" data-i="' + i + '" data-j="' + j + '" data-field="rpe" aria-label="RPE serie ' + (j + 1) + '">' : '') +
       '<button class="set-check' + (s.done ? ' on' : '') + '" data-act="train:toggle-set" data-i="' + i + '" data-j="' + j + '" aria-pressed="' + (s.done ? 'true' : 'false') + '" title="Marcar serie completada">' + U.icon('check') + '</button>' +
-      '<button class="icon-btn" data-act="train:del-set" data-i="' + i + '" data-j="' + j + '" title="Eliminar serie">' + U.icon('x') + '</button>' +
+      /* con una sola serie el botón no haría nada (removeSet se planta) */
+      (en.sets.length > 1
+        ? '<button class="icon-btn" data-act="train:del-set" data-i="' + i + '" data-j="' + j + '" title="Eliminar serie">' + U.icon('x') + '</button>'
+        : '<span></span>') +
     '</div>';
   }
 
   function exCard(en, i) {
     var ex = S.byId(en.exId);
+    var total = T.active() ? T.active().entries.length : 1;
     var doneSets = en.sets.filter(function (s) { return s.done; }).length;
     var allDone = doneSets === en.sets.length && en.sets.length > 0;
+    var rpe = !!S.settings().showRpe;
     var vol = en.sets.reduce(function (a, s) { return a + (s.done ? U.units.toKg(U.num(s.weight), T.unit()) * U.num(s.reps) : 0); }, 0);
     return '<div class="ex-card' + (allDone ? ' done' : '') + '" data-ex="' + i + '">' +
       '<div class="ex-head">' +
@@ -180,12 +188,12 @@
           '<div class="ex-meta">' + U.esc(ex ? D.groupLabel(ex.group) : '') + (ex ? ' · ' + U.esc(ex.type === 'compuesto' ? 'compuesto' : (ex.type === 'aislado' ? 'aislado' : ex.type)) : '') +
           ' · ' + doneSets + '/' + en.sets.length + ' series' + (vol ? ' · ' + U.fmt.vol(vol) + ' kg' : '') + '</div>' +
           (en.basis ? '<div class="ex-meta">' + U.icon('target') + ' ' + U.esc(en.basis) + '</div>' : '') + '</div>' +
-        '<button class="icon-btn" data-act="train:move-ex" data-i="' + i + '" data-dir="-1" title="Subir">' + U.icon('chev-u') + '</button>' +
-        '<button class="icon-btn" data-act="train:move-ex" data-i="' + i + '" data-dir="1" title="Bajar">' + U.icon('chev-d') + '</button>' +
+        '<button class="icon-btn" data-act="train:move-ex" data-i="' + i + '" data-dir="-1" title="Subir"' + (i === 0 ? ' disabled' : '') + '>' + U.icon('chev-u') + '</button>' +
+        '<button class="icon-btn" data-act="train:move-ex" data-i="' + i + '" data-dir="1" title="Bajar"' + (i >= total - 1 ? ' disabled' : '') + '>' + U.icon('chev-d') + '</button>' +
         '<button class="icon-btn" data-act="train:del-ex" data-i="' + i + '" title="Quitar ejercicio">' + U.icon('trash') + '</button>' +
       '</div>' +
       '<div class="ex-body">' +
-        '<div class="set-head"><span>#</span><span>peso (' + U.units.label(T.unit()) + ')</span><span>reps</span><span>ok</span><span></span></div>' +
+        '<div class="set-head' + (rpe ? ' with-rpe' : '') + '"><span>#</span><span>peso (' + U.units.label(T.unit()) + ')</span><span>reps</span>' + (rpe ? '<span>rpe</span>' : '') + '<span>ok</span><span></span></div>' +
         en.sets.map(function (s, j) { return setRow(en, i, j); }).join('') +
         (en.notes ? '<div class="set-hint">' + U.icon('info') + ' ' + U.esc(en.notes) + '</div>' : '') +
         '<div class="prog-mini"><i style="width:' + ((doneSets / (en.sets.length || 1)) * 100).toFixed(0) + '%"></i></div>' +
@@ -199,24 +207,43 @@
     '</div>';
   }
 
+  /* Alterna entre el recuadro del descanso y el resumen de la sesión. Mientras
+     hay descanso el recuadro queda PEGADO bajo la barra superior, así el tiempo
+     sigue a la vista aunque estés en el último ejercicio de la lista. */
+  var headerView = 'rest';
+
+  function summaryHtml(a, prog, elapsed) {
+    return '<div class="between"><div style="min-width:0"><div class="tiny muted" style="text-transform:uppercase;letter-spacing:.5px">En curso · ' + U.esc(U.d.label(a.dayIso, 'medium')) + '</div>' +
+      '<div class="h2 ellipsis" data-act="train:rename" role="button" tabindex="0">' + U.esc(a.name) + '</div></div>' +
+      '<div class="center"><div class="num" style="font-size:22px" id="session-clock-big">' + U.fmt.clock(elapsed) + '</div><div class="tiny muted">' + U.fmt.vol(prog.volume) + ' kg</div></div></div>' +
+      '<div class="bar mt-s"><i style="width:' + (prog.pct * 100).toFixed(0) + '%"></i></div>' +
+      '<div class="between tiny muted" style="margin-top:5px"><span>' + prog.done + ' de ' + prog.total + ' series</span><span>' + Math.round(prog.pct * 100) + '%</span></div>';
+  }
+
   function renderSession(root) {
     var a = T.active();
     var prog = T.sessionProgress();
     var elapsed = Math.round((Date.now() - new Date(a.startedAt).getTime()) / 1000);
-    var header;
+    var summary = summaryHtml(a, prog, elapsed);
+    var header, cls = 'card accent';
     if (T.restState.running) {
-      /* durante el descanso el recuadro de sesion muestra la cuenta atras */
-      header = '<div id="session-rest"></div>';
+      cls += ' rest-card';
+      if (headerView === 'summary') {
+        /* resumen + el descanso en una línea: el tiempo nunca se pierde */
+        header = summary +
+          '<div class="sr-strip mt-s">' +
+            '<span class="num" id="sr-mini-time">0:00</span>' +
+            '<span class="tiny muted grow ellipsis" id="sr-mini-label"></span>' +
+            '<button class="btn sm quiet" data-act="rest:view">' + U.icon('timer') + 'Descanso</button>' +
+          '</div>';
+      } else {
+        header = '<div id="session-rest"></div>';
+      }
     } else {
-      header =
-        '<div class="between"><div style="min-width:0"><div class="tiny muted" style="text-transform:uppercase;letter-spacing:.5px">En curso · ' + U.esc(U.d.label(a.dayIso, 'medium')) + '</div>' +
-          '<div class="h2 ellipsis" data-act="train:rename" role="button" tabindex="0">' + U.esc(a.name) + '</div></div>' +
-          '<div class="center"><div class="num" style="font-size:22px" id="session-clock-big">' + U.fmt.clock(elapsed) + '</div><div class="tiny muted">' + U.fmt.vol(prog.volume) + ' kg</div></div></div>' +
-        '<div class="bar mt-s"><i style="width:' + (prog.pct * 100).toFixed(0) + '%"></i></div>' +
-        '<div class="between tiny muted" style="margin-top:5px"><span>' + prog.done + ' de ' + prog.total + ' series</span><span>' + Math.round(prog.pct * 100) + '%</span></div>';
+      header = summary;
     }
     root.innerHTML =
-      '<div class="card accent">' + header + '</div>' +
+      '<div class="' + cls + '">' + header + '</div>' +
       '<section class="mt"><div class="col" style="gap:10px">' +
         (a.entries.length ? a.entries.map(function (en, i) { return exCard(en, i); }).join('') : '<div class="empty">' + U.icon('dumbbell') + '<div>Añade tu primer ejercicio</div></div>') +
       '</div></section>' +
@@ -242,6 +269,16 @@
   V.suggestion = function (v) { if (v !== undefined) sug = v; return sug || C.localSuggest(); };
 
   function refresh() { App.render(); }
+  /* lleva la vista al ejercicio recién añadido: si no, queda varias pantallas
+     más abajo y parece que no se ha añadido nada */
+  function focusEntry(idx) {
+    var el = U.$$('#view .ex-card')[U.int(idx)];
+    if (!el) return;
+    el.classList.add('new');
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    catch (e) { try { el.scrollIntoView(); } catch (e2) { /* noop */ } }
+    setTimeout(function () { el.classList.remove('new'); }, 1500);
+  }
   function ensureActive() {
     if (!T.active()) T.start({ name: 'Entrenamiento libre' });
   }
@@ -269,7 +306,8 @@
         var reps = U.int(it.reps, Math.round((U.int(it.repMin, ex.repMin) + U.int(it.repMax, ex.repMax)) / 2));
         var sug = it.weight ? { weight: U.num(it.weight), basis: it.basis || '' } : S.a.suggestWeight(ex.id, reps, T.unit());
         var sets = [];
-        for (var i = 0; i < n; i++) sets.push({ weight: sug.weight, reps: reps, done: false, ts: null, rpe: null });
+        /* sin sugerencia el peso queda vacío, no en 0 */
+        for (var i = 0; i < n; i++) sets.push({ weight: sug.weight ? sug.weight : '', reps: reps, done: false, ts: null, rpe: null });
         return {
           exId: ex.id, name: ex.name, restSec: U.int(it.rest, ex.rest), repMin: U.int(it.repMin, ex.repMin),
           repMax: U.int(it.repMax, ex.repMax), sets: sets, notes: it.notes || '', basis: sug.basis || it.basis || ''
@@ -308,18 +346,20 @@
     if (T.active()) {
       U.confirm({ title: 'Ya hay una sesión en curso', body: '<p>¿Quieres añadir los ejercicios de <b>' + U.esc(r.name) + '</b> a la sesión actual?</p>', okLabel: 'Añadir' }).then(function (ok) {
         if (!ok) return;
+        var first = T.active().entries.length;
         T.update(function (a) {
           r.items.forEach(function (it) {
             a.entries.push({
               exId: it.exId, name: (S.byId(it.exId) || {}).name || it.exId, restSec: it.rest, repMin: it.repMin, repMax: it.repMax,
               sets: new Array(U.clamp(it.sets, 1, 12)).fill(null).map(function () {
-                var sug = S.a.suggestWeight(it.exId, Math.round((it.repMin + it.repMax) / 2), T.unit());
-                return { weight: sug.weight, reps: Math.round((it.repMin + it.repMax) / 2), done: false, ts: null, rpe: null };
+                var sug = it.weight ? { weight: U.num(it.weight) } : S.a.suggestWeight(it.exId, Math.round((it.repMin + it.repMax) / 2), T.unit());
+                return { weight: sug.weight ? sug.weight : '', reps: Math.round((it.repMin + it.repMax) / 2), done: false, ts: null, rpe: null };
               }), notes: it.notes || '', basis: ''
             });
           });
         });
         App.render();
+        focusEntry(first);
         U.toast('Rutina añadida a la sesión', { type: 'ok' });
       });
       return;
@@ -344,22 +384,26 @@
   App.actions['train:pick-empty'] = function () {
     App.ui.exercisePicker({ multi: true, title: 'Añadir ejercicios', exclude: T.active() ? T.active().entries.map(function (e) { return e.exId; }) : [] }).then(function (ids) {
       if (!ids || !ids.length) return;
+      var first;
       if (!T.active()) {
         T.start({ name: 'Entrenamiento libre', dayIso: U.d.today(), exIds: ids });
+        first = 0;
       } else {
         var a = T.active();
+        first = a.entries.length;
         ids.forEach(function (id) {
           var ex = S.byId(id);
           if (!ex) return;
           var reps = Math.round((ex.repMin + ex.repMax) / 2);
           var sug = S.a.suggestWeight(id, reps, T.unit());
           var sets = [];
-          for (var i = 0; i < U.clamp(ex.sets, 1, 12); i++) sets.push({ weight: sug.weight, reps: reps, done: false, ts: null, rpe: null });
+          for (var i = 0; i < U.clamp(ex.sets, 1, 12); i++) sets.push({ weight: sug.weight ? sug.weight : '', reps: reps, done: false, ts: null, rpe: null });
           a.entries.push({ exId: ex.id, name: ex.name, restSec: ex.rest, repMin: ex.repMin, repMax: ex.repMax, sets: sets, notes: '', basis: sug.basis });
         });
         T.update(function () { });
       }
       App.render();
+      focusEntry(first);
       U.toast(ids.length + ' ' + U.plural(ids.length, 'ejercicio añadido', 'ejercicios añadidos'), { type: 'ok' });
     });
   };
@@ -393,7 +437,27 @@
   App.actions['train:set-field'] = function (el) {
     var i = U.int(el.getAttribute('data-i')), j = U.int(el.getAttribute('data-j')), field = el.getAttribute('data-field');
     var val = el.value === '' ? '' : U.num(el.value);
-    T.setSet(i, j, (function () { var o = {}; o[field] = val; return o; })());
+    if (field === 'rpe') val = val === '' ? '' : U.clamp(U.round(val, 1), 1, 10);
+    var patch = {}; patch[field] = val;
+    T.setSet(i, j, patch);
+    /* el valor se arrastra hacia ABAJO: cambiar el peso en la serie 1 lo aplica
+       a las siguientes; cambiarlo desde la 3, de la 3 en adelante. Nunca toca
+       las de arriba ni las ya marcadas. */
+    if (field !== 'weight' && field !== 'reps') return;
+    T.propagateSet(i, j, field, val);
+    /* los inputs de abajo se refrescan a mano: sin re-render no se vería el
+       arrastre y re-renderizar cerraría el teclado en mitad de la serie */
+    var en = T.entry(i);
+    if (!en) return;
+    U.$$('[data-act-change="train:set-field"][data-i="' + i + '"][data-field="' + field + '"]').forEach(function (inp) {
+      var k = U.int(inp.getAttribute('data-j'));
+      if (k > j && en.sets[k]) inp.value = inputNum(en.sets[k][field]);
+    });
+  };
+  /* alterna descanso ↔ resumen en la cabecera de la sesión */
+  App.actions['rest:view'] = function () {
+    headerView = headerView === 'summary' ? 'rest' : 'summary';
+    App.render();
   };
   App.actions['train:add-set'] = function (el) { T.addSet(U.int(el.getAttribute('data-i'))); App.render(); };
   App.actions['train:del-set'] = function (el) { T.removeSet(U.int(el.getAttribute('data-i')), U.int(el.getAttribute('data-j'))); App.render(); };

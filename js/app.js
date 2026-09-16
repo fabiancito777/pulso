@@ -66,6 +66,12 @@
     var v = U.$('#streak-value');
     if (v) v.textContent = S.a.streak();
   }
+  /* alto real de la barra superior: lo usa el recuadro de descanso pegajoso
+     (position:sticky) para quedarse justo debajo, también en iOS con notch */
+  function syncAppbarHeight() {
+    var b = U.$('.appbar');
+    if (b) document.documentElement.style.setProperty('--appbar-h', Math.round(b.offsetHeight) + 'px');
+  }
 
   /* ---------- render ---------- */
   function errorBox(err) {
@@ -81,6 +87,7 @@
     updateAppbar(view);
     updateNav();
     updateStreak();
+    syncAppbarHeight();
     Ch.mountAll(root);
     A.afterRender.forEach(function (fn) { try { fn(root); } catch (e) { console.error(e); } });
   };
@@ -266,7 +273,7 @@
       if (T.active()) A.render();
     }
   });
-  window.addEventListener('resize', U.debounce(function () { Ch.mountAll(document); }, 260));
+  window.addEventListener('resize', U.debounce(function () { Ch.mountAll(document); syncAppbarHeight(); }, 260));
 
   /* ---------- errores visibles ---------- */
   var errorShown = false;
@@ -717,6 +724,9 @@
          cada tecla, solo al cambiar de modo, para no perder el foco) */
       var field = U.$('#pc-handle-field', box), ctl = U.$('#pc-handle-ctl', box);
       if (field) field.hidden = !spec.handle;
+      /* la etiqueta del campo cambia con el modo: en mancuernas no hay "Barra" */
+      var hlabel = U.$('#pc-handle-label', box);
+      if (hlabel) hlabel.textContent = mode === 'bar' ? 'Barra' : 'Mango';
       if (ctl && built !== mode) {
         built = mode;
         if (mode === 'bar') {
@@ -743,23 +753,70 @@
       if (btn) btn.textContent = last ? 'Usar ' + U.fmt.n(last, 2) + ' ' + unitLabel : 'Usar este peso';
 
       if (!res) {
-        out.innerHTML = '<div class="tiny muted">Escribe un peso y te digo qué discos poner (siempre los mismos discos en cada ' + U.esc(spec.per || 'lado') + ').</div>';
+        var donde = mode === 'db2' ? 'cada extremo de las dos mancuernas' : (mode === 'bar' ? 'cada lado de la barra' : 'cada extremo');
+        out.innerHTML = '<div class="tiny muted">Escribe un peso y te digo qué discos poner (los mismos discos en ' + U.esc(donde) + ', sin inventarte ninguno).</div>';
         return;
       }
 
-      var chips = res.perSide.map(function (p) {
-        return '<span class="plate ' + T.plateClass(p.kg) + '">' + U.fmt.n(p.kg, 2) + ' kg' + (p.srcUnit === 'lb' ? ' · ' + U.fmt.n(p.srcW) + ' lb' : '') + (p.n > 1 ? ' ×' + p.n : '') + '</span>';
-      }).join('');
-      /* en el dibujo de la barra van etiquetas cortas (el detalle ya está en las filas) */
-      var barChips = res.perSide.map(function (p) {
-        return '<span class="plate ' + T.plateClass(p.kg) + '" title="' + U.esc(T.plateLabel(p.kg, p.srcW, p.srcUnit, p.n)) + '">' +
-          (p.srcUnit === 'lb' ? U.fmt.n(p.srcW) + ' lb' : U.fmt.n(p.kg, 2)) + (p.n > 1 ? ' ×' + p.n : '') + '</span>';
-      }).join('');
+      /* El dibujo tiene que ser fiel al modo: una barra, UNA mancuerna o las DOS.
+         Antes se pintaba siempre una barra con los discos en el centro y en
+         "2 mancuernas" parecía que había que cargar la mitad del peso. */
+      /* Un chip por disco cuando caben (así se ve la secuencia de carga). Si el
+         hueco lleva muchos discos —una barra de 60 kg con discos pequeños pide
+         13 por lado— el carril medía 984 px dentro de un modal de 579 y se veía
+         cortado: parecía que un lado iba vacío. En ese caso se agrupa por medida
+         en una pila con "×N", que es como se apilan de verdad. */
+      var dense = res.discsPerHole > 6;
+      function discChip(p, n) {
+        return '<span class="lv-chip ' + T.plateClass(p.kg) + '" title="' + U.esc(T.plateLabel(p.kg, p.srcW, p.srcUnit, n || 1)) + '">' +
+          '<b>' + U.esc(p.srcUnit === 'lb' ? U.fmt.n(p.srcW, 2) : U.fmt.n(p.kg, 2)) + '</b>' +
+          '<i>' + (p.srcUnit === 'lb' ? 'lb' : 'kg') + (n > 1 ? ' ×' + U.fmt.n(n, 0) : '') + '</i></span>';
+      }
+      function stackChip(p) {
+        var back = Math.min(p.n, 3) - 1, html = '';   /* basta con insinuar la pila */
+        for (var k = 0; k < back; k++) html += '<span class="lv-chip lv-back ' + T.plateClass(p.kg) + '"></span>';
+        return html + discChip(p, p.n);
+      }
+      function sideChips(inner) {
+        var list = [];
+        if (dense) list = res.perSide.slice();
+        else res.perSide.forEach(function (p) { for (var k = 0; k < p.n; k++) list.push(p); });
+        if (!inner) list.reverse();   /* el disco más pesado queda pegado al mango */
+        return list.map(function (p) { return dense ? stackChip(p) : discChip(p, 0); }).join('');
+      }
+      function loadVis() {
+        if (res.noPlates || !res.perSide.length) return '';
+        var rod = '<span class="' + (res.mode === 'bar' ? 'lv-bar' : 'lv-grip') + '"></span>';
+        function row(tag) {
+          return '<div class="lv-row">' + (tag ? '<span class="lv-tag">' + tag + '</span>' : '') +
+            '<span class="lv-side">' + sideChips(false) + '</span>' + rod + '<span class="lv-side">' + sideChips(true) + '</span></div>';
+        }
+        var rows = res.mode === 'db2' ? row('1') + row('2') : row('');
+        var cap = res.mode === 'db2'
+          ? 'las dos iguales · ' + dual(res.sideKg, unit) + ' por extremo'
+          : (res.mode === 'bar'
+            ? 'mismo peso en los dos lados · ' + dual(res.sideKg, unit) + ' por lado'
+            : dual(res.sideKg, unit) + ' por extremo');
+        return '<div class="load-vis">' + rows + '<div class="lv-cap">' + U.esc(cap) + '</div></div>';
+      }
       var diffTxt = res.noPlates ? '' : (res.exact
         ? '<span class="ok">exacto</span>'
         : '<span class="warn">' + (res.diffKg > 0 ? 'te quedas ' : 'te pasas ') + U.fmt.n(Math.abs(res.diffKg), 2) + ' kg</span>');
       var totalLabel = mode === 'bar' ? 'Total en la barra' : (mode === 'db1' ? 'Peso de la mancuerna' : (mode === 'db2' ? 'Peso de cada mancuerna' : 'Peso a usar'));
+      /* "Máximo en este modo" no decía de qué: en mancuernas es POR mancuerna */
+      var maxLabel = mode === 'bar' ? 'Máximo en la barra' : (mode === 'none' ? 'Máximo' : 'Máximo por mancuerna');
       var handle = T.plateHandleKg(mode, mode === 'bar' ? { barKg: barKgNow() } : undefined);
+      /* en palabras se entiende mejor que "3 kg ×3" */
+      var perTxt = res.perSide.map(function (p) {
+        var lbl = p.srcUnit === 'lb' ? U.fmt.n(p.srcW) + ' lb' : U.fmt.n(p.kg, 2) + ' kg';
+        return U.fmt.n(p.n, 0) + (p.n > 1 ? ' discos de ' : ' disco de ') + lbl;
+      }).join(' + ');
+      var usageTxt = (res.usage || []).map(function (u) {
+        var lbl = u.srcUnit === 'lb' ? U.fmt.n(u.srcW) + ' lb' : U.fmt.n(u.kg, 2) + ' kg';
+        var left = u.have - u.used;
+        return U.fmt.n(u.used, 0) + ' de tus ' + U.fmt.n(u.have, 0) + ' discos de ' + lbl + (left > 0 ? ' · te quedan ' + U.fmt.n(left, 0) : '');
+      }).join(' · ');
+      var discsTxt = res.noPlates ? '' : U.fmt.n(res.discsTotal, 0) + ' en total' + (mode === 'db2' ? ' · ' + U.fmt.n(res.discsPerHole * 2, 0) + ' por mancuerna' : '');
 
       var altTxt = '';
       if (!res.noPlates && !res.exact) {
@@ -776,12 +833,14 @@
         '<div class="card tight">' +
           (res.noPlates
             ? '<div class="tiny muted">Sin discos: usa ' + dual(res.achieveKg, unit) + ' y listo.</div>'
-            : '<div class="kv"><span class="k">Por ' + U.esc(res.per) + '</span><span class="v">' + U.esc(T.plateSummary(res)) + '</span></div>') +
+            : '<div class="kv"><span class="k">Por ' + U.esc(res.per) + '</span><span class="v">' + U.esc(perTxt) + '</span></div>') +
           '<div class="kv"><span class="k">' + totalLabel + '</span><span class="v">' + dual(res.achieveKg, unit) + (diffTxt ? ' · ' + diffTxt : '') + '</span></div>' +
-          (res.noPlates ? '' : '<div class="kv"><span class="k">' + (mode === 'bar' ? 'Barra' : 'Mango') + '</span><span class="v">' + dual(handle, unit) + '</span></div>' +
-            (res.maxKg ? '<div class="kv"><span class="k">Máximo en este modo</span><span class="v">' + dual(res.maxKg, unit) + '</span></div>' : '')) +
+          (res.noPlates ? '' : '<div class="kv"><span class="k">Discos</span><span class="v">' + discsTxt + '</span></div>' +
+            '<div class="kv"><span class="k">' + (mode === 'bar' ? 'Barra' : 'Mango') + '</span><span class="v">' + dual(handle, unit) + '</span></div>' +
+            (res.maxKg ? '<div class="kv"><span class="k">' + maxLabel + '</span><span class="v">' + dual(res.maxKg, unit) + '</span></div>' : '')) +
         '</div>' +
-        (chips ? '<div class="bar-vis"><span class="bar-rod"></span>' + barChips + '<span class="bar-rod"></span></div><div class="plate-row">' + chips + '</div>' : '') +
+        loadVis() +
+        (usageTxt ? '<div class="tiny muted mt-s">De tu inventario: ' + usageTxt + '</div>' : '') +
         altTxt;
     }
 
@@ -895,7 +954,7 @@
         var ex = S.byId(en.exId);
         var isPr = prs.some(function (p) { return p.exId === en.exId; });
         return '<div class="list-item"><div class="li-main"><div class="li-title">' + U.esc(ex ? ex.name : en.name || en.exId) + (isPr ? ' <span class="badge a">PR</span>' : '') + '</div>' +
-          '<div class="li-sub">' + (en.sets || []).map(function (set) { return U.fmt.n(set.weight) + '×' + U.fmt.n(set.reps); }).join(' · ') + '</div></div></div>';
+          '<div class="li-sub">' + (en.sets || []).map(function (set) { return U.fmt.n(set.weight) + '×' + U.fmt.n(set.reps) + (set.rpe ? ' (RPE ' + U.fmt.n(set.rpe, 1) + ')' : ''); }).join(' · ') + '</div></div></div>';
       }).join('') + '</div></div>' +
       (s.notes ? '<div class="card tight mt"><div class="tiny muted">Nota</div><div class="tiny">' + U.esc(s.notes) + '</div></div>' : '');
     U.modal({
@@ -970,6 +1029,17 @@
         var esperado = 2 * (8 * 3 + 4 * 2.5 + 4 * 1.25 + 4 * U.units.toKg(5, 'lb') + 4 * U.units.toKg(2.5, 'lb'));
         return Math.abs(T.maxLoadable().totalKg - esperado) < 0.01;
       })(), T.maxLoadable().totalKg.toFixed(1) + ' kg');
+      ok('discos: 18 kg en 2 mancuernas = 3 discos de 3 kg por extremo', (function () {
+        var r = T.plates(18, { mode: 'db2' }), u = r.usage[0] || {};
+        return r.exact && r.perSide.length === 1 && r.perSide[0].n === 3 && r.discsTotal === 12 && u.used === 12 && u.have === 16;
+      })(), (function () { var r = T.plates(18, { mode: 'db2' }); return T.plateSummary(r) + ' por extremo · ' + r.discsTotal + ' discos en total'; })());
+      ok('discos: el reparto nunca pide más discos de los que tienes', (function () {
+        return ['bar', 'db1', 'db2'].every(function (m) {
+          return [7, 12.5, 18, 23, 31, 44, 57.5].every(function (t) {
+            return T.plates(t, { mode: m }).usage.every(function (u) { return u.used <= u.have; });
+          });
+        });
+      })(), 'bar · 1 mancuerna · 2 mancuernas');
       ok('discos: sin discos usa el peso pedido tal cual', (function () { var r = T.plates(37.5, { mode: 'none' }); return r.noPlates && r.achieveKg === 37.5; })());
       ok('audio: el pitido de fin de descanso dura ~3,5 s', (function () {
         var calls = [], orig = U.audio.tone, st0 = S.settings().sound;
@@ -1002,6 +1072,27 @@
         return found;
       })());
       ok('timer: sin modal a pantalla completa', !document.getElementById('rest-overlay'));
+      ok('timer: el recuadro de descanso se pega al hacer scroll', (function () {
+        var sb = document.createElement('div');
+        document.body.appendChild(sb);
+        try { A.views.hoy.render(sb); } catch (e) { sb.remove(); return false; }
+        var found = !!sb.querySelector('.rest-card') && !!sb.querySelector('.session-rest');
+        sb.remove();
+        return found;
+      })());
+      ok('timer: vista de resumen con el descanso en una línea', (function () {
+        var sb = document.createElement('div');
+        sb.innerHTML = '<span id="sr-mini-time">0:00</span><span id="sr-mini-label"></span>';
+        document.body.appendChild(sb);
+        /* paint() con el contenedor de la línea compacta: no debe pintar la
+           barra flotante ni tocar el recuadro grande */
+        try { T.rest.paint(sb); } catch (e) { sb.remove(); return false; }
+        var time = sb.querySelector('#sr-mini-time').textContent;
+        var label = sb.querySelector('#sr-mini-label').textContent;
+        sb.remove();
+        if (document.getElementById('view')) A.views.hoy.render(document.getElementById('view'));
+        return /^\d+:\d\d$/.test(time) && label.length > 0;
+      })(), 'tiempo + "siguiente: <ejercicio>"');
       var before = S.sessions().length;
       var saved = T.finish();
       ok('sesión: se guarda en el historial', !!saved && S.sessions().length === before + 1);
@@ -1010,6 +1101,51 @@
       T.start({ routineId: null });
       ok('sesión: modo libre arranca vacío', !!T.active() && T.active().entries.length === 0);
       T.discard();
+      /* --- descanso: entre series, al cambiar de ejercicio y desmarcar --- */
+      T.start({ exIds: [sug.items[0].exId, (sug.items[1] || sug.items[0]).exId] });
+      T.active().entries.forEach(function (en) {
+        en.sets = [
+          { weight: '', reps: '', done: false, ts: null, rpe: null },
+          { weight: '', reps: '', done: false, ts: null, rpe: null },
+          { weight: '', reps: '', done: false, ts: null, rpe: null }
+        ];
+      });
+      T.toggleSet(0, 0);
+      ok('descanso: arranca al marcar una serie con series por delante', T.restState.running, T.rest.remaining() + 's');
+      ok('descanso: anuncia el propio ejercicio si le quedan series', T.restState.label === T.entry(0).name, T.restState.label);
+      T.toggleSet(0, 0, false);
+      ok('descanso: desmarcar la serie lo cancela', !T.restState.running);
+      T.toggleSet(0, 0); T.rest.stop();
+      T.toggleSet(0, 1); T.rest.stop();
+      T.toggleSet(0, 2);
+      ok('descanso: al terminar el ejercicio anuncia el siguiente', T.restState.running && T.restState.label === T.entry(1).name, T.restState.label);
+      T.rest.stop();
+      T.toggleSet(1, 0); T.rest.stop();
+      T.toggleSet(1, 1); T.rest.stop();
+      T.toggleSet(1, 2);
+      ok('descanso: la última serie de la sesión NO arranca descanso', !T.restState.running);
+      T.discard(); T.rest.stop();
+      /* --- series: el peso se arrastra hacia abajo, nunca hacia arriba --- */
+      var fieldEl = function (i, j, f, v) {
+        return {
+          getAttribute: function (n) { var m = { 'data-i': i, 'data-j': j, 'data-field': f }; return m[n] === undefined ? null : String(m[n]); },
+          value: String(v)
+        };
+      };
+      T.start({ exIds: [sug.items[0].exId] });
+      T.active().entries[0].sets = [
+        { weight: 60, reps: 10, done: false, ts: null, rpe: null },
+        { weight: 60, reps: 10, done: false, ts: null, rpe: null },
+        { weight: 60, reps: 10, done: true, ts: null, rpe: null },
+        { weight: 60, reps: 10, done: false, ts: null, rpe: null }
+      ];
+      App.actions['train:set-field'](fieldEl(0, 0, 'weight', '75'));
+      var wArr = T.active().entries[0].sets.map(function (s) { return s.weight; });
+      ok('series: el peso se arrastra hacia abajo desde la serie editada', wArr.join('/') === '75/75/60/75', wArr.join('/'));
+      App.actions['train:set-field'](fieldEl(0, 1, 'weight', '80'));
+      wArr = T.active().entries[0].sets.map(function (s) { return s.weight; });
+      ok('series: no toca las de arriba ni las ya marcadas', wArr.join('/') === '75/80/60/80', wArr.join('/'));
+      T.discard(); T.rest.stop();
       S.setDay('2030-01-01', { type: 'entreno', title: 'Test' });
       ok('calendario: guarda días', (S.getDay('2030-01-01') || {}).title === 'Test');
       S.clearDay('2030-01-01');
@@ -1076,7 +1212,7 @@
         sandbox.innerHTML = '';
       });
       /* --- smoke: capa de acciones --- */
-      var fakeEl = function (attrs) { return { getAttribute: function (n) { return attrs[n] === undefined ? null : String(attrs[n]); }, checked: true, value: '' }; };
+      var fakeEl = function (attrs, val) { return { getAttribute: function (n) { return attrs[n] === undefined ? null : String(attrs[n]); }, checked: true, value: val === undefined ? '' : String(val) }; };
       T.discard(); T.rest.stop();
       T.start({ exIds: [sug.items[0].exId] });
       try {

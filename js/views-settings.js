@@ -67,6 +67,7 @@
     '<div class="card flush mt">' +
       switchRow('Sonido', 'Pitidos al acabar el descanso y al completar series', 'sound', st.sound) +
       numRow('Volumen', '0 a 1', 'volume', st.volume, 0.1, 0, 1) +
+      switchRow('Aviso de los últimos 3 s', 'Tres ticks suaves antes de que termine el descanso', 'countdownTick', st.countdownTick) +
       switchRow('Vibración', 'En móviles compatibles', 'vibrate', st.vibrate) +
       switchRow('Notificaciones del sistema', 'Aviso al terminar el descanso', 'notify', st.notify) +
       switchRow('Mantener la sesión despierta', 'Pantalla encendida y aviso de descanso con el móvil bloqueado', 'keepAwake', st.keepAwake) +

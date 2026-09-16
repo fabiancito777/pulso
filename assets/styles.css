@@ -253,15 +253,25 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 /* ---------- calculadora de discos ---------- */
 .plate-row{display:flex;align-items:center;gap:7px;margin:5px 0;flex-wrap:wrap}
 .plate{display:inline-flex;align-items:center;justify-content:center;min-width:42px;height:30px;padding:0 8px;border-radius:var(--radius-xs);font-family:var(--mono);font-size:12.5px;font-weight:650;border:1px solid var(--border);background:var(--surface-2)}
-.plate.p25{background:#f87171;color:#2b0505;border-color:#f87171}
-.plate.p20{background:#60a5fa;color:#04162e;border-color:#60a5fa}
-.plate.p15{background:#fbbf24;color:#2b1a02;border-color:#fbbf24}
-.plate.p10{background:#34d399;color:#03251a;border-color:#34d399}
-.plate.p5{background:#e5e7eb;color:#20242c;border-color:#e5e7eb}
-.plate.p2{background:#c084fc;color:#210a33;border-color:#c084fc}
-.plate.p1{background:#94a3b8;color:#111820;border-color:#94a3b8}
-.bar-vis{display:flex;align-items:center;justify-content:center;gap:5px;padding:12px 8px;background:var(--surface-2);border-radius:var(--radius-sm);margin:8px 0;overflow-x:auto}
-.bar-rod{width:34px;height:8px;border-radius:2px;background:linear-gradient(180deg,var(--surface-4),var(--muted-2))}
+.plate.p25,.lv-chip.p25{background:#f87171;color:#2b0505;border-color:#f87171}
+.plate.p20,.lv-chip.p20{background:#60a5fa;color:#04162e;border-color:#60a5fa}
+.plate.p15,.lv-chip.p15{background:#fbbf24;color:#2b1a02;border-color:#fbbf24}
+.plate.p10,.lv-chip.p10{background:#34d399;color:#03251a;border-color:#34d399}
+.plate.p5,.lv-chip.p5{background:#e5e7eb;color:#20242c;border-color:#e5e7eb}
+.plate.p2,.lv-chip.p2{background:#c084fc;color:#210a33;border-color:#c084fc}
+.plate.p1,.lv-chip.p1{background:#94a3b8;color:#111820;border-color:#94a3b8}
+/* dibujo de la carga: los discos donde van de verdad (barra o mancuerna) */
+.load-vis{display:flex;flex-direction:column;gap:9px;padding:14px 10px 10px;background:var(--surface-2);border-radius:var(--radius-sm);margin:10px 0 0;overflow-x:auto}
+.lv-row{display:flex;align-items:center;justify-content:center;gap:6px;min-width:max-content}
+.lv-tag{flex:none;width:14px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.lv-side{display:flex;align-items:center;gap:3px}
+.lv-chip{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:30px;height:38px;border-radius:6px;border:1px solid var(--border);background:var(--surface-3);font-family:var(--mono);line-height:1;flex:none}
+.lv-chip.lv-back{width:30px;margin-right:-28px;opacity:.62}  /* pila: solo asoma una franja */
+.lv-chip b{font-size:11.5px;font-weight:700}
+.lv-chip i{margin-top:2px;font-size:8.5px;font-style:normal;opacity:.72}
+.lv-grip{flex:none;width:54px;height:11px;border-radius:5px;background:linear-gradient(180deg,var(--surface-4),var(--muted-2))}
+.lv-bar{flex:none;width:100px;height:7px;border-radius:4px;background:linear-gradient(180deg,var(--surface-4),var(--muted-2))}
+.lv-cap{font-size:11.5px;color:var(--muted);text-align:center}
 
 /* ---------- gráficos ---------- */
 .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px}
@@ -389,3 +399,26 @@ body.has-rest .composer{bottom:calc(var(--nav-h) + 96px)}
 .session-rest .sr-actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
 .session-rest.done .sr-time{color:var(--ok)}
 .session-rest.done .sr-ring .rest-ring .fg{stroke:var(--ok)}
+
+/* ---------- descanso: recuadro pegajoso + vista de resumen ----------
+   Mientras hay descanso el recuadro se queda pegado justo debajo de la barra
+   superior (el alto real lo publica app.js en --appbar-h), así el tiempo sigue
+   a la vista aunque estés en el último ejercicio de la lista. */
+:root{--appbar-h:64px}
+.rest-card{position:sticky;top:var(--appbar-h);z-index:35;box-shadow:var(--shadow-sm)}
+.sr-strip{display:flex;align-items:center;gap:9px;padding-top:9px;border-top:1px solid var(--border-soft)}
+.sr-strip .num{font-size:19px;font-weight:650;min-width:58px}
+.sr-strip .num.over{color:var(--ok)}
+
+/* ---------- RPE por serie (ajustes → Mostrar RPE) ---------- */
+.set-head.with-rpe,.set-row.with-rpe{grid-template-columns:26px 1fr 1fr 44px 40px 30px}
+
+/* botones que no aplican (flechas en los extremos de la lista de ejercicios) */
+.icon-btn[disabled]{opacity:.28;pointer-events:none}
+
+/* ejercicio recién añadido: se resalta un momento */
+.ex-card.new{animation:card-in 1s ease}
+@keyframes card-in{
+  0%{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  100%{border-color:var(--border);box-shadow:0 0 0 0 transparent}
+}

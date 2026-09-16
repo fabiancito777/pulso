@@ -16,7 +16,7 @@
 
    ⚠️ Si añades un archivo js/css nuevo, súmalo a SHELL.
    ========================================================================== */
-var CACHE = 'pulso-shell-v2';
+var CACHE = 'pulso-shell-v3';
 var SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'assets/styles.css',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
