@@ -1,0 +1,386 @@
+/* ==========================================================================
+   Pulso · data.js — catálogos base y base de datos de ejercicios
+   ========================================================================== */
+(function () {
+  'use strict';
+  var U = window.App.u;
+  var D = {};
+
+  /* ---------- grupos musculares ---------- */
+  D.GROUPS = [
+    { key: 'pecho', label: 'Pecho', color: '#60a5fa' },
+    { key: 'espalda', label: 'Espalda', color: '#34d399' },
+    { key: 'hombros', label: 'Hombros', color: '#fbbf24' },
+    { key: 'biceps', label: 'Bíceps', color: '#a78bfa' },
+    { key: 'triceps', label: 'Tríceps', color: '#f472b6' },
+    { key: 'cuadriceps', label: 'Cuádriceps', color: '#f87171' },
+    { key: 'femoral', label: 'Femoral', color: '#fb923c' },
+    { key: 'gluteos', label: 'Glúteos', color: '#e879f9' },
+    { key: 'gemelos', label: 'Gemelos', color: '#22d3ee' },
+    { key: 'core', label: 'Core', color: '#94a3b8' },
+    { key: 'antebrazo', label: 'Antebrazo', color: '#c084fc' },
+    { key: 'cardio', label: 'Cardio', color: '#4ade80' },
+    { key: 'movilidad', label: 'Movilidad', color: '#8b9dc3' }
+  ];
+  D.groupLabel = function (k) {
+    var g = D.GROUPS.filter(function (x) { return x.key === k; })[0];
+    return g ? g.label : k;
+  };
+  D.groupColor = function (k) {
+    var g = D.GROUPS.filter(function (x) { return x.key === k; })[0];
+    return g ? g.color : '#8e8e8e';
+  };
+  /* sinergias usadas por el planificador local para no sobrecargar un día */
+  D.OPTIONAL = {
+    pecho: ['triceps', 'hombros'], espalda: ['biceps', 'antebrazo'], hombros: ['triceps'],
+    cuadriceps: ['gluteos', 'gemelos'], femoral: ['gluteos', 'core'], gluteos: ['femoral', 'core'],
+    biceps: ['antebrazo'], triceps: ['pecho'], core: ['gluteos'], cardio: [], movilidad: []
+  };
+
+  /* ---------- equipamiento disponible del usuario ---------- */
+  D.EQUIPMENT = [
+    { key: 'barra_olimpica', label: 'Barra cargable', hint: 'larga/olímpica o de plástico · peso configurable', cat: 'Barras' },
+    { key: 'barra_ez', label: 'Barra EZ', hint: 'para bíceps/tríceps', cat: 'Barras' },
+    { key: 'barra_t', label: 'Barra T / landmine', hint: 'remo en T, press landmine', cat: 'Barras' },
+    { key: 'trap_bar', label: 'Trap bar (hexagonal)', hint: 'peso muerto y cargadas', cat: 'Barras' },
+    { key: 'mancuernas_ajustables', label: 'Mancuernas ajustables', hint: '', cat: 'Mancuernas' },
+    { key: 'mancuernas_fijas', label: 'Mancuernas fijas', hint: 'juego completo por pares', cat: 'Mancuernas' },
+    { key: 'kettlebell', label: 'Kettlebell', hint: '', cat: 'Mancuernas' },
+    { key: 'discos', label: 'Discos / inventario de peso', hint: 'configúralo abajo', cat: 'Mancuernas' },
+    { key: 'banco_dominadas', label: 'Barra de dominadas', hint: 'puerta, pared o rack', cat: 'Estructuras' },
+    { key: 'anillas', label: 'Anillas / TRX', hint: 'suspensión', cat: 'Estructuras' },
+    { key: 'rack', label: 'Rack o jaula', hint: 'sentadillas y press seguros', cat: 'Estructuras' },
+    { key: 'plataforma', label: 'Plataforma de peso muerto', hint: '', cat: 'Estructuras' },
+    { key: 'polea_alta', label: 'Polea alta', hint: 'jalón, tríceps', cat: 'Máquinas' },
+    { key: 'polea_baja', label: 'Polea baja', hint: 'remo, curl', cat: 'Máquinas' },
+    { key: 'polea_crossover', label: 'Crossover / doble polea', hint: '', cat: 'Máquinas' },
+    { key: 'smith', label: 'Máquina Smith', hint: '', cat: 'Máquinas' },
+    { key: 'prensa', label: 'Prensa de piernas', hint: '', cat: 'Máquinas' },
+    { key: 'hack_squat', label: 'Hack squat', hint: '', cat: 'Máquinas' },
+    { key: 'ext_cuadriceps', label: 'Extensión de cuádriceps', hint: '', cat: 'Máquinas' },
+    { key: 'curl_femoral_maq', label: 'Curl femoral', hint: 'tumbado o sentado', cat: 'Máquinas' },
+    { key: 'gemelo_maq', label: 'Máquina de gemelos', hint: '', cat: 'Máquinas' },
+    { key: 'jalon_maq', label: 'Jalón al pecho (máquina)', hint: '', cat: 'Máquinas' },
+    { key: 'remo_maq', label: 'Remo en máquina', hint: '', cat: 'Máquinas' },
+    { key: 'peck_deck', label: 'Peck deck / aperturas', hint: '', cat: 'Máquinas' },
+    { key: 'press_hombro_maq', label: 'Press de hombro (máquina)', hint: '', cat: 'Máquinas' },
+    { key: 'abductora_maq', label: 'Máquina abductora / aductora', hint: '', cat: 'Máquinas' },
+    { key: 'multiestacion', label: 'Multiestación', hint: 'poleas integradas', cat: 'Máquinas' },
+    { key: 'banco_plano', label: 'Banco plano', hint: '', cat: 'Bancos' },
+    { key: 'banco_inclinable', label: 'Banco inclinable', hint: 'cubre plano e inclinado', cat: 'Bancos' },
+    { key: 'banco_predicador', label: 'Banco predicador / scott', hint: '', cat: 'Bancos' },
+    { key: 'cajon', label: 'Cajón / step', hint: 'subidas, fondos, hip thrust', cat: 'Bancos' },
+    { key: 'bandas', label: 'Bandas elásticas', hint: '', cat: 'Accesorios' },
+    { key: 'rueda_abdominal', label: 'Rueda abdominal', hint: '', cat: 'Accesorios' },
+    { key: 'colchoneta', label: 'Colchoneta / mat', hint: '', cat: 'Accesorios' },
+    { key: 'balon_suizo', label: 'Balón suizo', hint: '', cat: 'Accesorios' },
+    { key: 'bosu', label: 'Bosu', hint: '', cat: 'Accesorios' },
+    { key: 'cuerda_saltar', label: 'Cuerda de saltar', hint: '', cat: 'Accesorios' },
+    { key: 'cinturon_lastre', label: 'Cinturón de lastre', hint: 'para dominadas/fondos', cat: 'Accesorios' },
+    { key: 'chaleco_lastre', label: 'Chaleco con peso', hint: '', cat: 'Accesorios' },
+    { key: 'correas', label: 'Correas / straps', hint: 'agarre en tirones', cat: 'Accesorios' },
+    { key: 'foam_roller', label: 'Foam roller', hint: '', cat: 'Accesorios' },
+    { key: 'cinta', label: 'Cinta de correr', hint: '', cat: 'Cardio' },
+    { key: 'bici', label: 'Bici estática / spinning', hint: '', cat: 'Cardio' },
+    { key: 'remo_erg', label: 'Remo ergómetro', hint: '', cat: 'Cardio' },
+    { key: 'eliptica', label: 'Elíptica', hint: '', cat: 'Cardio' },
+    { key: 'escaladora', label: 'Escaladora / stair', hint: '', cat: 'Cardio' },
+    { key: 'trineo', label: 'Trineo / sled', hint: '', cat: 'Cardio' },
+    { key: 'exterior', label: 'Espacio exterior', hint: 'correr, saltos, calles', cat: 'Cardio' }
+  ];
+  D.equipLabel = function (k) {
+    var e = D.EQUIPMENT.filter(function (x) { return x.key === k; })[0];
+    return e ? e.label : k;
+  };
+  D.equipCats = function () {
+    var out = [], seen = {};
+    D.EQUIPMENT.forEach(function (e) { if (!seen[e.cat]) { seen[e.cat] = 1; out.push(e.cat); } });
+    return out;
+  };
+
+  /* ---------- inventario de discos por defecto ----------
+     `pairs` = PARES que tienes de esa medida (un par = 2 discos). Un par te da
+     un disco por lado en la barra o por extremo en la mancuerna; con dos
+     mancuernas necesitas el doble de discos, así que por extremo te toca la
+     mitad de cada medida. */
+  D.PLATES_DEFAULT = [
+    { w: 3, unit: 'kg', pairs: 8, on: true },
+    { w: 2.5, unit: 'kg', pairs: 4, on: true },
+    { w: 1.25, unit: 'kg', pairs: 4, on: true },
+    { w: 5, unit: 'lb', pairs: 4, on: true },
+    { w: 2.5, unit: 'lb', pairs: 4, on: true }
+  ];
+  /* barra de plástico: pesa 0 kg, todo el peso lo ponen los discos */
+  D.BARS_DEFAULT = { olimpica: 0, ez: 0, mancuerna: 0 };
+  D.REST_PRESETS = [45, 60, 90, 120, 150, 180, 240];
+  D.INCREMENTS = [1, 1.25, 2.5, 5, 10];
+
+  /* ---------- ajustes por defecto ---------- */
+  D.DEFAULT_SETTINGS = {
+    name: '', level: 'intermedio', goal: 'hipertrofia', daysPerWeek: 4,
+    theme: 'amoled', accent: '#c8ff2e',
+    units: 'kg', restDefault: 90, autoRest: true, sound: true, volume: 0.6, vibrate: true,
+    notify: true, keepAwake: true, increment: 2.5, countWarmups: false, showRpe: false,
+    quickFinish: false, plates: U.clone(D.PLATES_DEFAULT), bars: U.clone(D.BARS_DEFAULT),
+    /* modo de carga recordado por ejercicio en la calculadora de discos */
+    plateModes: {},
+    ai: {
+      apiKey: '', model: 'gemini-3.8-flash', thinkingLevel: 'low', thinkingBudget: '',
+      includeThoughts: true, temperature: 0.7, maxTokens: 4096, autoApply: false,
+      systemPrompt: ''
+    }
+  };
+  D.LEVELS = ['principiante', 'intermedio', 'avanzado'];
+  D.GOALS = [
+    { key: 'hipertrofia', label: 'Hipertrofia (músculo)' },
+    { key: 'fuerza', label: 'Fuerza' },
+    { key: 'perder_grasa', label: 'Perder grasa' },
+    { key: 'salud', label: 'Salud y movilidad' }
+  ];
+  D.GOAL_REPS = {
+    hipertrofia: [8, 12], fuerza: [4, 6], perder_grasa: [10, 15], salud: [8, 15]
+  };
+  D.GOAL_SETS = { hipertrofia: 4, fuerza: 5, perder_grasa: 3, salud: 3 };
+  D.GOAL_REST = { hipertrofia: 90, fuerza: 180, perder_grasa: 60, salud: 75 };
+  D.GOAL_LABEL = function (k) {
+    var g = D.GOALS.filter(function (x) { return x.key === k; })[0];
+    return g ? g.label : k;
+  };
+  D.ACCENTS = ['#c8ff2e', '#4ade80', '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6', '#fb923c', '#f87171', '#fbbf24', '#e5e7eb'];
+  D.THEMES = [
+    { key: 'amoled', label: 'AMOLED', hint: 'negro puro #000' },
+    { key: 'dark', label: 'Oscuro', hint: 'gris azulado' },
+    { key: 'light', label: 'Claro', hint: 'para exteriores' }
+  ];
+  D.AI_MODELS = [
+    { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', hint: 'más inteligente · recomendado' },
+    { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', hint: 'razonamiento multi-paso' },
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', hint: 'equilibrado' },
+    { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', hint: 'thinking por defecto medio' },
+    { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', hint: 'rápido y económico' },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', hint: 'alto rendimiento' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'usa thinkingBudget' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', hint: 'usa thinkingBudget' },
+    { id: 'gemini-flash-latest', label: 'gemini-flash-latest', hint: 'alias móvil' }
+  ];
+  D.THINKING_LEVELS = [
+    { key: 'auto', label: 'Auto', hint: 'deja el valor por defecto del modelo' },
+    { key: 'minimal', label: 'Mínimo', hint: 'respuestas rápidas' },
+    { key: 'low', label: 'Bajo', hint: 'tareas simples' },
+    { key: 'medium', label: 'Medio', hint: 'equilibrado' },
+    { key: 'high', label: 'Alto', hint: 'planificación compleja' }
+  ];
+
+  /* ---------- base de datos de ejercicios ---------- */
+  /* equip: '' = peso corporal · 'a&b|c' = requiere a Y (b o c) */
+  function E(name, group, equip, type, sets, repMin, repMax, rest, opts) {
+    opts = opts || {};
+    return {
+      id: U.slug(name), name: name, group: group, equip: equip || '', type: type,
+      sets: sets, repMin: repMin, repMax: repMax, rest: rest,
+      allowed: opts.allowed !== false, custom: false, bw: !!opts.bw,
+      tags: opts.tags || [], tips: opts.tips || ''
+    };
+  }
+  D.E = E;
+  D.SEED_EXERCISES = [
+    /* ------- pecho ------- */
+    E('Press de banca con barra', 'pecho', 'barra_olimpica&banco_plano|banco_inclinable', 'compuesto', 4, 6, 10, 180),
+    E('Press de banca con mancuernas', 'pecho', 'mancuernas_fijas|mancuernas_ajustables&banco_plano|banco_inclinable', 'compuesto', 4, 8, 12, 150),
+    E('Press inclinado con barra', 'pecho', 'barra_olimpica&banco_inclinable', 'compuesto', 4, 6, 10, 180),
+    E('Press inclinado con mancuernas', 'pecho', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'compuesto', 3, 8, 12, 150),
+    E('Press declinado con mancuernas', 'pecho', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'compuesto', 3, 8, 12, 150),
+    E('Press de banca en Smith', 'pecho', 'smith|multiestacion', 'compuesto', 4, 8, 12, 150),
+    E('Press de banca en máquina', 'pecho', 'multiestacion|smith', 'compuesto', 3, 10, 14, 120),
+    E('Aperturas con mancuernas', 'pecho', 'mancuernas_fijas|mancuernas_ajustables&banco_plano|banco_inclinable', 'aislado', 3, 10, 15, 90),
+    E('Aperturas en polea (crossover)', 'pecho', 'polea_crossover|multiestacion|bandas', 'aislado', 3, 12, 15, 75),
+    E('Peck deck', 'pecho', 'peck_deck|multiestacion', 'aislado', 3, 12, 15, 75),
+    E('Pullover con mancuerna', 'pecho', 'mancuernas_fijas|mancuernas_ajustables&banco_plano|banco_inclinable', 'aislado', 3, 10, 14, 90),
+    E('Fondos en paralelas (pecho)', 'pecho', 'paralelas|multiestacion|anillas|rack', 'compuesto', 3, 8, 15, 120, { bw: true }),
+    E('Flexiones', 'pecho', '', 'compuesto', 4, 10, 25, 90, { bw: true }),
+    E('Flexiones declinadas', 'pecho', 'cajon|banco_plano|colchoneta', 'compuesto', 3, 8, 20, 90, { bw: true }),
+    E('Flexiones con lastre', 'pecho', 'chaleco_lastre', 'compuesto', 3, 6, 15, 120, { bw: true }),
+    E('Press landmine', 'pecho', 'barra_t|barra_olimpica', 'compuesto', 3, 8, 12, 120),
+    /* ------- espalda ------- */
+    E('Dominadas', 'espalda', 'banco_dominadas|rack|multiestacion', 'compuesto', 4, 5, 12, 180, { bw: true }),
+    E('Dominadas supinas (chin-up)', 'espalda', 'banco_dominadas|rack|multiestacion', 'compuesto', 4, 5, 12, 180, { bw: true, tags: ['biceps'] }),
+    E('Dominadas lastradas', 'espalda', 'banco_dominadas|rack&cinturon_lastre|chaleco_lastre', 'compuesto', 4, 4, 8, 210, { bw: true }),
+    E('Dominadas asistidas con banda', 'espalda', 'banco_dominadas|rack&bandas', 'compuesto', 3, 6, 12, 150, { bw: true }),
+    E('Jalón al pecho', 'espalda', 'polea_alta|jalon_maq|multiestacion', 'compuesto', 4, 8, 12, 120),
+    E('Jalón agarre cerrado', 'espalda', 'polea_alta|jalon_maq|multiestacion', 'compuesto', 3, 8, 12, 120),
+    E('Remo con barra', 'espalda', 'barra_olimpica', 'compuesto', 4, 6, 10, 180),
+    E('Remo Pendlay', 'espalda', 'barra_olimpica', 'compuesto', 4, 5, 8, 180),
+    E('Remo con mancuerna a una mano', 'espalda', 'mancuernas_fijas|mancuernas_ajustables&banco_plano|banco_inclinable|cajon', 'compuesto', 3, 8, 12, 105),
+    E('Remo en polea baja', 'espalda', 'polea_baja|multiestacion', 'compuesto', 3, 10, 14, 105),
+    E('Remo en máquina', 'espalda', 'remo_maq|multiestacion', 'compuesto', 3, 10, 14, 105),
+    E('Remo en T', 'espalda', 'barra_t|barra_olimpica', 'compuesto', 4, 8, 12, 120),
+    E('Remo invertido (anillas)', 'espalda', 'anillas', 'compuesto', 3, 8, 15, 120, { bw: true }),
+    E('Remo con banda sentado', 'espalda', 'bandas', 'compuesto', 3, 12, 20, 75),
+    E('Pullover en polea alta', 'espalda', 'polea_alta|multiestacion', 'aislado', 3, 12, 15, 75),
+    E('Peso muerto convencional', 'espalda', 'barra_olimpica|trap_bar', 'compuesto', 4, 4, 8, 240, { tags: ['femoral', 'gluteos'] }),
+    /* ------- hombros ------- */
+    E('Press militar con barra', 'hombros', 'barra_olimpica&rack|plataforma', 'compuesto', 4, 6, 10, 180),
+    E('Press militar con mancuernas', 'hombros', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable|banco_plano', 'compuesto', 4, 8, 12, 150),
+    E('Press Arnold', 'hombros', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'compuesto', 3, 8, 12, 120),
+    E('Press de hombro en máquina', 'hombros', 'press_hombro_maq|multiestacion|smith', 'compuesto', 3, 8, 12, 120),
+    E('Elevaciones laterales con mancuernas', 'hombros', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 4, 12, 18, 75),
+    E('Elevaciones laterales en polea', 'hombros', 'polea_baja|polea_crossover|multiestacion', 'aislado', 3, 12, 18, 75),
+    E('Elevaciones laterales con banda', 'hombros', 'bandas', 'aislado', 3, 15, 25, 60),
+    E('Elevaciones frontales', 'hombros', 'mancuernas_fijas|mancuernas_ajustables|bandas', 'aislado', 3, 12, 15, 60),
+    E('Pájaros con mancuernas', 'hombros', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'aislado', 3, 12, 18, 75),
+    E('Pájaros en peck deck', 'hombros', 'peck_deck|multiestacion', 'aislado', 3, 12, 18, 75),
+    E('Face pull', 'hombros', 'polea_alta|polea_crossover|multiestacion|bandas', 'aislado', 3, 15, 20, 60),
+    E('Pull-apart con banda', 'hombros', 'bandas', 'aislado', 3, 15, 25, 60),
+    E('Remo al mentón con barra EZ', 'hombros', 'barra_ez|barra_olimpica', 'compuesto', 3, 10, 15, 90),
+    E('Press landmine a una mano', 'hombros', 'barra_t|barra_olimpica', 'compuesto', 3, 8, 12, 105),
+    E('Encogimientos con barra', 'hombros', 'barra_olimpica', 'aislado', 4, 10, 15, 90),
+    E('Encogimientos con mancuernas', 'hombros', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 12, 18, 75),
+    /* ------- bíceps ------- */
+    E('Curl con barra', 'biceps', 'barra_olimpica', 'aislado', 3, 8, 12, 90),
+    E('Curl con barra EZ', 'biceps', 'barra_ez', 'aislado', 4, 8, 12, 90),
+    E('Curl con mancuernas', 'biceps', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 10, 14, 75),
+    E('Curl martillo', 'biceps', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 10, 14, 75, { tags: ['antebrazo'] }),
+    E('Curl alterno con supinación', 'biceps', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 10, 12, 75),
+    E('Curl concentrado', 'biceps', 'mancuernas_fijas|mancuernas_ajustables&banco_plano', 'aislado', 3, 10, 14, 60),
+    E('Curl predicador', 'biceps', 'banco_predicador&barra_ez|barra_olimpica|mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 10, 14, 75),
+    E('Curl inclinado en banco', 'biceps', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'aislado', 3, 10, 14, 75),
+    E('Curl araña', 'biceps', 'mancuernas_fijas|mancuernas_ajustables&banco_inclinable', 'aislado', 3, 10, 14, 60),
+    E('Curl en polea baja', 'biceps', 'polea_baja|polea_crossover|multiestacion', 'aislado', 3, 12, 15, 60),
+    E('Curl con banda', 'biceps', 'bandas', 'aislado', 3, 15, 20, 60),
+    /* ------- tríceps ------- */
+    E('Press francés con barra EZ', 'triceps', 'barra_ez&banco_inclinable|banco_plano', 'aislado', 3, 8, 12, 105),
+    E('Extensión de tríceps en polea alta', 'triceps', 'polea_alta|multiestacion', 'aislado', 3, 10, 15, 75),
+    E('Extensión sobre la cabeza en polea', 'triceps', 'polea_baja|polea_alta|multiestacion', 'aislado', 3, 10, 15, 75),
+    E('Extensión sobre la cabeza con mancuerna', 'triceps', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 10, 14, 75),
+    E('Patada de tríceps', 'triceps', 'mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 12, 15, 60),
+    E('Fondos en banco', 'triceps', 'cajon|banco_plano|colchoneta', 'compuesto', 3, 10, 20, 90, { bw: true }),
+    E('Fondos en paralelas (tríceps)', 'triceps', 'paralelas|multiestacion|anillas', 'compuesto', 3, 8, 15, 120, { bw: true }),
+    E('Press cerrado con barra', 'triceps', 'barra_olimpica&banco_plano|banco_inclinable', 'compuesto', 3, 6, 10, 120),
+    E('Flexiones diamante', 'triceps', '', 'compuesto', 3, 8, 20, 90, { bw: true }),
+    E('Extensión de tríceps con banda', 'triceps', 'bandas', 'aislado', 3, 15, 20, 60),
+    /* ------- cuádriceps ------- */
+    E('Sentadilla con barra', 'cuadriceps', 'barra_olimpica&rack|plataforma', 'compuesto', 4, 5, 10, 180),
+    E('Sentadilla frontal', 'cuadriceps', 'barra_olimpica&rack|plataforma', 'compuesto', 4, 5, 8, 180),
+    E('Sentadilla goblet', 'cuadriceps', 'kettlebell|mancuernas_fijas|mancuernas_ajustables', 'compuesto', 3, 10, 15, 90),
+    E('Sentadilla búlgara', 'cuadriceps', 'mancuernas_fijas|mancuernas_ajustables|kettlebell|barra_olimpica&banco_plano|cajon', 'compuesto', 3, 8, 12, 120, { bw: true }),
+    E('Zancadas caminando', 'cuadriceps', 'mancuernas_fijas|mancuernas_ajustables|kettlebell', 'compuesto', 3, 10, 14, 105, { bw: true }),
+    E('Prensa de piernas', 'cuadriceps', 'prensa|multiestacion', 'compuesto', 4, 8, 15, 150),
+    E('Hack squat', 'cuadriceps', 'hack_squat|smith', 'compuesto', 4, 8, 12, 150),
+    E('Extensión de cuádriceps', 'cuadriceps', 'ext_cuadriceps|multiestacion', 'aislado', 3, 12, 18, 75),
+    E('Sentadilla sissy', 'cuadriceps', '', 'aislado', 3, 8, 15, 90, { bw: true }),
+    E('Step up al cajón', 'cuadriceps', 'cajon|banco_plano', 'compuesto', 3, 10, 14, 90, { bw: true, tags: ['gluteos'] }),
+    E('Sentadilla sumo con mancuerna', 'cuadriceps', 'mancuernas_fijas|mancuernas_ajustables|kettlebell', 'compuesto', 3, 10, 15, 105, { tags: ['gluteos'] }),
+    /* ------- femoral ------- */
+    E('Peso muerto rumano', 'femoral', 'barra_olimpica|trap_bar', 'compuesto', 4, 6, 10, 180, { tags: ['gluteos'] }),
+    E('Peso muerto a una pierna', 'femoral', 'mancuernas_fijas|mancuernas_ajustables|kettlebell', 'compuesto', 3, 8, 12, 105, { bw: true }),
+    E('Curl femoral tumbado', 'femoral', 'curl_femoral_maq|multiestacion', 'aislado', 4, 10, 15, 90),
+    E('Curl femoral sentado', 'femoral', 'curl_femoral_maq|multiestacion', 'aislado', 3, 10, 15, 90),
+    E('Curl nórdico', 'femoral', '', 'aislado', 3, 5, 10, 120, { bw: true }),
+    E('Glute ham raise', 'femoral', 'curl_femoral_maq|multiestacion', 'aislado', 3, 6, 12, 120, { bw: true }),
+    E('Buenos días', 'femoral', 'barra_olimpica|bandas', 'compuesto', 3, 8, 12, 120, { tags: ['gluteos'] }),
+    E('Hip hinge con banda', 'femoral', 'bandas', 'compuesto', 3, 12, 20, 60),
+    /* ------- glúteos ------- */
+    E('Hip thrust con barra', 'gluteos', 'barra_olimpica&banco_plano|banco_inclinable', 'compuesto', 4, 8, 12, 150),
+    E('Puente de glúteo', 'gluteos', '', 'aislado', 3, 15, 25, 60, { bw: true }),
+    E('Peso muerto sumo', 'gluteos', 'barra_olimpica|trap_bar', 'compuesto', 4, 6, 10, 180, { tags: ['femoral'] }),
+    E('Patada de glúteo en polea', 'gluteos', 'polea_baja|multiestacion', 'aislado', 3, 12, 15, 60),
+    E('Patada de glúteo en cuadrupedia', 'gluteos', 'bandas', 'aislado', 3, 15, 20, 60, { bw: true }),
+    E('Abducción en máquina', 'gluteos', 'abductora_maq|multiestacion', 'aislado', 3, 15, 20, 60),
+    E('Abducción con banda (monster walk)', 'gluteos', 'bandas', 'aislado', 3, 15, 25, 60),
+    E('Empuje de cadera a una pierna', 'gluteos', 'banco_plano|cajon', 'aislado', 3, 12, 18, 60, { bw: true }),
+    /* ------- gemelos ------- */
+    E('Elevación de gemelos de pie', 'gemelos', '', 'aislado', 4, 12, 20, 60, { bw: true }),
+    E('Elevación de gemelos sentado', 'gemelos', 'gemelo_maq|mancuernas_fijas|mancuernas_ajustables|barra_olimpica', 'aislado', 4, 12, 20, 60),
+    E('Elevación de gemelos en prensa', 'gemelos', 'prensa|multiestacion', 'aislado', 4, 12, 20, 60),
+    E('Gemelos a una pierna con mancuerna', 'gemelos', 'mancuernas_fijas|mancuernas_ajustables|kettlebell', 'aislado', 3, 12, 18, 60),
+    /* ------- core ------- */
+    E('Plancha frontal', 'core', 'colchoneta', 'aislado', 3, 30, 60, 60, { bw: true, tags: ['isometrico'] }),
+    E('Plancha lateral', 'core', 'colchoneta', 'aislado', 3, 25, 45, 45, { bw: true, tags: ['isometrico'] }),
+    E('Crunch abdominal', 'core', 'colchoneta', 'aislado', 3, 15, 25, 45, { bw: true }),
+    E('Crunch en polea', 'core', 'polea_alta|multiestacion', 'aislado', 3, 12, 18, 60),
+    E('Elevación de piernas colgado', 'core', 'banco_dominadas|rack|multiestacion', 'aislado', 3, 10, 15, 75, { bw: true }),
+    E('Elevación de rodillas en paralelas', 'core', 'paralelas|multiestacion|rack', 'aislado', 3, 12, 18, 60, { bw: true }),
+    E('Rueda abdominal', 'core', 'rueda_abdominal', 'aislado', 3, 8, 15, 75, { bw: true }),
+    E('Russian twist', 'core', 'colchoneta&mancuernas_fijas|mancuernas_ajustables|balon_suizo', 'aislado', 3, 16, 24, 45, { bw: true }),
+    E('Hollow hold', 'core', 'colchoneta', 'aislado', 3, 20, 45, 45, { bw: true, tags: ['isometrico'] }),
+    E('Dead bug', 'core', 'colchoneta', 'aislado', 3, 10, 16, 45, { bw: true }),
+    E('Pallof press', 'core', 'polea_crossover|polea_baja|multiestacion|bandas', 'aislado', 3, 10, 15, 60),
+    E('Mountain climbers', 'core', 'colchoneta', 'aislado', 3, 30, 45, 45, { bw: true }),
+    E('Hiperextensiones lumbares', 'core', 'banco_plano|colchoneta|cajon', 'aislado', 3, 12, 18, 60, { bw: true }),
+    E('Paseo del granjero', 'core', 'mancuernas_fijas|mancuernas_ajustables|kettlebell', 'aislado', 3, 20, 40, 90, { tags: ['antebrazo', 'cardio'] }),
+    /* ------- antebrazo ------- */
+    E('Curl de muñeca', 'antebrazo', 'barra_ez|barra_olimpica|mancuernas_fijas|mancuernas_ajustables', 'aislado', 3, 15, 25, 45),
+    E('Curl inverso con barra', 'antebrazo', 'barra_ez|barra_olimpica', 'aislado', 3, 12, 18, 60),
+    E('Agarre estático colgado', 'antebrazo', 'banco_dominadas|rack', 'aislado', 3, 20, 45, 60, { bw: true, tags: ['isometrico'] }),
+    /* ------- cardio ------- */
+    E('Cinta de correr (zona 2)', 'cardio', 'cinta', 'cardio', 1, 20, 40, 0, { tags: ['minutos'] }),
+    E('Intervalos en cinta (HIIT)', 'cardio', 'cinta', 'cardio', 8, 1, 2, 60, { tags: ['minutos'] }),
+    E('Bici estática', 'cardio', 'bici', 'cardio', 1, 15, 40, 0, { tags: ['minutos'] }),
+    E('Remo ergómetro', 'cardio', 'remo_erg', 'cardio', 1, 10, 25, 0, { tags: ['minutos'] }),
+    E('Elíptica', 'cardio', 'eliptica', 'cardio', 1, 15, 30, 0, { tags: ['minutos'] }),
+    E('Escaladora', 'cardio', 'escaladora', 'cardio', 1, 10, 25, 0, { tags: ['minutos'] }),
+    E('Salto de cuerda', 'cardio', 'cuerda_saltar', 'cardio', 5, 1, 3, 45, { tags: ['minutos'] }),
+    E('Burpees', 'cardio', '', 'cardio', 4, 10, 20, 60, { bw: true }),
+    E('Empuje de trineo', 'cardio', 'trineo', 'cardio', 6, 1, 2, 90, { tags: ['minutos'] }),
+    E('Caminata al aire libre', 'cardio', 'exterior', 'cardio', 1, 20, 60, 0, { tags: ['minutos'] }),
+    E('Carrera continua', 'cardio', 'exterior', 'cardio', 1, 15, 45, 0, { tags: ['minutos'] }),
+    /* ------- movilidad ------- */
+    E('Movilidad de cadera 90/90', 'movilidad', 'colchoneta', 'movilidad', 2, 60, 90, 20, { bw: true, tags: ['segundos'] }),
+    E('Estiramiento de isquiotibiales', 'movilidad', 'colchoneta', 'movilidad', 2, 30, 60, 20, { bw: true, tags: ['segundos'] }),
+    E('Gato-camello', 'movilidad', 'colchoneta', 'movilidad', 2, 30, 60, 20, { bw: true, tags: ['segundos'] }),
+    E('Dislocaciones de hombro con banda', 'movilidad', 'bandas', 'movilidad', 2, 12, 20, 30, { tags: ['reps'] }),
+    E('Movilidad de tobillo a la pared', 'movilidad', '', 'movilidad', 2, 30, 45, 20, { bw: true, tags: ['segundos'] }),
+    E('Foam rolling general', 'movilidad', 'foam_roller', 'movilidad', 1, 5, 10, 0, { tags: ['minutos'] }),
+    E('Estiramiento de pectoral en marco', 'movilidad', '', 'movilidad', 2, 30, 45, 20, { bw: true, tags: ['segundos'] }),
+    E('Yoga flow ligero', 'movilidad', 'colchoneta', 'movilidad', 1, 10, 20, 0, { tags: ['minutos'] })
+  ];
+
+  /* añade soporte de fondos al catálogo (se usa en varios ejercicios) */
+  D.EQUIPMENT.splice(12, 0, { key: 'paralelas', label: 'Paralelas / soporte de fondos', hint: 'dips y elevaciones', cat: 'Estructuras' });
+
+  /* ---------- plantillas de rutina (receta por grupo muscular) ---------- */
+  D.TEMPLATES = [
+    { id: 'full_a', name: 'Full body A', hint: '3 días/semana · principiantes', recipe: [['cuadriceps', 2], ['pecho', 2], ['espalda', 2], ['core', 1]] },
+    { id: 'full_b', name: 'Full body B', hint: 'complementa al A', recipe: [['femoral', 2], ['espalda', 2], ['hombros', 2], ['core', 1]] },
+    { id: 'push', name: 'Empuje · Push', hint: 'pecho, hombro, tríceps', recipe: [['pecho', 3], ['hombros', 2], ['triceps', 2]] },
+    { id: 'pull', name: 'Tirón · Pull', hint: 'espalda, bíceps', recipe: [['espalda', 3], ['biceps', 2], ['antebrazo', 1]] },
+    { id: 'legs', name: 'Pierna · Legs', hint: 'cuádriceps, femoral, glúteo', recipe: [['cuadriceps', 2], ['femoral', 2], ['gluteos', 1], ['gemelos', 1]] },
+    { id: 'upper', name: 'Torso completo', hint: 'día único de tren superior', recipe: [['espalda', 3], ['pecho', 2], ['hombros', 2], ['biceps', 1]] },
+    { id: 'lower', name: 'Pierna + core', hint: 'tren inferior con abdomen', recipe: [['cuadriceps', 2], ['femoral', 2], ['gluteos', 1], ['core', 2]] },
+    { id: 'hiit', name: 'Cardio + core', hint: 'acondicionamiento', recipe: [['cardio', 2], ['core', 3]] },
+    { id: 'mobility', name: 'Movilidad y recuperación', hint: 'días de descanso activo', recipe: [['movilidad', 5]] }
+  ];
+  D.DAY_TYPES = [
+    { key: 'entreno', label: 'Entrenamiento' }, { key: 'cardio', label: 'Cardio' },
+    { key: 'movilidad', label: 'Movilidad / descanso activo' }, { key: 'descanso', label: 'Descanso' }
+  ];
+  /* equipo por defecto: mancuernas ajustables + inventario de discos + barra
+     cargable (de plástico) y, en estructuras, solo barra de dominadas y
+     paralelas. Lo demás queda apagado hasta que se active en Ajustes → Equipo. */
+  D.DEFAULT_EQUIPMENT = {
+    mancuernas_ajustables: true, discos: true, barra_olimpica: true,
+    banco_dominadas: true, paralelas: true
+  };
+
+  /* ---------- presets de equipamiento (onboarding y Ajustes → Equipo) ----------
+     Una sola fuente de verdad: antes el onboarding y los ajustes usaban listas
+     distintas (y el onboarding excluía la clave inexistente 'bosca', que en
+     realidad es 'bosu'). */
+  D.EQUIP_PRESETS = {
+    basico: ['mancuernas_ajustables', 'banco_inclinable', 'banco_plano', 'colchoneta', 'bandas', 'discos', 'exterior', 'cuerda_saltar', 'banco_dominadas', 'barra_olimpica', 'bici'],
+    ninguno: ['colchoneta', 'exterior'],
+    /* 'gym' = todo el catálogo menos estas piezas */
+    gymExclude: ['trap_bar', 'barra_t', 'hack_squat', 'bosu', 'trineo']
+  };
+  /* devuelve un mapa { clave: booleano } con el preset aplicado */
+  D.equipPreset = function (kind) {
+    var all = {};
+    D.EQUIPMENT.forEach(function (e) { all[e.key] = false; });
+    if (kind === 'todo') D.EQUIPMENT.forEach(function (e) { all[e.key] = true; });
+    else if (kind === 'gym') D.EQUIPMENT.forEach(function (e) { all[e.key] = D.EQUIP_PRESETS.gymExclude.indexOf(e.key) < 0; });
+    else (D.EQUIP_PRESETS[kind] || D.EQUIP_PRESETS.basico).forEach(function (k) { if (k in all) all[k] = true; });
+    return all;
+  };
+
+  window.App.data = D;
+})();

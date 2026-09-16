@@ -1,0 +1,7 @@
+# artefactos de pruebas locales (Playwright / capturas)
+.playwright-mcp/
+
+# sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini

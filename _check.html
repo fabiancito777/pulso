@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>syntax</title></head><body><div id="out">running</div>
+<script>
+var files = ['core.js','data.js','store.js','charts.js','trainer.js','coach.js','views-train.js','views-routines.js','views-calendar.js','views-coach.js','views-stats.js','views-settings.js','app.js'];
+var out = document.getElementById('out');
+out.innerHTML = '';
+function next(i){
+  if (i >= files.length) { document.title = 'SYNTAX-DONE'; return; }
+  fetch('js/' + files[i]).then(function(r){ return r.text(); }).then(function(src){
+    var res;
+    try { new Function(src); res = 'OK'; } catch (e) { res = 'ERROR: ' + e.message; }
+    out.innerHTML += '<div data-file="' + files[i] + '">' + files[i] + ' :: ' + res + '</div>';
+    next(i + 1);
+  });
+}
+next(0);
+</script></body></html>
