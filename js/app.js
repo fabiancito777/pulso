@@ -1062,6 +1062,7 @@
       T.toggleSet(0, 0);
       ok('sesión: marca serie completada', !!T.active().entries[0].sets[0].done);
       ok('sesión: arranca descanso automático', !!T.restState.running, T.rest.remaining() + 's');
+      ok('aviso: la prueba no pisa un descanso en curso', T.testRestNotice(5) === false);
       ok('timer: descanso dentro del recuadro de sesión', (function () {
         var sb = document.createElement('div');
         document.body.appendChild(sb);

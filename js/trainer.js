@@ -322,17 +322,50 @@
       n.onclick = function () { try { window.focus(); n.close(); } catch (e) { /* noop */ } };
     } catch (e) { /* noop */ }
   }
-  /* El móvil congela la pestaña al bloquearse y el timer no podría avisar
-     (ver U.keepAlive). Solo se mantiene viva mientras dura el DESCANSO, no
-     toda la sesión, y solo si el usuario no lo apagó: con música de fondo
-     (Spotify…) el <audio> atenúa la música, así que bgAudio:false lo apaga y
-     el aviso sigue llegando por notificación del sistema + vibración. */
+  /* El móvil congela la pestaña al bloquearse y el timer no podría avisar.
+     En Android moderno el aviso lo programa el service worker (ver
+     scheduleRestNotice) SIN pedir foco de audio: no atenúa la música de fondo
+     (Spotify…) y por eso aquí NO se enciende el <audio> de silencio. El
+     keep-alive de audio queda solo como último recurso donde no hay SW que
+     programe nada (navegadores sin service worker o iOS, que no ejecuta el SW
+     en segundo plano): ahí es la única vía para sonar con el móvil bloqueado,
+     solo mientras dura el descanso. */
   function keepAlive() {
     try {
-      if (S.settings().keepAwake === false || S.settings().bgAudio === false) { U.keepAlive.off(); return; }
+      var noSW = true;
+      try { noSW = !navigator.serviceWorker; } catch (e) { noSW = true; }
+      var iOS = false;
+      try {
+        iOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '') ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      } catch (e2) { /* noop */ }
+      if (!noSW && !iOS) { U.keepAlive.off(); return; }
+      if (S.settings().keepAwake === false) { U.keepAlive.off(); return; }
       U.keepAlive.on();
-    } catch (e) { /* noop */ }
+    } catch (e3) { /* noop */ }
   }
+  /* Aviso de prueba para comprobar en el móvil que el aviso programado llega
+     con la pantalla bloqueada (Ajustes → Apariencia). No pisa un descanso en
+     curso: el SW solo guarda un aviso pendiente y se perdería el real. */
+  T.testRestNotice = function (sec) {
+    sec = Math.max(3, U.int(sec, 5));
+    if (T.restState.running) {
+      U.toast('Hay un descanso en curso: primero termínalo o sáltalo', { type: 'warn' });
+      return false;
+    }
+    if (S.settings().notify === false) {
+      U.toast('Activa «Notificaciones del sistema» para probar el aviso', { type: 'warn' });
+      return false;
+    }
+    ensureNoticePermission();
+    swPost({
+      type: 'schedule-rest', at: Date.now() + sec * 1000,
+      title: 'Aviso de prueba', body: 'Si ves esto con el móvil bloqueado, el aviso del descanso funciona',
+      tag: 'pulso-test'
+    });
+    U.toast('Bloquea el móvil: el aviso llega en ' + sec + ' s', { type: 'ok', ms: 4000 });
+    return true;
+  };
 
   T.rest = {
     start: function (sec, label) {

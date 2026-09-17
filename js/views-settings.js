@@ -71,8 +71,10 @@
       switchRow('Vibración', 'En móviles compatibles', 'vibrate', st.vibrate) +
       switchRow('Notificaciones del sistema', 'Aviso al terminar el descanso', 'notify', st.notify) +
       switchRow('Mantener la sesión despierta', 'Pantalla encendida durante el entreno', 'keepAwake', st.keepAwake) +
-      switchRow('Audio en segundo plano', 'Aviso con el móvil bloqueado. Apágalo si escuchas música (Spotify…): atenúa el volumen', 'bgAudio', st.bgAudio !== false) +
-    '</div>';
+    '</div>' +
+    '<button class="list-item tappable card tight mt" data-act="notify:test">' + U.icon('timer') +
+      '<span class="li-main"><span class="li-title">Probar aviso con el móvil bloqueado</span>' +
+      '<span class="li-sub">Programa un aviso de prueba en 5 segundos para comprobar que te llega</span></span>' + U.icon('chev-r') + '</button>';
   }
 
   /* ---------- entreno ---------- */
@@ -306,6 +308,7 @@
     App.setSettingPath(key, val);
     if (el.getAttribute('data-rerender') === '1') App.render();
   };
+  App.actions['notify:test'] = function () { T.testRestNotice(5); };
   App.actions['settings:theme'] = function (el) {
     S.setSettings({ theme: el.getAttribute('data-key') });
     App.applyTheme();

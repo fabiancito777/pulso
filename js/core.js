@@ -719,6 +719,6 @@
   };
 
   window.App = window.App || {};
-  window.App.VERSION = '1.0.2';
+  window.App.VERSION = '1.0.3';
   window.App.u = U;
 })();

@@ -237,7 +237,7 @@ Sobre el editor: hay `.editorconfig` (UTF-8, LF, 2 espacios) para que no se pele
 
 ## Notas de desarrollo
 
-- **Auto-test integrado**: añade `?selftest=1` (o `#selftest`) a la URL. Ejecuta 77 comprobaciones
+- **Auto-test integrado**: añade `?selftest=1` (o `#selftest`) a la URL. Ejecuta 78 comprobaciones
   (equipo, discos, 1RM, planificador, ciclo completo de sesión, reglas del descanso y arrastre del
   peso entre series, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del
   coach y render de todas las vistas) y muestra el informe. Restaura tus datos al terminar. No cubre
