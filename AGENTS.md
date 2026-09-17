@@ -4,9 +4,10 @@ Documento de contexto para trabajar en esta app. Si el hilo se alarga o se pierd
 contexto, **lee primero esto**: aquí está lo vital (arquitectura, convenciones, decisiones de
 diseño y por qué se hicieron así) y el registro de revisiones/cambios.
 
-> Última actualización: 16-sep-2026 · revisión de bugs y arreglo (§7) + ronda de detalles de
-> experiencia en la sesión (§5, "Sesión activa" y "Timer de descanso") + dibujo nuevo de la
-> calculadora de discos (§5, "Calculadora de discos").
+> Última actualización: 17-sep-2026 · fix del ducking de Spotify (keep-alive solo en descanso,
+> sin mediaSession, ajuste `bgAudio` y `U.audio.release()`) + revisión de bugs y arreglo (§7) +
+> ronda de detalles de experiencia en la sesión (§5, "Sesión activa" y "Timer de descanso") +
+> dibujo nuevo de la calculadora de discos (§5, "Calculadora de discos").
 
 ---
 
@@ -233,14 +234,18 @@ que sonar** el aviso. Un solo mecanismo no basta, así que hay tres capas que se
    (988/1319 Hz) cada 0,7 s con la Web Audio API. Es largo a propósito: con el móvil en el bolsillo
    un beep corto se pierde. (Elegido sobre un `<audio>` con un mp3 para no añadir assets y porque el
    `AudioContext` se puede programar con precisión.)
-2. **Keep-alive de audio** (`U.keepAlive`): mientras hay sesión activa se reproduce en bucle una
-   **pista de silencio** generada en memoria (WAV de 1 s en un `<audio loop>`) y se declara
-   `mediaSession.metadata`. Con eso el navegador trata la página como un reproductor
-   (`<audio>`) y **no la congela** al bloquear el móvil, así que el timer sigue corriendo y el
-   pitido del punto 1 llega a sonar. Se enciende en `T.start()`/`T.rest.start()` y se apaga en
-   `T.finish()`/`T.discard()`/`T.rest.stop()`; el ajuste `keepAwake` lo controla. El `play()` puede
-   quedar bloqueado si la app se recargó sin gesto de usuario: `U.keepAlive.retry()` (primer toque y
-   al volver a primer plano) lo reintenta.
+2. **Keep-alive de audio** (`U.keepAlive`): mientras corre un DESCANSO se reproduce en bucle una
+   **pista de silencio** generada en memoria (WAV de 1 s en un `<audio loop>`). Con eso el navegador
+   trata la página como un reproductor (`<audio>`) y **no la congela** al bloquear el móvil, así que
+   el timer sigue corriendo y el pitido del punto 1 llega a sonar. Se enciende en `T.rest.start()` y
+   se apaga al terminar el descanso, al cancelarlo (`T.rest.stop()`), al cerrar la sesión
+   (`T.finish()`/`T.discard()`) y al disparar el aviso (`T.loop()` → `doneFired`); el ajuste `bgAudio`
+   lo controla (`keepAwake: false` también lo apaga). El `play()` puede quedar bloqueado si la app se
+   recargó sin gesto de usuario: `U.keepAlive.retry()` (primer toque y al volver a primer plano) lo
+   reintenta. ⚠️ **No vive toda la sesión ni publica `mediaSession.metadata`**: el `<audio>` pide el
+   foco de audio y atenúa la música de fondo (Spotify…), y el metadata le robaba los controles del
+   bluetooth; así era el bug del volumen bajo permanente. Con `bgAudio: false` el aviso con el móvil
+   bloqueado sigue llegando por la capa 3 (notificación del sistema + vibración).
 3. **Notificación PROGRAMADA en el service worker** (`sw.js` → `scheduleRest`). Si aun así la
    pestaña está congelada o cerrada, el SW se mantiene despierto con `waitUntil` hasta la hora exacta
    (`rest.endsAt`) y lanza la notificación del sistema (con `requireInteraction: true`). Esto es
@@ -501,3 +506,4 @@ eliminar dejando 0 modales abiertos. Consola: 0 errores.
 | 16-sep-2026 | Calculadora de discos con muchos discos por hueco: se agrupan por medida en una pila con "×N" (`.lv-back`) y se quita la fila de chips de abajo, que repetía lo mismo | La fila de discos medía 984 px dentro de un modal de 579: se veía cortada y parecía que un lado de la barra iba vacío (60 kg = 13 discos por lado). El caso de mancuernas de 18 kg (3 por extremo) se sigue viendo disco a disco. |
 | 16-sep-2026 | Calculadora de discos: **dibujo fiel al modo** (barra, una mancuerna o las dos, con los discos en sus extremos y el mango en el centro) en vez de la barra única con etiquetas en el medio; `T.plates` ahora devuelve `discsPerHole`, `discsTotal` y `usage` (discos usados vs disponibles) y el modal lo enseña en palabras ("3 discos de 3 kg por extremo", "12 en total · 6 por mancuerna", "12 de tus 16 discos de 3 kg · te quedan 4"); etiquetas del campo mango y "Máximo por mancuerna" corregidas (antes decía "Barra" y "Máximo en este modo") | En "2 mancuernas" el dibujo parecía una barra con 3 discos en el centro y el usuario no podía saber que necesitaba 12 discos: el cálculo era correcto (18 kg = 3 discos de 3 kg por extremo en cada mancuerna) y parecía erróneo. Ahora el reparto se ve dónde va y contra qué inventario. |
 | 16-sep-2026 | Botones que no aplican: borrar serie oculto con una sola serie, flechas de reordenar deshabilitadas en los extremos, scroll + resaltado al añadir ejercicios, y el descanso usa el nombre del **siguiente** ejercicio | Varios toques no daban respuesta o dejaban el resultado fuera de la pantalla. |
+| 17-sep-2026 | Keep-alive solo durante el descanso + sin `mediaSession.metadata` + ajuste `bgAudio` + `U.audio.release()` tras los pitidos | El `<audio>` de silencio vivía toda la sesión y anunciaba "Pulso" como reproductor: con Spotify + bluetooth la música quedaba atenuada de forma permanente. Ahora el silencio solo suena en el descanso (y se apaga al terminarlo), no roba los controles, el `AudioContext` se suspende tras cada pitido y quien escuche música puede apagarlo en Ajustes → Apariencia sin perder el aviso (sigue por notificación del sistema + vibración). |

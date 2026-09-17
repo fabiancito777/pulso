@@ -70,7 +70,8 @@
       switchRow('Aviso de los últimos 3 s', 'Tres ticks suaves antes de que termine el descanso', 'countdownTick', st.countdownTick) +
       switchRow('Vibración', 'En móviles compatibles', 'vibrate', st.vibrate) +
       switchRow('Notificaciones del sistema', 'Aviso al terminar el descanso', 'notify', st.notify) +
-      switchRow('Mantener la sesión despierta', 'Pantalla encendida y aviso de descanso con el móvil bloqueado', 'keepAwake', st.keepAwake) +
+      switchRow('Mantener la sesión despierta', 'Pantalla encendida durante el entreno', 'keepAwake', st.keepAwake) +
+      switchRow('Audio en segundo plano', 'Aviso con el móvil bloqueado. Apágalo si escuchas música (Spotify…): atenúa el volumen', 'bgAudio', st.bgAudio !== false) +
     '</div>';
   }
 

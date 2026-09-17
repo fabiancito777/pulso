@@ -120,7 +120,7 @@
     name: '', level: 'intermedio', goal: 'hipertrofia', daysPerWeek: 4,
     theme: 'amoled', accent: '#c8ff2e',
     units: 'kg', restDefault: 90, autoRest: true, sound: true, volume: 0.6, vibrate: true,
-    notify: true, keepAwake: true, increment: 2.5, countWarmups: false, showRpe: false,
+    notify: true, keepAwake: true, bgAudio: true, increment: 2.5, countWarmups: false, showRpe: false,
     countdownTick: true,
     quickFinish: false, plates: U.clone(D.PLATES_DEFAULT), bars: U.clone(D.BARS_DEFAULT),
     /* modo de carga recordado por ejercicio en la calculadora de discos */

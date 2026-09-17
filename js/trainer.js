@@ -86,7 +86,9 @@
     };
     S.setActive(active);
     if (S.settings().keepAwake) U.wakeLock.on();
-    keepAlive('Entrenamiento');
+    /* Sin keep-alive aquí a propósito: el <audio> de silencio pide el foco de
+       audio y atenúa la música de fondo (Spotify…) durante TODA la sesión.
+       Solo se enciende mientras corre un descanso (ver T.rest.start). */
     U.audio.ensure();
     return active;
   };
@@ -298,12 +300,15 @@
       n.onclick = function () { try { window.focus(); n.close(); } catch (e) { /* noop */ } };
     } catch (e) { /* noop */ }
   }
-  /* la pestaña se mantiene viva mientras dura la sesión: sin esto el móvil la
-     congela al bloquearse y el timer no podría avisar (ver U.keepAlive) */
-  function keepAlive(label) {
+  /* El móvil congela la pestaña al bloquearse y el timer no podría avisar
+     (ver U.keepAlive). Solo se mantiene viva mientras dura el DESCANSO, no
+     toda la sesión, y solo si el usuario no lo apagó: con música de fondo
+     (Spotify…) el <audio> atenúa la música, así que bgAudio:false lo apaga y
+     el aviso sigue llegando por notificación del sistema + vibración. */
+  function keepAlive() {
     try {
-      if (S.settings().keepAwake === false) { U.keepAlive.off(); return; }
-      U.keepAlive.on(label || 'Entrenamiento');
+      if (S.settings().keepAwake === false || S.settings().bgAudio === false) { U.keepAlive.off(); return; }
+      U.keepAlive.on();
     } catch (e) { /* noop */ }
   }
 
@@ -318,7 +323,7 @@
       R.label = label || '';
       persistRest();
       scheduleRestNotice();
-      keepAlive(label ? 'Descanso · ' + label : 'Descanso');
+      keepAlive();
       T.rest.paint();
       return R;
     },
@@ -339,7 +344,7 @@
       R.lastTick = null;
       persistRest();
       scheduleRestNotice();
-      keepAlive(R.label ? 'Descanso · ' + R.label : 'Descanso');
+      keepAlive();
       T.rest.paint();
       U.beep('tick');
     },
@@ -358,6 +363,9 @@
       R.lastTick = null;
       persistRest();
       cancelRestNotice();
+      /* el silencio ya cumplió: se suelta el foco de audio para que la
+         música de fondo (Spotify…) recupere su volumen cuanto antes */
+      try { U.keepAlive.off(); } catch (e) { /* noop */ }
       T.rest.paint();
     },
     remaining: function () { return R.running ? Math.max(0, Math.round((R.endsAt - Date.now()) / 1000)) : 0; },
@@ -368,7 +376,7 @@
       if (saved.endsAt > Date.now()) {
         R.endsAt = saved.endsAt; R.total = saved.total; R.label = saved.label || ''; R.running = true; R.lastTick = null;
         scheduleRestNotice();
-        keepAlive(R.label ? 'Descanso · ' + R.label : 'Descanso');
+        keepAlive();
       } else { U.st.del('rest'); }
     },
     /* ---- render: dentro del recuadro de sesión si existe; si no, barra compacta ---- */
@@ -471,12 +479,16 @@
         U.vibrate([160, 80, 160, 80, 160]);
         notifyEnd();
         cancelRestNotice();
+        /* el pitido ya está programado: se suelta el foco de audio para que
+           la música de fondo (Spotify…) recupere su volumen cuanto antes */
+        try { U.keepAlive.off(); } catch (e) { /* noop */ }
       }
       /* el aviso de fin se queda 30 s y luego se cierra solo */
       if (R.doneFired && Date.now() - R.doneAt > 30000) {
         R.running = false; R.doneFired = false;
         persistRest();
         cancelRestNotice();
+        try { U.keepAlive.off(); } catch (e2) { /* noop */ }
       }
     }
     T.rest.paint();

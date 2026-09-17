@@ -332,6 +332,18 @@
   }
   U.audio = {
     ensure: function () { var c = ctx(); if (c && c.state === 'suspended') c.resume(); },
+    /* Suelta el foco de audio cuando los pitidos ya sonaron: un AudioContext
+       abierto retiene la salida y, con Spotify u otro reproductor de fondo, el
+       sistema mantiene la música atenuada (ducking) hasta que se suspende. */
+    release: function (ms) {
+      try {
+        var c = actx;
+        if (!c || c.state !== 'running') return;
+        setTimeout(function () {
+          try { if (c.state === 'running') c.suspend(); } catch (e) { /* noop */ }
+        }, Math.max(0, U.int(ms, 500)));
+      } catch (e) { /* noop */ }
+    },
     tone: function (freq, dur, when, vol) {
       var c = ctx(); if (!c) return;
       var o = c.createOscillator(), g = c.createGain();
@@ -358,10 +370,11 @@
           U.audio.tone(988, 0.16, t0, v);
           U.audio.tone(1319, 0.2, t0 + 0.17, v * 0.95);
         }
+        U.audio.release(4200);
       }
-      else if (kind === 'tick') U.audio.tone(660, 0.06, 0, v * 0.6);
-      else if (kind === 'done') { U.audio.tone(660, 0.1, 0, v); U.audio.tone(990, 0.14, 0.1, v); }
-      else U.audio.tone(440, 0.05, 0, v * 0.5);
+      else if (kind === 'tick') { U.audio.tone(660, 0.06, 0, v * 0.6); U.audio.release(600); }
+      else if (kind === 'done') { U.audio.tone(660, 0.1, 0, v); U.audio.tone(990, 0.14, 0.1, v); U.audio.release(800); }
+      else { U.audio.tone(440, 0.05, 0, v * 0.5); U.audio.release(500); }
     } catch (e) { /* noop */ }
   };
   U.vibrate = function (pattern) {
@@ -394,14 +407,22 @@
     };
   })();
 
-  /* ---------- mantener la sesión viva con el móvil bloqueado ----------
+  /* ---------- mantener el descanso vivo con el móvil bloqueado ----------
      Al bloquear el móvil el navegador congela la pestaña y no sonaría el aviso.
      Truco: un audio en bucle (pista de silencio) mantiene la página como
      "reproductor", así el temporizador sigue corriendo y el pitido final suena.
      Es best-effort: donde el sistema no lo permita, el aviso fiable es la
-     notificación programada desde el service worker (ver sw.js). */
+     notificación programada desde el service worker (ver sw.js).
+     OJO con la música de fondo (Spotify…): un <audio> sonando pide el foco de
+     audio y el sistema atenúa la música (ducking). Por eso:
+     · SOLO se enciende mientras corre un descanso (ver trainer.js), nunca
+       durante toda la sesión, y se apaga en cuanto termina o se cancela;
+     · NO se publica metadata en mediaSession: antes anunciaba "Pulso" como
+       reproductor y le robaba los controles/AVRCP del bluetooth a Spotify;
+     · hay ajuste propio (bgAudio) para apagarlo del todo si escuchas música:
+       el aviso sigue llegando por notificación del sistema + vibración. */
   U.keepAlive = (function () {
-    var el = null, url = null, current = '';
+    var el = null, url = null;
     function silentWav() {
       var sr = 8000, n = sr, buf = new ArrayBuffer(44 + n), dv = new DataView(buf);
       function str(off, s) { for (var i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); }
@@ -412,18 +433,20 @@
       for (var i = 0; i < n; i++) dv.setUint8(44 + i, 128);
       return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
     }
-    function meta(label) {
+    function clearMedia() {
+      /* Devolvemos los controles multimedia a quien los tuviera (Spotify…):
+         sin pista no hay nada que anunciar. */
       try {
-        if (navigator.mediaSession && window.MediaMetadata) {
-          navigator.mediaSession.metadata = new MediaMetadata({ title: label || 'Entrenamiento', artist: 'Pulso' });
+        if (navigator.mediaSession) {
+          try { navigator.mediaSession.metadata = null; } catch (e) { /* noop */ }
+          try { navigator.mediaSession.playbackState = 'none'; } catch (e2) { /* noop */ }
         }
       } catch (e) { /* noop */ }
     }
     return {
-      on: function (label) {
-        current = label || 'Entrenamiento';
+      on: function () {
         try {
-          if (el) { meta(current); return; }
+          if (el) return;
           url = url || silentWav();
           el = document.createElement('audio');
           el.src = url; el.loop = true; el.setAttribute('playsinline', '');
@@ -431,10 +454,9 @@
           document.body.appendChild(el);
           var p = el.play();
           if (p && p.catch) p.catch(function () { /* sin gesto previo: se ignora */ });
-          meta(current);
         } catch (e) { /* noop */ }
       },
-      label: function (label) { current = label || current; if (el) meta(current); },
+      label: function () { /* se mantiene por compatibilidad: ya no se anuncia nada */ },
       /* tras recargar no hubo gesto de usuario y el navegador puede haber
          bloqueado el play(): se reintenta en el primer toque */
       retry: function () {
@@ -445,7 +467,7 @@
       off: function () {
         try { if (el) { el.pause(); el.remove(); } } catch (e) { /* noop */ }
         el = null;
-        try { if (navigator.mediaSession) navigator.mediaSession.metadata = null; } catch (e) { /* noop */ }
+        clearMedia();
       },
       active: function () { return !!el; }
     };
