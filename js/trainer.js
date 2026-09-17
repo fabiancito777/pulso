@@ -270,17 +270,39 @@
        notificación del sistema. */
   function swPost(msg) {
     try {
-      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      if (!navigator.serviceWorker) return false;
+      /* Vía rápida: la página está controlada por el SW. */
+      if (navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage(msg);
         return true;
       }
+      /* Sin controlador (p. ej. tras actualizar la PWA sin recargar) el mensaje
+         se perdía en silencio y el descanso quedaba sin programar: se entrega
+         en cuanto el SW esté listo. No se duplica con la vía rápida porque
+         solo se usa cuando no hay controlador. */
+      navigator.serviceWorker.ready.then(function (reg) {
+        try { if (reg && reg.active) reg.active.postMessage(msg); } catch (e) { /* noop */ }
+      }).catch(function () { /* noop */ });
+      return true;
     } catch (e) { /* noop */ }
     return false;
   }
   function restTitle() { return 'Descanso terminado'; }
   function restBody() { return R.label ? 'Siguiente serie: ' + U.trunc(R.label, 40) : 'Siguiente serie cuando estés listo'; }
+  function ensureNoticePermission() {
+    /* Marcar una serie es un gesto del usuario: se aprovecha para pedir el
+       permiso si nunca se concedió ni denegó. Sin permiso, el SW no puede
+       mostrar nada con el móvil bloqueado y el aviso se pierde en silencio. */
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        var p = Notification.requestPermission();
+        if (p && p.catch) p.catch(function () { /* noop */ });
+      }
+    } catch (e) { /* noop */ }
+  }
   function scheduleRestNotice() {
     if (!R.running || S.settings().notify === false) return;
+    ensureNoticePermission();
     swPost({ type: 'schedule-rest', at: R.endsAt, title: restTitle(), body: restBody(), tag: 'pulso-rest' });
   }
   function cancelRestNotice() { swPost({ type: 'cancel-rest' }); }

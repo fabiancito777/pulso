@@ -70,7 +70,7 @@ self.addEventListener('fetch', function (e) {
 });
 
 /* ---------- avisos de fin de descanso ---------- */
-function showNotice(title, body, tag, requireInteraction) {
+function showNotice(title, body, tag, requireInteraction, at) {
   return self.registration.showNotification(title || 'Pulso', {
     body: body || '',
     tag: tag || 'pulso-rest',
@@ -78,6 +78,7 @@ function showNotice(title, body, tag, requireInteraction) {
     requireInteraction: !!requireInteraction,
     vibrate: [150, 80, 150],
     silent: false,
+    timestamp: Number(at) || Date.now(),
     icon: './icons/icon-192.png',
     badge: './icons/icon.svg',
     data: { url: './' }
@@ -86,11 +87,11 @@ function showNotice(title, body, tag, requireInteraction) {
 
 /* solo notifica si la app no está delante: si el usuario la tiene abierta ya
    avisa el propio pitido (y si no, la notificación del sistema es el plan B) */
-function notifyWhenHidden(title, body, tag) {
+function notifyWhenHidden(title, body, tag, at) {
   return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     var visible = list.some(function (c) { return c.visibilityState === 'visible'; });
     if (visible) return null;
-    return showNotice(title, body, tag, true);
+    return showNotice(title, body, tag, true, at);
   }).catch(function () { /* sin permiso de notificaciones: no hay nada que hacer */ });
 }
 
@@ -113,7 +114,7 @@ function scheduleRest(d) {
   rest.timer = setTimeout(function () {
     rest.timer = null;
     if (id !== rest.id) return;
-    notifyWhenHidden(d.title, d.body, d.tag).then(releaseRest, releaseRest);
+    notifyWhenHidden(d.title, d.body, d.tag, d.at).then(releaseRest, releaseRest);
   }, delay);
   return new Promise(function (resolve) { rest.waiters.push(resolve); });
 }

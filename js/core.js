@@ -331,21 +331,43 @@
     return actx;
   }
   U.audio = {
-    ensure: function () { var c = ctx(); if (c && c.state === 'suspended') c.resume(); },
+    /* Hasta cuándo hay pitidos sonando o programados (ms). Mientras no pase,
+       no se suspende el contexto para no cortar la secuencia de aviso. */
+    _busyUntil: 0,
+    _suspT: null,
+    _armSuspend: function (ms) {
+      try {
+        var c = actx;
+        if (!c) return;
+        if (U.audio._suspT) clearTimeout(U.audio._suspT);
+        U.audio._suspT = setTimeout(function () {
+          try {
+            if (Date.now() >= U.audio._busyUntil && c.state === 'running') c.suspend();
+          } catch (e) { /* noop */ }
+        }, Math.max(0, U.int(ms, 500)));
+      } catch (e) { /* noop */ }
+    },
+    /* Se llama en cada gesto para desbloquear el audio en iOS. NO deja el
+       contexto abierto: un AudioContext en idle retiene la salida y varios
+       Android mantienen la música de fondo (Spotify…) atenuada de forma
+       permanente. Si no hay pitidos pendientes, se suspende solo al poco. */
+    ensure: function () {
+      var c = ctx();
+      if (!c) return;
+      if (c.state === 'suspended') { try { c.resume(); } catch (e) { /* noop */ } }
+      U.audio._armSuspend(1500);
+    },
     /* Suelta el foco de audio cuando los pitidos ya sonaron: un AudioContext
        abierto retiene la salida y, con Spotify u otro reproductor de fondo, el
        sistema mantiene la música atenuada (ducking) hasta que se suspende. */
     release: function (ms) {
-      try {
-        var c = actx;
-        if (!c || c.state !== 'running') return;
-        setTimeout(function () {
-          try { if (c.state === 'running') c.suspend(); } catch (e) { /* noop */ }
-        }, Math.max(0, U.int(ms, 500)));
-      } catch (e) { /* noop */ }
+      ms = Math.max(0, U.int(ms, 500));
+      U.audio._busyUntil = Date.now() + ms;
+      U.audio._armSuspend(ms);
     },
     tone: function (freq, dur, when, vol) {
       var c = ctx(); if (!c) return;
+      if (c.state === 'suspended') { try { c.resume(); } catch (e) { /* noop */ } }
       var o = c.createOscillator(), g = c.createGain();
       o.type = 'sine'; o.frequency.value = freq;
       var t0 = c.currentTime + (when || 0);
