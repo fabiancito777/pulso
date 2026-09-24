@@ -18,6 +18,7 @@ import {
   TOOL_MODE_KEY,
 } from '@/state/store';
 import { Plates } from '@/ui/Plates';
+import { ProgressCard } from '@/ui/ProgressCard';
 
 const TABS = ['Hoy', 'Entrenar', 'Rutinas', 'Calendario', 'Coach', 'Progreso', 'Ajustes'] as const;
 
@@ -122,6 +123,8 @@ export function App() {
             </div>
           ) : null}
         </section>
+
+        <ProgressCard />
 
         <LibraryCard />
 

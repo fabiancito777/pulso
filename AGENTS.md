@@ -6,9 +6,8 @@ sin build) y su documentación completa —decisiones de diseño, reglas de la s
 descanso, coach IA— está en **`AGENTS-v1.md`**: sigue siendo válida para todo lo que todavía no
 se ha portado, así que si dudas de *por qué* algo funciona así, mira ahí primero.
 
-> Última actualización: 16-sep-2026 · arranque de la v2: toolchain, dominio puro (utilidades,
-> calculadora de discos, catálogo de ejercicios y material) con tests, ajustes/material/biblioteca
-> reactivos y shell de la app.
+> Última actualización: 24-sep-2026 · dominio puro (utilidades, calculadora de discos, catálogo y
+> **analítica**) con tests, ajustes/material/biblioteca/sesiones reactivos y shell de la app.
 
 ---
 
@@ -58,7 +57,7 @@ npm run preview      # sirve el build
 |---|---|
 | `npm run typecheck` | `tsc --noEmit` con `strict`, `noUnusedLocals`… |
 | `npm run lint` | ESLint con reglas tipadas (`recommendedTypeChecked`) |
-| `npm run test` | Vitest (dominio puro; hoy 33 comprobaciones) |
+| `npm run test` | Vitest (dominio puro; hoy 99 comprobaciones) |
 | `npm run verify` | typecheck + lint + test + build (lo que hay que dejar verde) |
 | `npm run format` | Prettier sobre todo lo que no sea `legacy/` |
 | `node tools/port-catalog.mjs` | **Regenera** `src/domain/catalog.ts` desde `legacy/js/data.js` (luego `npx prettier --write src/domain/catalog.ts`) |
@@ -80,13 +79,14 @@ src/app/            → shell de la app (App.tsx) y roadmap.ts (estado de la mig
 src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado global
     num / format / units / dates / text        utilidades base
     plates.ts                                  calculadora de discos (solver)
+    analytics.ts                               volumen, 1RM (Epley), PRs, rachas, semanas
     catalog.ts                                 catálogo GENERADO desde la v1 (no se edita a mano)
     data.ts                                    API del catálogo (grupos, material, disponibilidad)
     library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
     defaults.ts                                ajustes e inventario por defecto
     types.ts                                   contrato del dominio y del estado
 src/state/          → estado y persistencia (store.ts) + signals
-src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx)
+src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx, ProgressCard.tsx)
 src/styles/         → base.css (heredada de la v1) + v2.css (shell)
 tools/              → scripts de migración (port-catalog.mjs)
 legacy/             → v1 congelada (referencia y fuente de la migración)
@@ -176,6 +176,11 @@ Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delica
   marcadas), el RPE no se arrastra, el peso puede estar vacío (`''` ≠ `0`), desmarcar cancela el
   descanso, y el descanso arranca en la última serie del ejercicio **solo** si quedan series de otro
   (anunciando el siguiente ejercicio).
+- **Sugerencia de peso**: si el 1RM calculado sale **igual o por encima** del peso de la última vez,
+  se propone `anterior + increment` (con las mismas reps el cálculo da exactamente el peso anterior,
+  así que repetir el entreno sugiere subir) y nunca se salta más de un incremento. Al revés, si pides
+  **más** repeticiones el peso baja de verdad. Está fijado en `analytics.test.ts` para que no se
+  "arregle" por parecer raro.
 - **Aviso con el móvil bloqueado**: pitido largo + keep-alive de audio + notificación programada en
   el service worker. Son tres capas a propósito; no basta con una.
 - **PWA**: manifest instalable, service worker network-first (para no congelar versiones sin
@@ -196,3 +201,5 @@ Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delica
 | 16-sep-2026 | Catálogo portado: `catalog.ts` (generado con `tools/port-catalog.mjs` desde `legacy/js/data.js`) + `data.ts` (grupos, material, presets, disponibilidad) + `text.ts` (norm/slug/similarity) + `library.ts` (`mergeSeed`) con 24 comprobaciones nuevas | El catálogo son ~300 líneas de datos que se colaban a mano con erratas (grupo o material inexistente, ids repetidos): ahora se genera y hay tests de integridad. De paso aparecieron dos datos curiosos que quedan fijados en los tests: el catálogo tiene **49** piezas de material (48 + `paralelas`, no 50 como decía la doc de la v1) y **10** ejercicios de cardio/movilidad con `rest: 0` a propósito (se miden en minutos). |
 | 16-sep-2026 | `src/state/store.ts`: material (`equipment`) y biblioteca (`exercises`, ya fusionada con lo guardado) como signals, con `setEquipment` y `setExerciseAllowed` | Para que el dominio puro sea usable desde la UI sin volver a leer el estado a mano, y para que la tarjeta de biblioteca muestre datos reales (136 ejercicios, 45 disponibles con el material por defecto). |
 | 16-sep-2026 | Movido el tooling de la v1 (`tools/serve|check|selftest.mjs`) fuera de esta rama | Esas comprobaciones eran para `js/*.js` y el auto-test del navegador; en v2 su equivalente es typecheck + lint + Vitest + build. Siguen en `main`. |
+| 24-sep-2026 | Analítica portada: `src/domain/analytics.ts` (1RM de Epley, volumen, series, duración, ventanas, reparto por grupo, *staleness*, semanas, rachas, PRs, histórico y sugerencia de peso, todo por parámetro) + **42 tests** y la tarjeta `ProgressCard` | Era el bloque que necesita "Progreso", y es puro: se prueba entero sin navegador. La regla de la sugerencia de peso (subir un incremento cuando el cálculo no da más) parecía un bug hasta ver el caso, así que queda documentada y fijada en tests. |
+| 24-sep-2026 | `src/state/store.ts`: signal de solo lectura `sessions`, con validación de forma | La tarjeta de progreso lee el mismo `pulso.state` que la v1, así que los números de las dos ramas se pueden contrastar a ojo. Apilar y editar sesiones llega con el bloque de la sesión activa. |

@@ -12,7 +12,7 @@ import { SEED_EXERCISES } from '@/domain/catalog';
 import { defaultEquipment, type EquipmentMap } from '@/domain/data';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { mergeSeed } from '@/domain/library';
-import type { AppState, Exercise, PlateModeKey, Settings } from '@/domain/types';
+import type { AppState, Exercise, PlateModeKey, Session, Settings } from '@/domain/types';
 
 export const STATE_KEY = 'pulso.state';
 export const STATE_VERSION = 1;
@@ -147,3 +147,20 @@ export function setExerciseAllowed(id: string, allowed: boolean): void {
   writeState(state);
   exercises.value = next;
 }
+
+/* ---------- sesiones ---------- */
+
+/**
+ * Sesiones guardadas. Se filtran las que no tienen forma de sesión para que un
+ * `pulso.state` tocado a mano (o a medias entre versiones) no rompa la analítica:
+ * la v1 ya era tolerante al leer el JSON, pero no validaba cada sesión.
+ * Es de solo lectura: apilar y editar sesiones llega con el bloque de la sesión activa.
+ */
+function asSessions(value: unknown): Session[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (s): s is Session => isPlainObject(s) && typeof s.date === 'string' && Array.isArray(s.entries),
+  );
+}
+
+export const sessions = signal<Session[]>(asSessions(initial.sessions));

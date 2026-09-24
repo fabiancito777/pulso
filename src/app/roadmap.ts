@@ -33,7 +33,7 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v1: 'store.js',
     v2: 'src/state/store.ts',
     state: 'en curso',
-    note: 'Ajustes, material y biblioteca reactivos con signals y lectura tolerante. Faltan rutinas, sesiones y calendario.',
+    note: 'Ajustes, material, biblioteca y sesiones reactivos con signals y lectura tolerante. Faltan rutinas, apilar sesiones y calendario.',
   },
   {
     area: 'Biblioteca y material',
@@ -52,9 +52,9 @@ export const ROADMAP: readonly RoadmapItem[] = [
   {
     area: 'Analítica',
     v1: 'store.js (S.a)',
-    v2: 'src/domain/analytics.ts (pendiente)',
-    state: 'pendiente',
-    note: '1RM, volumen, PRs, racha y series semanales: puro, así que se prueba sin navegador.',
+    v2: 'src/domain/analytics.ts + src/ui/ProgressCard.tsx',
+    state: 'portado',
+    note: '1RM (Epley), volumen, PRs, rachas, series semanales y sugerencia de peso, con las sesiones y los ejercicios por parámetro. Se lee el mismo pulso.state de la v1, así que los números se pueden contrastar con la pestaña Progreso.',
   },
   {
     area: 'Gráficos',

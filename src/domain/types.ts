@@ -142,6 +142,53 @@ export interface Settings {
   ai: AiSettings;
 }
 
+/* ---------- sesiones ---------- */
+
+/**
+ * Una serie registrada. `weight: null` = sin peso (peso corporal o máquina que no
+ * se anota); es distinto de `0`, que es un peso real. En las sesiones guardadas
+ * el peso está en la unidad de SU sesión (`Session.unit`), no siempre en kg.
+ */
+export interface SetLog {
+  weight: number | null;
+  reps: number;
+  done: boolean;
+  ts?: string;
+  /** 1-10, solo si el usuario lo apunta (`settings.showRpe`). */
+  rpe?: number | null;
+}
+
+/** Un ejercicio dentro de una sesión. */
+export interface SessionEntry {
+  exId: string;
+  name?: string;
+  /** El grupo se guarda como respaldo por si el ejercicio sale de la biblioteca. */
+  group?: string;
+  restSec?: number;
+  notes?: string;
+  sets: SetLog[];
+  [key: string]: unknown;
+}
+
+/** Una sesión terminada (lo que `T.finish()` de la v1 apila en `state.sessions`). */
+export interface Session {
+  id: string;
+  name?: string;
+  routineId?: string | null;
+  /** ISO local `YYYY-MM-DD` del día del calendario al que pertenece. */
+  date: string;
+  startedAt: string;
+  endedAt?: string;
+  /** Unidad en la que se apuntaron los pesos de esta sesión. */
+  unit: Unit;
+  source?: string;
+  entries: SessionEntry[];
+  notes?: string;
+  /** RPE medio de la sesión. */
+  rpe?: number | null;
+  [key: string]: unknown;
+}
+
 /**
  * Estado persistido en `localStorage['pulso.state']`. v2 lee y escribe el MISMO
  * formato que la v1, así que los datos existentes siguen valiendo durante la
@@ -155,7 +202,7 @@ export interface AppState {
   equipment?: unknown;
   exercises?: unknown;
   routines?: unknown;
-  sessions?: unknown;
+  sessions?: Session[];
   schedule?: unknown;
   active?: unknown;
   chat?: unknown;
