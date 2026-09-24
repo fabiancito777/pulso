@@ -8,6 +8,7 @@
  * es lo que hacía `S.isAvailable()` en la v1 y obligaba a probarlo en el navegador.
  */
 import { DEFAULT_EQUIPMENT, EQUIPMENT, EQUIP_PRESETS, GOALS, GROUPS } from './catalog';
+import { norm, slug } from './text';
 import type { Exercise, ExerciseType } from './types';
 
 export * from './catalog';
@@ -118,6 +119,24 @@ export function findExercise(exercises: readonly Exercise[], id: string): Exerci
 
 export function allowedExercises(exercises: readonly Exercise[]): Exercise[] {
   return exercises.filter((e) => e.allowed);
+}
+
+/**
+ * Busca por nombre, sin acentos y sin mayúsculas. Lo necesitan los planes del
+ * coach IA, que a veces traen el nombre en vez del id.
+ * El id de la biblioteca es el slug del nombre (y los ejercicios propios también,
+ * ver `S.addExercise` de la v1), así que primero se prueba el atajo; el recorrido
+ * por nombre se queda por si el slug chocó con otro ejercicio y llevó un `uid`.
+ */
+export function findExerciseByName(
+  exercises: readonly Exercise[],
+  name?: string | null,
+): Exercise | null {
+  if (!name) return null;
+  const bySlug = findExercise(exercises, slug(name));
+  if (bySlug) return bySlug;
+  const target = norm(name);
+  return exercises.find((e) => norm(e.name) === target) ?? null;
 }
 
 /** Objetivos y niveles: etiqueta legible con caída a la clave. */

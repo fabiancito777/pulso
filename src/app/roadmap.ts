@@ -45,9 +45,9 @@ export const ROADMAP: readonly RoadmapItem[] = [
   {
     area: 'Sesión activa y descanso',
     v1: 'trainer.js (T.*)',
-    v2: 'src/features/session (pendiente)',
-    state: 'pendiente',
-    note: 'Aquí están las reglas delicadas (arrastre del peso, cuándo arranca el descanso, keep-alive). Se portan con tests antes de tocar la UI.',
+    v2: 'src/domain/session.ts + src/features/session (pendiente)',
+    state: 'en curso',
+    note: 'Las reglas ya están portadas y probadas (arrastre del peso hacia abajo, cuándo arranca el descanso y a qué vas, qué se guarda al cerrar). Faltan el estado, la pantalla y el timer con su aviso.',
   },
   {
     area: 'Analítica',

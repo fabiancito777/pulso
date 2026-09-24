@@ -16,6 +16,7 @@ import {
   equipPreset,
   equipTags,
   equipmentKeys,
+  findExerciseByName,
   groupLabel,
   goalLabel,
   isAvailable,
@@ -143,5 +144,34 @@ describe('disponibilidad', () => {
     expect(goalLabel('fuerza')).toBe('Fuerza');
     expect(equipLabel('barra_olimpica')).toBe('Barra cargable');
     expect(equipLabel('inventado')).toBe('inventado');
+  });
+});
+
+describe('búsqueda por nombre', () => {
+  const custom: Exercise = {
+    ...byId('press-de-banca-con-barra'),
+    id: 'mi-ejercicio',
+    name: 'Mi ejercicio raro',
+    custom: true,
+  };
+  const library = [...SEED_EXERCISES, custom];
+
+  it('da igual cómo lo escriba el modelo: acentos, mayúsculas y espacios', () => {
+    expect(findExerciseByName(library, 'press de banca con barra')?.id).toBe(
+      'press-de-banca-con-barra',
+    );
+    expect(findExerciseByName(library, '  Extensión   de cuádriceps ')?.id).toBe(
+      'extension-de-cuadriceps',
+    );
+  });
+
+  it('encuentra también lo que no se llama igual que su id (slug ocupado)', () => {
+    expect(findExerciseByName(library, 'Mi ejercicio raro')?.id).toBe('mi-ejercicio');
+  });
+
+  it('sin nombre o sin coincidencia devuelve null', () => {
+    expect(findExerciseByName(library, '')).toBeNull();
+    expect(findExerciseByName(library, undefined)).toBeNull();
+    expect(findExerciseByName(library, 'ejercicio que no existe')).toBeNull();
   });
 });

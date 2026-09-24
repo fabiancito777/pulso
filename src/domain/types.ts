@@ -189,6 +189,88 @@ export interface Session {
   [key: string]: unknown;
 }
 
+/* ---------- sesión en curso ---------- */
+
+/**
+ * Una serie MIENTRAS entrenas. Ojo a las diferencias con `SetLog`: el peso y las
+ * reps pueden estar VACÍOS (`''`) porque el usuario los está escribiendo, y el
+ * vacío es distinto de `0` (`0` es "este ejercicio pesa 0 kg", que es información
+ * real en un ejercicio a peso corporal).
+ */
+export interface ActiveSet {
+  weight: number | '';
+  reps: number | '';
+  done: boolean;
+  ts: string | null;
+  rpe: number | null;
+  /** reps objetivo de la prescripción (solo para pintarlas de referencia) */
+  target?: number;
+  /** el peso lo puso la sugerencia de progresión, no el usuario */
+  suggested?: boolean;
+}
+
+/** Un ejercicio de la sesión en curso. */
+export interface ActiveEntry {
+  exId: string;
+  name: string;
+  /** descanso sugerido por la prescripción o la biblioteca, en segundos */
+  restSec: number;
+  repMin: number;
+  repMax: number;
+  sets: ActiveSet[];
+  notes: string;
+  /** de dónde sale el peso propuesto: "última vez 60 kg × 8 · hace 3 días" */
+  basis?: string;
+}
+
+/**
+ * La sesión en curso (`state.active`).
+ */
+export interface ActiveSession {
+  id: string;
+  routineId: string | null;
+  name: string;
+  startedAt: string;
+  unit: Unit;
+  entries: ActiveEntry[];
+  notes: string;
+  /** día del calendario al que se apuntará al terminar */
+  dayIso: string;
+  source: string;
+}
+
+/* ---------- prescripción (rutinas y planes) ---------- */
+
+/**
+ * Un ejercicio prescrito dentro de una rutina. `weight` es opcional (puede venir
+ * de un plan del coach); si existe, manda sobre la sugerencia por historial, y
+ * las `notes` (p. ej. "SUPERSERIE 1 (1/2)") viajan a la sesión.
+ */
+export interface RoutineItem {
+  exId: string;
+  sets?: number;
+  repMin?: number;
+  repMax?: number;
+  rest?: number;
+  weight?: number | null;
+  notes?: string;
+}
+
+/**
+ * Un ejercicio de un plan del día. Puede venir con `name` en vez de `exId` (los
+ * planes del coach IA a veces solo traen el nombre), así que hay que resolverlo
+ * contra la biblioteca antes de usarlo.
+ */
+export interface PlanItem {
+  exId?: string;
+  name?: string;
+  sets?: number;
+  repMin?: number;
+  repMax?: number;
+  rest?: number;
+  weight?: number | null;
+}
+
 /**
  * Estado persistido en `localStorage['pulso.state']`. v2 lee y escribe el MISMO
  * formato que la v1, así que los datos existentes siguen valiendo durante la
@@ -204,7 +286,7 @@ export interface AppState {
   routines?: unknown;
   sessions?: Session[];
   schedule?: unknown;
-  active?: unknown;
+  active?: ActiveSession | null;
   chat?: unknown;
   meta?: unknown;
   [key: string]: unknown;

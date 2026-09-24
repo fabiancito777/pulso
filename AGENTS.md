@@ -6,8 +6,9 @@ sin build) y su documentación completa —decisiones de diseño, reglas de la s
 descanso, coach IA— está en **`AGENTS-v1.md`**: sigue siendo válida para todo lo que todavía no
 se ha portado, así que si dudas de *por qué* algo funciona así, mira ahí primero.
 
-> Última actualización: 24-sep-2026 · dominio puro (utilidades, calculadora de discos, catálogo y
-> **analítica**) con tests, ajustes/material/biblioteca/sesiones reactivos y shell de la app.
+> Última actualización: 24-sep-2026 · dominio puro (utilidades, calculadora de discos, catálogo,
+> analítica y **reglas de la sesión**) con tests, ajustes/material/biblioteca/sesiones reactivos y
+> shell de la app.
 
 ---
 
@@ -57,7 +58,7 @@ npm run preview      # sirve el build
 |---|---|
 | `npm run typecheck` | `tsc --noEmit` con `strict`, `noUnusedLocals`… |
 | `npm run lint` | ESLint con reglas tipadas (`recommendedTypeChecked`) |
-| `npm run test` | Vitest (dominio puro; hoy 99 comprobaciones) |
+| `npm run test` | Vitest (dominio puro; hoy 141 comprobaciones) |
 | `npm run verify` | typecheck + lint + test + build (lo que hay que dejar verde) |
 | `npm run format` | Prettier sobre todo lo que no sea `legacy/` |
 | `node tools/port-catalog.mjs` | **Regenera** `src/domain/catalog.ts` desde `legacy/js/data.js` (luego `npx prettier --write src/domain/catalog.ts`) |
@@ -80,6 +81,7 @@ src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado glob
     num / format / units / dates / text        utilidades base
     plates.ts                                  calculadora de discos (solver)
     analytics.ts                               volumen, 1RM (Epley), PRs, rachas, semanas
+    session.ts                                 reglas de la sesión en curso (marcar, arrastrar, cerrar)
     catalog.ts                                 catálogo GENERADO desde la v1 (no se edita a mano)
     data.ts                                    API del catálogo (grupos, material, disponibilidad)
     library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
@@ -176,6 +178,12 @@ Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delica
   marcadas), el RPE no se arrastra, el peso puede estar vacío (`''` ≠ `0`), desmarcar cancela el
   descanso, y el descanso arranca en la última serie del ejercicio **solo** si quedan series de otro
   (anunciando el siguiente ejercicio).
+  - En v2 el arrastre son **dos pasos** (`setSet` + `propagateSet`, igual que el handler de la v1).
+    Al portarlo se añadió `editSetField`, que hace los dos: `propagateSet` **no** escribe la serie
+    editada, solo las de abajo, y es fácil creer que sí.
+  - `toggleSet` **devuelve** la decisión de descanso (`start`/`cancel`/`none`) en vez de ejecutarla:
+    así "cuándo hay descanso" se prueba con Vitest y el timer, el pitido y el service worker viven
+    fuera del dominio.
 - **Sugerencia de peso**: si el 1RM calculado sale **igual o por encima** del peso de la última vez,
   se propone `anterior + increment` (con las mismas reps el cálculo da exactamente el peso anterior,
   así que repetir el entreno sugiere subir) y nunca se salta más de un incremento. Al revés, si pides
@@ -203,3 +211,4 @@ Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delica
 | 16-sep-2026 | Movido el tooling de la v1 (`tools/serve|check|selftest.mjs`) fuera de esta rama | Esas comprobaciones eran para `js/*.js` y el auto-test del navegador; en v2 su equivalente es typecheck + lint + Vitest + build. Siguen en `main`. |
 | 24-sep-2026 | Analítica portada: `src/domain/analytics.ts` (1RM de Epley, volumen, series, duración, ventanas, reparto por grupo, *staleness*, semanas, rachas, PRs, histórico y sugerencia de peso, todo por parámetro) + **42 tests** y la tarjeta `ProgressCard` | Era el bloque que necesita "Progreso", y es puro: se prueba entero sin navegador. La regla de la sugerencia de peso (subir un incremento cuando el cálculo no da más) parecía un bug hasta ver el caso, así que queda documentada y fijada en tests. |
 | 24-sep-2026 | `src/state/store.ts`: signal de solo lectura `sessions`, con validación de forma | La tarjeta de progreso lee el mismo `pulso.state` que la v1, así que los números de las dos ramas se pueden contrastar a ojo. Apilar y editar sesiones llega con el bloque de la sesión activa. |
+| 24-sep-2026 | Reglas de la sesión portadas a `src/domain/session.ts` (**39 tests**) con tipos `ActiveSet`/`ActiveEntry`/`ActiveSession`, `findExerciseByName` en `data.ts` y la operación combinada `editSetField` | Son las reglas que más se rompen sin querer (arrastre hacia abajo, peso vacío ≠ 0, cuándo arranca el descanso) y en la v1 solo se podían comprobar entrenando o con el auto-test del navegador. Las funciones no mutan nada (para que Preact repinte solo) y devuelven la decisión de descanso en vez de arrancar el timer. |
