@@ -12,10 +12,24 @@ import { SEED_EXERCISES } from '@/domain/catalog';
 import { defaultEquipment, type EquipmentMap } from '@/domain/data';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { mergeSeed } from '@/domain/library';
-import type { AppState, Exercise, PlateModeKey, Session, Settings } from '@/domain/types';
+import type {
+  ActiveSession,
+  AppState,
+  Exercise,
+  PlateModeKey,
+  Session,
+  Settings,
+} from '@/domain/types';
 
 export const STATE_KEY = 'pulso.state';
 export const STATE_VERSION = 1;
+
+/**
+ * Claves sueltas de `localStorage` (fuera del estado), con el mismo nombre que les
+ * da la v1 (`U.st` prefija `pulso.`). El descanso va aparte porque cambia cada 15
+ * segundos y no merece reescribir todo el estado.
+ */
+export const STORAGE_KEYS = { state: STATE_KEY, rest: 'pulso.rest' } as const;
 
 /** ¿Se puede usar localStorage? Si no, se avisa en la UI (los datos no persisten). */
 export const storageAvailable = ((): boolean => {
@@ -85,6 +99,29 @@ export function writeState(state: AppState): void {
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
+  }
+}
+
+/** Lee una clave suelta de `localStorage` (JSON). Devuelve `null` si no está o si está rota. */
+export function readStored<T = unknown>(key: string): T | null {
+  if (!storageAvailable) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : (JSON.parse(raw) as T);
+  } catch (err) {
+    console.warn('[pulso] no se pudo leer', key, err);
+    return null;
+  }
+}
+
+/** Escribe (o borra, con `null`) una clave suelta. Mismo formato que la v1. */
+export function writeStored(key: string, value: unknown): void {
+  if (!storageAvailable) return;
+  try {
+    if (value === null || value === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn('[pulso] no se pudo guardar', key, err);
   }
 }
 
@@ -164,3 +201,34 @@ function asSessions(value: unknown): Session[] {
 }
 
 export const sessions = signal<Session[]>(asSessions(initial.sessions));
+
+/** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee la v1. */
+export function writeActive(next: ActiveSession | null): void {
+  const state = readState();
+  state.active = next;
+  writeState(state);
+}
+
+/**
+ * Apila una sesión terminada y marca el día como hecho: es lo que hacían juntos
+ * `S.addSession` + `S.setDay(iso, {status:'done'})` en la v1, así que el calendario
+ * de la rama `main` ve el día igual que si lo hubieras entrenado allí.
+ */
+export function commitSession(session: Session): void {
+  const state = readState();
+  const all = [session, ...asSessions(state.sessions)].sort((a, b) =>
+    (a.startedAt ?? '') < (b.startedAt ?? '') ? 1 : -1,
+  );
+  state.sessions = all;
+  const schedule = isPlainObject(state.schedule) ? { ...state.schedule } : {};
+  const day = schedule[session.date];
+  schedule[session.date] = {
+    ...(isPlainObject(day) ? day : {}),
+    status: 'done',
+    sessionId: session.id,
+  };
+  state.schedule = schedule;
+  state.active = null;
+  writeState(state);
+  sessions.value = all;
+}

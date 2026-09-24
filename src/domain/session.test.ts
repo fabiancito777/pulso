@@ -13,6 +13,7 @@ import type { Suggestion } from './analytics';
 import {
   addEntry,
   addSet,
+  autofillNext,
   blankSet,
   editSetField,
   elapsedSec,
@@ -261,6 +262,39 @@ describe('editar una serie (el valor se arrastra hacia ABAJO)', () => {
     editSetField(base, 0, 0, 'weight', 100);
     addSet(base, 0);
     expect(JSON.stringify(base)).toBe(antes);
+  });
+});
+
+describe('autofillNext (marcar rellena la siguiente)', () => {
+  const base = nuevaSesion({ suggest: sinHistorial });
+
+  it('al marcar, la serie siguiente se lleva el peso y las reps', () => {
+    /* solo la serie 1 tiene peso: la 2 lo hereda, la 3 y la 4 siguen vacías */
+    const soloPrimera = setSet(base, 0, 0, { weight: 40 });
+    const marcada = marcar(soloPrimera, 0, 0)!.session;
+    expect(marcada.entries[0]?.sets.map((s) => s.weight)).toEqual([40, 40, '', '']);
+    expect(marcada.entries[0]?.sets[1]).toMatchObject({ reps: 8, done: false });
+  });
+
+  it('no toca la siguiente si ya tiene peso propio o ya está marcada', () => {
+    const escritas = setSet(setSet(base, 0, 0, { weight: 40 }), 0, 1, { weight: 50 });
+    expect(marcar(escritas, 0, 0)!.session.entries[0]?.sets[1]?.weight).toBe(50);
+    const yaHecha = marcar(setSet(base, 0, 1, { weight: 50 }), 0, 1, true)!.session;
+    const conPeso = setSet(yaHecha, 0, 0, { weight: 40 });
+    expect(marcar(conPeso, 0, 0)!.session.entries[0]?.sets[1]?.weight).toBe(50);
+  });
+
+  it('en la última serie no hay siguiente que rellenar', () => {
+    expect(autofillNext(base, 0, 3)).toBe(base);
+    const marcada = marcar(base, 0, 3)!.session;
+    expect(marcada.entries[0]?.sets).toHaveLength(4);
+  });
+
+  it('desmarcar no rellena nada (ni borra lo ya heredado)', () => {
+    const soloPrimera = setSet(setSet(base, 0, 0, { weight: 40 }), 0, 1, { weight: 40 });
+    const marcada = marcar(soloPrimera, 0, 0)!.session;
+    const limpio = marcar(marcada, 0, 0, false)!.session;
+    expect(limpio.entries[0]?.sets.map((s) => s.weight)).toEqual([40, 40, '', '']);
   });
 });
 

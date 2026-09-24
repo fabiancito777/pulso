@@ -248,7 +248,7 @@ export function toggleSet(
     done,
     ts: done ? (opts.now ?? new Date().toISOString()) : null,
   };
-  const next: ActiveSession = {
+  let next: ActiveSession = {
     ...session,
     entries: session.entries.map((en, i) =>
       i === entryIndex
@@ -256,6 +256,7 @@ export function toggleSet(
         : en,
     ),
   };
+  if (done) next = autofillNext(next, entryIndex, setIndex);
 
   let rest: RestDecision = { action: 'none' };
   if (done) {
@@ -270,6 +271,28 @@ export function toggleSet(
 
   const nextEntry = next.entries[entryIndex] ?? entry;
   return { session: next, entry: nextEntry, set: nextSet, done, rest };
+}
+
+/**
+ * Al marcar una serie, la SIGUIENTE se rellena con su peso y sus reps si está vacía:
+ * así la serie que viene ya sale lista y no hay que repetir el dato cada vez.
+ * La v1 lo hacía en el propio handler del click (no dentro de `T.toggleSet`), y es el
+ * complemento del arrastre hacia abajo: uno copia al editar, el otro al marcar.
+ */
+export function autofillNext(
+  session: ActiveSession,
+  entryIndex: number,
+  setIndex: number,
+): ActiveSession {
+  const entry = session.entries[entryIndex];
+  const marked = entry?.sets[setIndex];
+  const following = entry?.sets[setIndex + 1];
+  /* `num('')` es 0, así que el test de "vacía" cubre también el peso a 0 */
+  if (!entry || !marked || !following || following.done || num(following.weight)) return session;
+  return setSet(session, entryIndex, setIndex + 1, {
+    weight: marked.weight,
+    reps: marked.reps,
+  });
 }
 
 /**
@@ -428,17 +451,24 @@ export function setEntryNotes(
 
 /* ---------- progreso y cierre ---------- */
 
+/** Volumen de un ejercicio de la sesión, en kg (solo las series marcadas). */
+export function entryVolume(entry: ActiveEntry, unit: Unit = 'kg'): number {
+  let volume = 0;
+  for (const set of entry.sets) {
+    if (!set.done) continue;
+    volume += toKg(num(set.weight), unit) * num(set.reps);
+  }
+  return volume;
+}
+
 export function progress(session: ActiveSession): SessionProgress {
   let done = 0;
   let total = 0;
   let volume = 0;
   for (const entry of session.entries) {
     total += entry.sets.length;
-    for (const set of entry.sets) {
-      if (!set.done) continue;
-      done++;
-      volume += toKg(num(set.weight), session.unit) * num(set.reps);
-    }
+    done += entry.sets.filter((s) => s.done).length;
+    volume += entryVolume(entry, session.unit);
   }
   return { done, total, pct: total ? done / total : 0, volume, sets: total };
 }

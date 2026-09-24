@@ -239,6 +239,26 @@ export interface ActiveSession {
   source: string;
 }
 
+/**
+ * Estado del timer de descanso. `endsAt` es la clave: el tiempo que queda se calcula
+ * con `endsAt - Date.now()`, así que sobrevive a que la pestaña se congele o el móvil
+ * se bloquee (un contador acumulado se quedaría parado).
+ */
+export interface RestState {
+  /** marca de tiempo (ms) en la que termina el descanso */
+  endsAt: number;
+  /** segundos del descanso original (para el anillo y el "total") */
+  total: number;
+  running: boolean;
+  /** a qué vas: el propio ejercicio o el siguiente (es el texto del aviso) */
+  label: string;
+  /** el aviso de fin ya se lanzó (pitido, vibración, notificación) */
+  doneFired: boolean;
+  doneAt: number;
+  /** último segundo para el que ya sonó un tic (el bucle corre cada 500 ms) */
+  lastTick: number | null;
+}
+
 /* ---------- prescripción (rutinas y planes) ---------- */
 
 /**

@@ -45,9 +45,9 @@ export const ROADMAP: readonly RoadmapItem[] = [
   {
     area: 'Sesión activa y descanso',
     v1: 'trainer.js (T.*)',
-    v2: 'src/domain/session.ts + src/features/session (pendiente)',
-    state: 'en curso',
-    note: 'Las reglas ya están portadas y probadas (arrastre del peso hacia abajo, cuándo arranca el descanso y a qué vas, qué se guarda al cerrar). Faltan el estado, la pantalla y el timer con su aviso.',
+    v2: 'src/domain/session.ts + rest.ts + src/state/session.ts + src/ui/SessionCard.tsx',
+    state: 'portado',
+    note: 'Se puede entrenar entero en la v2: series, arrastre del peso, descanso por timestamp con su recuadro pegajoso y aviso sonoro, y cerrar la sesión la guarda y marca el día. La notificación con el móvil bloqueado llega con el bloque de PWA.',
   },
   {
     area: 'Analítica',

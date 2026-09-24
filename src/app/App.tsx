@@ -3,7 +3,7 @@
  * entrando las pantallas portadas, con la calculadora de discos funcionando de
  * verdad contra los ajustes guardados (los mismos que usa la v1).
  */
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { ROADMAP, type PortState } from '@/app/roadmap';
 import { equipLabel, enabledEquipment, groupLabel, isAvailable } from '@/domain/data';
@@ -19,6 +19,8 @@ import {
 } from '@/state/store';
 import { Plates } from '@/ui/Plates';
 import { ProgressCard } from '@/ui/ProgressCard';
+import { SessionCard } from '@/ui/SessionCard';
+import { startLoop } from '@/state/session';
 
 const TABS = ['Hoy', 'Entrenar', 'Rutinas', 'Calendario', 'Coach', 'Progreso', 'Ajustes'] as const;
 
@@ -78,16 +80,34 @@ function LibraryCard() {
 export function App() {
   const s = settings.value;
   const [applied, setApplied] = useState<string | null>(null);
+  const bar = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     applyTheme(s.theme, s.accent);
   }, [s.theme, s.accent]);
 
+  /* El bucle de 500 ms: cuenta atrás, tics y aviso de fin de descanso. Es el `T.loop`
+     de la v1, que arrancaba app.js. */
+  useEffect(() => startLoop(), []);
+
+  /* El recuadro de descanso es pegajoso bajo la barra superior, así que la barra
+     publica su altura en `--appbar-h` (en la v1 lo hacía `syncAppbarHeight()`). */
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const publish = () =>
+      document.documentElement.style.setProperty('--appbar-h', `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const mode = s.plateModes[TOOL_MODE_KEY] ?? 'bar';
 
   return (
     <div class="v2-shell">
-      <header class="v2-bar">
+      <header class="v2-bar" ref={bar}>
         <div class="v2-brand">
           <b>Pulso</b>
           <span class="badge">v2</span>
@@ -103,6 +123,8 @@ export function App() {
             </div>
           </div>
         ) : null}
+
+        <SessionCard />
 
         <section class="card">
           <div class="row between mb-s">
@@ -156,8 +178,8 @@ export function App() {
 
         <section class="card tight">
           <div class="tiny muted">
-            La v1 completa (HTML + JS vanilla) sigue congelada en <code>legacy/</code> y es la app que
-            corre en la rama <code>main</code>. Aquí se porta bloque a bloque.
+            La v1 completa (HTML + JS vanilla) sigue congelada en <code>legacy/</code> y es la app
+            que corre en la rama <code>main</code>. Aquí se porta bloque a bloque.
           </div>
         </section>
       </main>
