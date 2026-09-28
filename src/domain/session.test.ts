@@ -208,6 +208,34 @@ describe('startSession', () => {
     });
     expect(session.entries.map((e) => e.exId)).toEqual(['press-banca']);
   });
+
+  it('con rutina guarda el SNAPSHOT del plan: la rutina es editable después', () => {
+    const items: RoutineItem[] = [{ exId: 'press-banca', sets: 2 }, { exId: 'remo-mancuerna' }];
+    const session = nuevaSesion({
+      exIds: undefined,
+      routine: { id: 'rt-1', name: 'Empuje', items },
+    });
+    expect(session.plan).toEqual(items);
+    /* copia, no referencia: tocar la rutina a mitad de entreno no toca el snapshot */
+    expect(session.plan).not.toBe(items);
+    expect(session.plan?.[0]).not.toBe(items[0]);
+    items[0].sets = 9;
+    expect(session.plan?.[0]?.sets).toBe(2);
+  });
+
+  it('el snapshot de un plan del coach resuelve el name contra la biblioteca', () => {
+    const session = nuevaSesion({
+      exIds: undefined,
+      plan: [{ name: 'Press de banca', sets: 2, weight: 60 }, { name: 'Ejercicio inventado' }],
+    });
+    expect(session.plan).toEqual([{ exId: 'press-banca', sets: 2, weight: 60 }]);
+    expect(session.plan?.[0]?.exId).toBe('press-banca');
+  });
+
+  it('un arranque manual no lleva plan', () => {
+    expect(nuevaSesion().plan).toBeUndefined();
+    expect(nuevaSesion({ exIds: ['press-banca'] }).plan).toBeUndefined();
+  });
 });
 
 /* ---------- series ---------- */
@@ -498,6 +526,14 @@ describe('finishSession', () => {
   it('sin ninguna serie marcada no se guarda nada', () => {
     expect(finishSession(nuevaSesion())).toBeNull();
     expect(finishSession(nuevaSesion({ exIds: [] }))).toBeNull();
+  });
+
+  it('el snapshot del plan viaja al registro (y un arranque manual no lo trae)', () => {
+    const items: RoutineItem[] = [{ exId: 'press-banca', sets: 2 }];
+    const desdeRutina = nuevaSesion({ exIds: undefined, routine: { id: 'rt-1', items } });
+    const guardada = finishSession(marcar(desdeRutina, 0, 0)!.session, { id: 's1' });
+    expect(guardada?.plan).toEqual(items);
+    expect(finishSession(marcar(nuevaSesion(), 0, 0)!.session, { id: 's2' })?.plan).toBeUndefined();
   });
 
   it('las notas y el descanso de cada ejercicio viajan con la sesión', () => {

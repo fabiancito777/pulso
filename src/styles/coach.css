@@ -1,0 +1,124 @@
+/* ==========================================================================
+   Pulso v2 · vista Coach (chat)
+
+   `base.css` trae ya de la v1 las burbujas (`.msg`), el composer, el
+   «pensando…» (`.typing`) y los bloques markdown dentro de `.msg`: aquí solo
+   va LO PROPIO de esta vista, y todo va bajo `.coach-view` para no tocar lo que
+   el resto de la app hereda de `base.css`.
+   ========================================================================== */
+
+/* La conversación se desborda por dentro: así el composer se queda abajo sin
+   tener que recorrer toda la historia para escribir. */
+.coach-view .chat {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-height: min(60vh, 540px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 2px 4px;
+}
+
+/* Salto de línea literal: en la v1 eran <br>, y el markdown del modelo se
+   respeta tal cual dentro de sus párrafos. */
+.coach-view .msg.me {
+  white-space: pre-wrap;
+}
+
+.coach-view .msg p {
+  white-space: pre-line;
+}
+
+.coach-view .msg a {
+  color: var(--accent);
+}
+
+/* Pie sutil bajo un mensaje del modelo: «consultó: …» y modelo · ms · tokens. */
+.coach-meta {
+  align-self: flex-start;
+  max-width: 88%;
+  padding-left: 2px;
+}
+
+/* «Pensando…» junto a los puntos. */
+.coach-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* El aviso de sistema puede llevar un botón (ir a Ajustes → Coach AI). */
+.coach-view .msg.sys .btn {
+  margin-top: 9px;
+}
+
+/* Tarjeta de la propuesta (JSON de suggest/plan): resumen + «Aplicar». */
+.coach-card {
+  align-self: stretch;
+  max-width: 88%;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface);
+}
+
+.coach-card .coach-list {
+  margin: 9px 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.coach-card .coach-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13.5px;
+}
+
+.coach-card .coach-list li:last-child {
+  border-bottom: 0;
+}
+
+.coach-card .coach-list li > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Memoria del coach (colapsable). */
+.coach-memory {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.coach-memory > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.coach-memory > summary::-webkit-details-marker {
+  display: none;
+}
+
+.coach-memory textarea {
+  min-height: 150px;
+  font-size: 13px;
+}
+
+/* En la v2 no hay barra de pestañas fija de la v1, así que el composer se pega
+   justo encima de la suya. */
+.coach-view .composer {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 58px);
+  z-index: 20;
+}

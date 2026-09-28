@@ -157,7 +157,39 @@ export function prefill(entry: ActiveEntry, suggestion: Suggestion): ActiveEntry
   return { ...entry, sets, basis: suggestion.basis };
 }
 
-/** `now`, `dayIso` y `id` son inyectables: los tests no deben depender del reloj. */
+/**
+ * Resuelve un item del plan del coach contra la biblioteca y lo deja como
+ * `RoutineItem` (con `exId`, que es con lo que se compara en la sesión). Los planes
+ * del coach a veces traen solo el `name`, y lo que no esté en la biblioteca no pasa
+ * a la sesión: mismo criterio que usaba la v1 al montar los ejercicios.
+ */
+function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): RoutineItem[] {
+  const out: RoutineItem[] = [];
+  for (const item of plan) {
+    const ex = item.exId
+      ? findExercise(library, item.exId)
+      : findExerciseByName(library, item.name ?? null);
+    if (!ex) continue;
+    out.push({
+      exId: ex.id,
+      sets: item.sets,
+      repMin: item.repMin,
+      repMax: item.repMax,
+      rest: item.rest,
+      weight: item.weight,
+    });
+  }
+  return out;
+}
+
+/**
+ * `now`, `dayIso` y `id` son inyectables: los tests no deben depender del reloj.
+ *
+ * La sesión guarda además un **snapshot del plan** con el que arrancó (`session.plan`):
+ * la rutina original es editable después, así que sin esta copia sería imposible
+ * saber qué cambió el usuario en plena rutina (quitar, añadir o sustituir un
+ * ejercicio). Prioriza la rutina sobre el plan del coach, igual que los ejercicios.
+ */
 export function startSession(opts: StartOptions): ActiveSession {
   const make = (o: NewEntryOptions): ActiveEntry => prefill(newEntry(o), opts.suggest(o.exId));
   const withWeight = (entry: ActiveEntry, weight?: number | null): ActiveEntry =>
@@ -168,6 +200,7 @@ export function startSession(opts: StartOptions): ActiveSession {
         }
       : entry;
   let entries: ActiveEntry[] = [];
+  let plan: RoutineItem[] | undefined;
 
   if (opts.routine) {
     const routine = opts.routine;
@@ -186,28 +219,25 @@ export function startSession(opts: StartOptions): ActiveSession {
       /* las indicaciones del item (superseries, pausas…) llegan a la sesión */
       notes: item.notes ?? '',
     }));
+    /* copia de los items: la rutina sigue siendo editable y NO debe verse aquí dentro */
+    plan = routine.items.map((item) => ({ ...item }));
   } else if (opts.exIds?.length) {
     entries = opts.exIds.map((exId) => make({ exId, library: opts.exercises }));
   } else if (opts.plan?.length) {
-    entries = opts.plan
-      .map((item) => {
-        const found = item.exId
-          ? findExercise(opts.exercises, item.exId)
-          : findExerciseByName(opts.exercises, item.name);
-        if (!found) return null;
-        return withWeight(
-          make({
-            exId: found.id,
-            sets: item.sets,
-            repMin: item.repMin,
-            repMax: item.repMax,
-            rest: item.rest,
-            library: opts.exercises,
-          }),
-          item.weight,
-        );
-      })
-      .filter((entry): entry is ActiveEntry => entry !== null);
+    plan = resolvePlan(opts.plan, opts.exercises);
+    entries = plan.map((item) =>
+      withWeight(
+        make({
+          exId: item.exId,
+          sets: item.sets,
+          repMin: item.repMin,
+          repMax: item.repMax,
+          rest: item.rest,
+          library: opts.exercises,
+        }),
+        item.weight,
+      ),
+    );
   }
 
   return {
@@ -220,6 +250,8 @@ export function startSession(opts: StartOptions): ActiveSession {
     notes: '',
     dayIso: opts.dayIso ?? today(),
     source: opts.source ?? 'manual',
+    /* sin plan no se añade la clave: el JSON de la v1 no la conoce y no aporta nada */
+    ...(plan ? { plan } : {}),
   };
 }
 
@@ -490,6 +522,9 @@ export interface FinishOptions {
  * Cierra la sesión: se guardan SOLO las series marcadas (las que quedaron a medias
  * se descartan) y los ejercicios sin ninguna serie hecha desaparecen. Devuelve
  * `null` si no hay nada que guardar, y entonces quien llama avisa de eso.
+ *
+ * El snapshot del plan (`session.plan`) viaja al registro: es lo que permite
+ * comparar después lo que se entrenó con lo que prescribía la rutina original.
  */
 export function finishSession(session: ActiveSession, opts: FinishOptions = {}): Session | null {
   const rpes: number[] = [];
@@ -530,5 +565,7 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
     entries,
     notes: opts.notes ?? session.notes ?? '',
     rpe: rpes.length ? round(avg(rpes), 1) : null,
+    /* el snapshot viajó en `ActiveSession.plan` hasta aquí: ahora queda en el historial */
+    ...(session.plan ? { plan: session.plan } : {}),
   };
 }

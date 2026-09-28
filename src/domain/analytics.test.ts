@@ -403,7 +403,7 @@ describe('totales', () => {
   ];
 
   it('resume sesiones, volumen, series, tiempo y rachas', () => {
-    const t = totals(historial);
+    const t = totals(historial, HOY);
     expect(t.sessions).toBe(2);
     expect(t.volume).toBe(400);
     expect(t.sets).toBe(3);

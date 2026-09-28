@@ -12,11 +12,14 @@ import { SEED_EXERCISES } from '@/domain/catalog';
 import { defaultEquipment, type EquipmentMap } from '@/domain/data';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { mergeSeed } from '@/domain/library';
+import { int, num, uid } from '@/domain/num';
 import type {
   ActiveSession,
   AppState,
   Exercise,
   PlateModeKey,
+  PlateStock,
+  RoutineItem,
   Session,
   Settings,
 } from '@/domain/types';
@@ -185,6 +188,329 @@ export function setExerciseAllowed(id: string, allowed: boolean): void {
   exercises.value = next;
 }
 
+/* ---------- ajustes anidados ---------- */
+
+/**
+ * Ajusta una ruta de ajustes (`bars.olimpica`, `ai.temperature`). En la v1 esto
+ * era `App.setSettingPath` y se usaba desde los `data-key` de la vista de Ajustes;
+ * aquí se resuelve con una ruta explícita en vez de por DOM.
+ */
+export function setSettingsPath(path: string, value: unknown): void {
+  const [head, ...rest] = path.split('.');
+  if (!head) return;
+  if (!rest.length) {
+    patchSettings({ [head]: value });
+    return;
+  }
+  /* copia por niveles hasta el penúltimo: así nunca se muta el objeto del signal */
+  const headValue = (settings.value as unknown as Record<string, unknown>)[head];
+  const next: Record<string, unknown> = isPlainObject(headValue) ? { ...headValue } : {};
+  let cursor = next;
+  for (let i = 0; i < rest.length - 1; i++) {
+    const key = rest[i];
+    cursor[key] = { ...(cursor[key] as Record<string, unknown>) };
+    cursor = cursor[key] as Record<string, unknown>;
+  }
+  cursor[rest[rest.length - 1]] = value;
+  patchSettings({ [head]: next });
+}
+
+function asPlates(value: unknown): PlateStock[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (p): p is PlateStock =>
+      isPlainObject(p) && typeof p.w === 'number' && typeof p.pairs === 'number',
+  );
+}
+
+/** Cambia un campo del inventario de discos (`w`, `unit`, `pairs`). */
+export function updatePlate(index: number, patch: Partial<PlateStock>): void {
+  const plates = asPlates(settings.value.plates).map((p, i) =>
+    i === index ? { ...p, ...patch } : p,
+  );
+  patchSettings({ plates });
+}
+
+export function addPlate(plate: PlateStock = { w: 1.25, unit: 'kg', pairs: 1, on: true }): void {
+  patchSettings({ plates: [...asPlates(settings.value.plates), plate] });
+}
+
+export function removePlate(index: number): void {
+  patchSettings({ plates: asPlates(settings.value.plates).filter((_, i) => i !== index) });
+}
+
+export function togglePlate(index: number): void {
+  const plates = asPlates(settings.value.plates);
+  const current = plates[index];
+  if (!current) return;
+  updatePlate(index, { on: current.on === false });
+}
+
+/* ---------- material (en bloque) ---------- */
+
+/** Aplica un preset entero (`equipPreset`) de una sola escritura, no clave a clave. */
+export function applyEquipment(map: EquipmentMap): void {
+  const state = readState();
+  state.equipment = { ...map };
+  writeState(state);
+  equipment.value = { ...map };
+}
+
+/* ---------- rutinas ---------- */
+
+function asRoutines(value: unknown): Routine[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (r): r is Routine => isPlainObject(r) && typeof r.id === 'string' && Array.isArray(r.items),
+  );
+}
+
+/** Rutinas guardadas (el editor de rutinas nace con la pestaña). */
+export const routines = signal<Routine[]>(asRoutines(initial.routines));
+
+export function findRoutine(id: string | null | undefined): Routine | null {
+  if (!id) return null;
+  return routines.value.find((r) => r.id === id) ?? null;
+}
+
+/* ---------- rutinas: edición ---------- */
+
+/**
+ * Normaliza los items como hacía `S.addRoutine` de la v1: números con su valor por
+ * defecto y `weight` en `null` cuando no hay peso prescrito (un `''` no es un peso).
+ * Así una rutina escrita desde la v2 se lee exactamente igual en `main`.
+ */
+function normalizeRoutineItems(value: unknown): RoutineItem[] {
+  if (!Array.isArray(value)) return [];
+  const out: RoutineItem[] = [];
+  for (const raw of value) {
+    if (!isPlainObject(raw)) continue;
+    const weight = raw.weight;
+    out.push({
+      exId: typeof raw.exId === 'string' ? raw.exId : '',
+      sets: int(raw.sets, 3),
+      repMin: int(raw.repMin, 8),
+      repMax: int(raw.repMax, 12),
+      rest: int(raw.rest, 90),
+      weight: weight === undefined || weight === null || weight === '' ? null : num(weight),
+      notes: typeof raw.notes === 'string' ? raw.notes : '',
+    });
+  }
+  return out;
+}
+
+/**
+ * Añade una rutina (generando el id si no trae) y la persiste.
+ *
+ * Mismo read-modify-write que el resto de setters: se parte SIEMPRE de lo que hay
+ * en `localStorage`, nunca del signal, porque la v1 puede estar escribiendo el mismo
+ * estado en otra pestaña.
+ */
+export function addRoutine(r: Omit<Routine, 'id'> & { id?: string }): Routine {
+  const obj = {
+    ...r,
+    id: typeof r.id === 'string' && r.id ? r.id : uid('rt'),
+    name: typeof r.name === 'string' && r.name ? r.name : 'Nueva rutina',
+    focus: typeof r.focus === 'string' ? r.focus : '',
+    source: typeof r.source === 'string' && r.source ? r.source : 'manual',
+    createdAt:
+      typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+    items: normalizeRoutineItems(r.items),
+  } as Routine;
+  const state = readState();
+  const next = [...asRoutines(state.routines), obj];
+  state.routines = next;
+  writeState(state);
+  routines.value = next;
+  return obj;
+}
+
+/**
+ * Parchea una rutina existente. El `id` NO se puede cambiar: el calendario lo
+ * referencia (`schedule[día].routineId`). Devuelve `null` si no existe, como la v1.
+ */
+export function updateRoutine(id: string, patch: Partial<Routine>): Routine | null {
+  const state = readState();
+  const current = asRoutines(state.routines).find((r) => r.id === id);
+  if (!current) return null;
+  const updated: Routine = { ...current, ...patch, id };
+  const next = asRoutines(state.routines).map((r) => (r.id === id ? updated : r));
+  state.routines = next;
+  writeState(state);
+  routines.value = next;
+  return updated;
+}
+
+/**
+ * Borra una rutina y desatasca el calendario: los días que la apuntaban pierden su
+ * `routineId` (la v1 borraba ese campo, no el día entero).
+ */
+export function removeRoutine(id: string): void {
+  const state = readState();
+  const next = asRoutines(state.routines).filter((r) => r.id !== id);
+  const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
+    ? { ...(state.schedule as Record<string, ScheduleDay>) }
+    : {};
+  for (const day of Object.keys(plan)) {
+    const entry = plan[day];
+    if (!entry || entry.routineId !== id) continue;
+    const copy: ScheduleDay = { ...entry };
+    delete copy.routineId;
+    plan[day] = copy;
+  }
+  state.routines = next;
+  state.schedule = plan;
+  writeState(state);
+  routines.value = next;
+  schedule.value = plan;
+}
+
+/* ---------- meta ---------- */
+
+/**
+ * Lo que la v1 guarda en `state.meta` (¿quién vio el onboarding?, cuándo pidió el
+ * coach un plan por última vez…). Mismas claves que `store.js` de `main`.
+ */
+export const DEFAULT_META = { onboarded: false, lastPlanAt: null, lastAiAt: null };
+
+/** `state.meta`, reactivo. Las claves desconocidas se conservan (mismo merge que la v1). */
+export const meta = signal<Record<string, unknown>>(withDefaults(initial.meta, DEFAULT_META));
+
+/** Mezcla claves en `state.meta` (lo que hacía `S.setMeta` de la v1). */
+export function setMeta(patch: Record<string, unknown>): void {
+  const next: Record<string, unknown> = { ...meta.value, ...patch };
+  const state = readState();
+  state.meta = next;
+  writeState(state);
+  meta.value = next;
+}
+
+/* ---------- calendario ---------- */
+
+/** Plan del calendario: `{ '2026-09-24': { status, type, routineId, title } }`. */
+export const schedule = signal<Record<string, ScheduleDay>>(
+  isPlainObject(initial.schedule) ? { ...(initial.schedule as Record<string, ScheduleDay>) } : {},
+);
+
+/** Apunta un día (es lo que hacía `S.setDay` de la v1). */
+export function setDay(iso: string, patch: Partial<ScheduleDay>): void {
+  const next = { ...schedule.value, [iso]: { ...(schedule.value[iso] ?? {}), ...patch } };
+  const state = readState();
+  state.schedule = next;
+  writeState(state);
+  schedule.value = next;
+}
+
+/* ---------- biblioteca: edición ---------- */
+
+export function bulkSetAllowed(ids: readonly string[], allowed: boolean): void {
+  const wanted = new Set(ids);
+  const next = exercises.value.map((e) => (wanted.has(e.id) ? { ...e, allowed } : e));
+  const state = readState();
+  state.exercises = next.filter((e) => e.custom || e.allowed === false);
+  writeState(state);
+  exercises.value = next;
+}
+
+/** Crea (o edita) un ejercicio propio. Devuelve el id final. */
+export function saveExercise(patch: Exercise): void {
+  const exists = exercises.value.some((e) => e.id === patch.id);
+  const next = exists
+    ? exercises.value.map((e) => (e.id === patch.id ? { ...patch, custom: true } : e))
+    : [...exercises.value, { ...patch, custom: true }];
+  const state = readState();
+  state.exercises = next.filter((e) => e.custom || e.allowed === false);
+  writeState(state);
+  exercises.value = next;
+}
+
+/** Borra un ejercicio propio. Los de biblioteca no se borran (se prohíben). */
+export function removeExercise(id: string): void {
+  const next = exercises.value.filter((e) => e.id !== id);
+  const state = readState();
+  state.exercises = next.filter((e) => e.custom || e.allowed === false);
+  writeState(state);
+  exercises.value = next;
+}
+
+/* ---------- datos (copia, importar, borrar) ---------- */
+
+/** Tamaño ocupado por las claves de Pulso, en bytes (para la tarjeta de Datos). */
+export function storageBytes(): number {
+  if (!storageAvailable) return 0;
+  let total = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith('pulso.')) continue;
+    total += key.length + (localStorage.getItem(key)?.length ?? 0);
+  }
+  return total * 2; /* aproximación: 2 bytes por carácter (UTF-16) */
+}
+
+/** ¿El objeto leído parece un estado de Pulso? (importación tolerante) */
+export function looksLikeState(value: unknown): boolean {
+  return isPlainObject(value) && isPlainObject((value as AppState).settings);
+}
+
+/**
+ * Reemplaza el estado entero (importación). Se conserva tal cual lo que traiga el
+ * archivo, porque el formato es el mismo de la v1: importar una copia hecha en
+ * `main` tiene que dejar los datos igual que allí.
+ */
+export function importState(raw: unknown): AppState {
+  if (!looksLikeState(raw)) throw new Error('El archivo no parece una copia de Pulso');
+  const incoming = raw as AppState;
+  const next: AppState = {
+    ...incoming,
+    version: STATE_VERSION,
+    createdAt:
+      typeof incoming.createdAt === 'string' ? incoming.createdAt : new Date().toISOString(),
+  };
+  writeState(next);
+  refresh();
+  return next;
+}
+
+export function exportState(): AppState {
+  return readState();
+}
+
+/**
+ * Borra las claves de Pulso y vuelve al estado inicial.
+ * ⚠️ No toca las claves de "ya sembrado" (`pulso.applied-setup`, `pulso.seeded-routines`),
+ * igual que la v1: si se borrara todo, el inventario personalizado y las rutinas
+ * personales volverían a aparecer después de un "Borrar todo".
+ */
+export function resetAll(): void {
+  if (storageAvailable) {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('pulso.') && key.indexOf('seeded') < 0 && key !== 'pulso.state') {
+        keys.push(key);
+      }
+    }
+    keys.push(STATE_KEY);
+    for (const key of keys) localStorage.removeItem(key);
+  }
+  refresh();
+}
+
+/** Relee el estado de `localStorage` y refresca todos los signals. */
+export function refresh(): void {
+  const next = readState();
+  settings.value = next.settings;
+  equipment.value = (next.equipment as EquipmentMap | undefined) ?? defaultEquipment();
+  exercises.value = mergeSeed(SEED_EXERCISES, next.exercises);
+  sessions.value = asSessions(next.sessions);
+  routines.value = asRoutines(next.routines);
+  meta.value = withDefaults(next.meta, DEFAULT_META);
+  schedule.value = isPlainObject(next.schedule)
+    ? { ...(next.schedule as Record<string, ScheduleDay>) }
+    : {};
+  active.value = asActive(next.active);
+}
+
 /* ---------- sesiones ---------- */
 
 /**
@@ -202,11 +528,29 @@ function asSessions(value: unknown): Session[] {
 
 export const sessions = signal<Session[]>(asSessions(initial.sessions));
 
+/**
+ * La sesión en curso (`pulso.state.active`), reactiva: **una sola fuente de verdad**
+ * para todo lo que la lee o la escribe (la pantalla de Entrenar, el cierre de sesión
+ * y los refrescos por importación). `state/session.ts` la reexporta, no duplica.
+ */
+export const active = signal<ActiveSession | null>(asActive(initial.active));
+
+/**
+ * Una sesión en curso solo es válida si trae sus entradas: un `pulso.state` escrito a
+ * mano o a medias no debe colarse en la UI (misma tolerancia que la v1 al leerlo).
+ */
+function asActive(value: unknown): ActiveSession | null {
+  return isPlainObject(value) && Array.isArray(value.entries)
+    ? (value as unknown as ActiveSession)
+    : null;
+}
+
 /** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee la v1. */
 export function writeActive(next: ActiveSession | null): void {
   const state = readState();
   state.active = next;
   writeState(state);
+  active.value = next;
 }
 
 /**
@@ -220,15 +564,63 @@ export function commitSession(session: Session): void {
     (a.startedAt ?? '') < (b.startedAt ?? '') ? 1 : -1,
   );
   state.sessions = all;
-  const schedule = isPlainObject(state.schedule) ? { ...state.schedule } : {};
-  const day = schedule[session.date];
-  schedule[session.date] = {
+  /* ojo: el nombre local no puede ser `schedule` (sombrería al signal homónimo) */
+  const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
+    ? { ...(state.schedule as Record<string, ScheduleDay>) }
+    : {};
+  const day = plan[session.date];
+  plan[session.date] = {
     ...(isPlainObject(day) ? day : {}),
     status: 'done',
     sessionId: session.id,
   };
-  state.schedule = schedule;
+  state.schedule = plan;
   state.active = null;
   writeState(state);
   sessions.value = all;
+  schedule.value = plan;
+  active.value = null;
+}
+
+/* ---------- chat del coach ---------- */
+
+/**
+ * Persiste el historial del chat del coach (`state.chat`): los últimos 80
+ * mensajes con la MISMA forma que la v1 (`{role, text, ts, thoughts?, notes?}`),
+ * así que exportar los datos o volver a la rama `main` conserva la
+ * conversación — una clave suelta tipo `pulso.chat` se quedaría fuera de
+ * `pulso.state` y no sobreviviría a un import.
+ *
+ * Solo guarda: la signal que repinta la vista vive en `state/chat.ts` (nada de
+ * UI aquí), y la escritura usa el mismo read-modify-write que el resto de
+ * setters (se parte SIEMPRE de lo que hay en `localStorage`, por si la v1 está
+ * escribiendo el mismo estado en otra pestaña).
+ */
+export function setChat(value: unknown): void {
+  const state = readState();
+  state.chat = value;
+  writeState(state);
+}
+
+/* ---------- tipos locales del estado ---------- */
+
+/** Un día del calendario. Se declara aquí porque solo lo toca el store. */
+export interface ScheduleDay {
+  status?: string;
+  type?: string;
+  routineId?: string;
+  title?: string;
+  sessionId?: string;
+  source?: string;
+  [key: string]: unknown;
+}
+
+/** Una rutina guardada (los items son la prescripción de cada ejercicio). */
+export interface Routine {
+  id: string;
+  name: string;
+  focus?: string;
+  source?: string;
+  items: RoutineItem[];
+  [key: string]: unknown;
 }

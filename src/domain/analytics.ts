@@ -403,7 +403,7 @@ export function suggestWeight(
 
 /* ---------- totales y repartos ---------- */
 
-export function totals(sessions: readonly Session[]): Totals {
+export function totals(sessions: readonly Session[], todayIso: string = today()): Totals {
   const durations = sessions.map((s) => durationOf(s));
   const firstDate = sessions.length ? [...sessions.map(sessionDate)].sort()[0] : null;
   return {
@@ -412,7 +412,7 @@ export function totals(sessions: readonly Session[]): Totals {
     sets: sum(sessions, setsOf),
     time: sum(durations),
     avgDuration: durations.length ? sum(durations) / durations.length : 0,
-    streak: streak(sessions),
+    streak: streak(sessions, todayIso),
     bestStreak: bestStreak(sessions),
     firstDate: firstDate ?? null,
   };

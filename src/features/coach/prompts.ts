@@ -1,0 +1,156 @@
+/**
+ * System prompt y peticiones al modelo. Puertos de `DEFAULT_SYSTEM` y de los
+ * cuatro `C.suggestWorkout` / `C.planWeek` / `C.analyzeProgress` / `C.chat` de
+ * la v1 (`legacy/js/coach.js`), sin tocar la red: aquí solo se montan strings.
+ *
+ * La semántica es la misma que en la v1:
+ *
+ * - `suggest` y `plan` piden JSON (eso se traduce en
+ *   `responseMimeType: application/json` en `client.ts`);
+ * - `analyze` pide markdown de ≤ 400 palabras;
+ * - `chat` se lleva los últimos 12 mensajes del historial;
+ * - el contexto del usuario se inyecta SIEMPRE detrás de
+ *   `system + "\n\nCONTEXTO DEL USUARIO:\n" + ctx`.
+ */
+import { goalLabel } from '@/domain/data';
+import { int } from '@/domain/num';
+import type { BuildRequestOpts, CoachRequest, CoachTask } from './types';
+
+/** Personalidad y reglas del coach (port literal del system de la v1). */
+export const DEFAULT_SYSTEM = [
+  'Eres Pulso Coach, entrenador personal y planificador de entrenamiento basado en evidencia.',
+  'Reglas:',
+  '- Responde siempre en español, con tono directo, profesional y cercano. Nada de relleno.',
+  '- Usa EXCLUSIVAMENTE ejercicios de la lista de ejercicios permitidos que recibes en el contexto (respeta el nombre exacto).',
+  '- Respeta el equipamiento e inventario del usuario: no propongas material que no tenga ni pesos imposibles de cargar.',
+  '- Aplica sobrecarga progresiva usando el historial y los récords; indica un peso objetivo concreto por ejercicio.',
+  '- Decide tú el descanso óptimo entre series de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s) y devuélvelo en el campo rest; el usuario no configura los descansos.',
+  '- Incluye descansos entre series y justifica brevemente cada decisión del plan.',
+  '- Si el usuario pide JSON, devuelve ÚNICAMENTE el JSON, sin texto adicional ni markdown.',
+  '- Prioriza seguridad: avisa si detectas señales de sobreentrenamiento o dolor, y recuerda que no eres un médico.',
+].join('\n');
+
+/**
+ * Se añade al system para que el modelo cierre con un bloque ```memoria``` cuando
+ * aprenda algo nuevo: así `extractMemoryBlock` puede separarlo de la respuesta y
+ * `applyMemoryEntries` volcarlo en `settings.ai.memory`.
+ */
+export const MEMORY_INSTRUCTION = [
+  'Cuando aprendas algo nuevo y duradero sobre el usuario (preferencias, límites, lesiones, qué le funciona o qué le falla),',
+  'cierra EXACTAMENTE tu respuesta con un bloque de memoria en este formato:',
+  '```memoria',
+  '- dato aprendido, en una sola línea',
+  '```',
+  'Una línea por dato, sin mezclar el bloque con el resto de la respuesta, y sin duplicar lo que ya aparece en su MEMORIA DEL COACH (la deduplicación final la hace la app): si dudas de si es nuevo, mejor guárdalo.',
+  'Si el usuario te pregunta qué debería cambiar o mejorar, la conclusión a la que llegues sobre él también cuenta como aprendizaje: mete el bloque aunque el resto de la respuesta ya lo haya dicho.',
+  'Si no hay nada nuevo que guardar, no pongas el bloque.',
+].join('\n');
+
+/** Cuántos mensajes de historial se mandan en el chat (el mismo tope que la v1). */
+export const CHAT_HISTORY_LIMIT = 12;
+
+/**
+ * Se añade al system de `chat` y `analyze` para que el modelo pueda PEDIR datos
+ * históricos en vez de inventarlos: emite un bloque ```consulta``` y la app le
+ * responde con `queryHistory` antes de que conteste. Va después de
+ * `MEMORY_INSTRUCTION` y solo en las dos tareas que no piden JSON (en `suggest`
+ * y `plan` el bloque estorbaría, ahí manda el HISTORIAL CONSOLIDADO del
+ * contexto).
+ */
+export const CONSULT_INSTRUCTION = [
+  'Si necesitas detalles históricos que no están en el contexto, puedes pedirlos ANTES de responder:',
+  'emite EXACTAMENTE UN bloque con este formato y la app te responderá con los datos:',
+  '```consulta',
+  '{"ejercicio":"Press banca","tipo":"full","desde":"YYYY-MM-DD","hasta":"YYYY-MM-DD","limite":30}',
+  '```',
+  'Campos: "ejercicio" (obligatorio, nombre del ejercicio), "tipo": "full" = detalle de cada sesión, "reciente" = últimas sesiones, "evolucion" = kg×reps por sesión con el delta global; "desde" y "hasta" (fechas opcionales YYYY-MM-DD) y "limite" (sesiones, 30 por defecto).',
+  'Un solo bloque por respuesta; no lo mezcles con la respuesta final y espera a que te devolvamos los datos.',
+  'NUNCA inventes datos de sesiones, pesos, series o récords que no estén en el contexto: si no los tienes, consulta o dilo claramente.',
+  'Antes de consultar, mira el HISTORIAL CONSOLIDADO: ya resume TODO el histórico por ejercicio (nº de sesiones, rango de fechas, primera y última serie, mejor 1RM y las tres últimas), así que solo consulta si necesitas detalle sesión a sesión.',
+].join('\n');
+
+function suggestPrompt(opts: BuildRequestOpts): string {
+  const unit = opts.unit ?? 'kg';
+  const lines = [
+    'Genera el entrenamiento de HOY para este usuario.',
+    'Devuelve SOLO un JSON con esta forma exacta:',
+    '{"title":"titulo corto","focus":"grupos principales","rationale":["motivo 1","motivo 2"],"exercises":[{"name":"nombre EXACTO de la lista permitida","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":"breve tip"}]}',
+    'Restricciones: entre 4 y 7 ejercicios; usa solo nombres de la lista de ejercicios permitidos;',
+    `weight en ${unit} (0 si es peso corporal) y debe ser cargable con su inventario;`,
+    'ordena de compuesto a aislado; incluye 1 bloque de core;',
+    'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
+  ];
+  if (opts.local !== undefined) {
+    lines.push(
+      '',
+      'Propuesta generada en el dispositivo con sus datos (puedes mejorarla o corregirla):',
+      JSON.stringify(opts.local),
+    );
+  }
+  return lines.join('\n');
+}
+
+function planPrompt(opts: BuildRequestOpts): string {
+  const lines = [
+    `Planifica la semana de entrenamiento del ${opts.from ?? ''} al ${opts.to ?? ''} (7 días exactos).`,
+    `Objetivo del usuario: ${goalLabel(opts.goal ?? 'hipertrofia')} | días de entreno deseados: ${int(opts.daysPerWeek, 4)}.`,
+    'Devuelve SOLO este JSON:',
+    '{"rationale":"explicación breve del reparto","days":[{"date":"YYYY-MM-DD","type":"entreno|cardio|movilidad|descanso","title":"...","focus":"...","exercises":[{"name":"nombre EXACTO","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":""}]}]}',
+    'Reglas: respeta exactamente las fechas; usa solo ejercicios permitidos; deja al menos 48 h antes de repetir el mismo grupo muscular;',
+    'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
+    'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
+  ];
+  if (opts.local !== undefined) {
+    lines.push(
+      '',
+      'Base generada en el dispositivo (revisa coherencia con el historial y mejórala si hace falta):',
+      JSON.stringify(opts.local),
+    );
+  }
+  return lines.join('\n');
+}
+
+function analyzePrompt(opts: BuildRequestOpts): string {
+  const weeks = int(opts.weeks, 6);
+  const lines = [
+    `Analiza mi progreso de las últimas ${weeks} semanas y dame conclusiones accionables.`,
+    'Estructura en markdown con: 1) Resumen en 3 bullets, 2) Qué está funcionando, 3) Riesgos o desequilibrios, 4) 3 ajustes concretos para la próxima semana.',
+    'Sé específico con números y no superes las 400 palabras.',
+    '',
+    'Volumen por semana:',
+    opts.weeklyBrief ?? '(sin datos de semanas todavía)',
+  ];
+  if (opts.question?.trim()) lines.push('', opts.question.trim());
+  return lines.join('\n');
+}
+
+/**
+ * Monta la petición completa para una tarea: `system` (con la memoria, la
+ * instrucción de consulta y el contexto ya inyectados), `prompt`, si se espera
+ * JSON (`json`) y, en el chat, los últimos 12 mensajes de historial.
+ */
+export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): CoachRequest {
+  const base = opts.system?.trim() || DEFAULT_SYSTEM;
+  let system = opts.memory === false ? base : `${base}\n\n${MEMORY_INSTRUCTION}`;
+  const consult = opts.consult !== false && (task === 'chat' || task === 'analyze');
+  if (consult) system += `\n\n${CONSULT_INSTRUCTION}`;
+  if (opts.context) system += `\n\nCONTEXTO DEL USUARIO:\n${opts.context}`;
+
+  switch (task) {
+    case 'suggest':
+      return { system, prompt: suggestPrompt(opts), json: true };
+    case 'plan':
+      return { system, prompt: planPrompt(opts), json: true };
+    case 'analyze':
+      return { system, prompt: analyzePrompt(opts), json: false };
+    case 'chat':
+      return {
+        system,
+        prompt: String(opts.question ?? ''),
+        json: false,
+        history: (opts.history ?? [])
+          .filter((message) => message.role === 'user' || message.role === 'model')
+          .slice(-CHAT_HISTORY_LIMIT),
+      };
+  }
+}

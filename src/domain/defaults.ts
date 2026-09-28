@@ -49,5 +49,6 @@ export const DEFAULT_SETTINGS: Settings = {
     maxTokens: 4096,
     autoApply: false,
     systemPrompt: '',
+    memory: '',
   },
 };

@@ -1,0 +1,266 @@
+/* ==========================================================================
+   Pulso v2 · vista Rutinas (`src/ui/RoutinesView.tsx`)
+
+   Solo clases `rt-*`: todo lo demás (`.card`, `.btn`, `.badge`, `.empty`,
+   `.list-item`…) viene de `base.css`, que aquí NO se toca. `v2.css` tampoco:
+   esta hoja se importa desde el componente, así que solo paga quien abre
+   la pestaña Rutinas.
+   ========================================================================== */
+
+/* ---------- acciones de cabecera ---------- */
+
+.rt-top {
+  gap: 8px;
+}
+
+/* `.btn` va con `white-space:nowrap`; en móvil el botón largo necesita cortar */
+.rt-btn {
+  white-space: normal;
+  text-align: center;
+  padding: 0 18px;
+}
+
+/* ---------- avisos ---------- */
+
+.rt-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.rt-notice .ico {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.rt-notice.ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+  background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+  color: var(--ok);
+}
+
+.rt-notice.warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+  color: var(--warn);
+}
+
+.rt-notice.err {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
+/* el texto del aviso es el que manda; los botones quedan a su derecha */
+.rt-notice .btn {
+  flex: none;
+}
+
+/* ---------- tarjeta de rutina ---------- */
+
+.rt-actions {
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.rt-names {
+  margin-top: 6px;
+}
+
+/* confirmación de borrado: aviso en línea en la propia tarjeta (sin modal) */
+.rt-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* ---------- propuesta del coach ---------- */
+
+.rt-proposal .between {
+  align-items: flex-start;
+}
+
+.rt-why {
+  margin: 9px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.rt-table {
+  border-top: 1px solid var(--border-soft);
+}
+
+.rt-trow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px 52px 62px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12.5px;
+}
+
+.rt-trow:last-child {
+  border-bottom: 0;
+}
+
+.rt-trow.head {
+  padding-top: 6px;
+  padding-bottom: 4px;
+  border-bottom: 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rt-trow .num {
+  text-align: right;
+  color: var(--text-2);
+}
+
+.rt-tname {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rt-tname .badge {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ---------- editor ---------- */
+
+.rt-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rt-notes {
+  resize: vertical;
+  min-height: 74px;
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.rt-search-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+/* resultados del buscador de ejercicios */
+.rt-results {
+  margin-top: 9px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.rt-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 11px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+.rt-result:last-child {
+  border-bottom: 0;
+}
+
+.rt-result:hover {
+  background: var(--surface-2);
+}
+
+.rt-result .ico {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.rt-result .grow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rt-result-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+/* un ejercicio dentro del editor */
+.rt-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* series / rep min / rep max / descanso, en el mismo orden que la v1 */
+.rt-nums {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* peso base + notas del ejercicio */
+.rt-nums.rt-two {
+  grid-template-columns: minmax(0, 110px) minmax(0, 1fr);
+}
+
+.rt-nums .label {
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-nums .input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .rt-trow {
+    grid-template-columns: minmax(0, 1fr) 70px 46px 56px;
+    gap: 6px;
+    font-size: 12px;
+  }
+
+  .rt-nums {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

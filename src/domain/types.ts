@@ -112,6 +112,8 @@ export interface AiSettings {
   maxTokens: number;
   autoApply: boolean;
   systemPrompt: string;
+  /** Memoria editable del coach IA (markdown). La lógica vive en `features/coach`. */
+  memory?: string;
 }
 
 export interface Settings {
@@ -186,6 +188,12 @@ export interface Session {
   notes?: string;
   /** RPE medio de la sesión. */
   rpe?: number | null;
+  /**
+   * Copia de la rutina al ARRANCAR la sesión (si arrancó desde rutina). La rutina
+   * original es editable después, así que este snapshot es lo único que permite
+   * saber qué cambió el usuario en plena sesión (quitar, añadir o sustituir).
+   */
+  plan?: RoutineItem[];
   [key: string]: unknown;
 }
 
@@ -237,6 +245,11 @@ export interface ActiveSession {
   /** día del calendario al que se apuntará al terminar */
   dayIso: string;
   source: string;
+  /**
+   * Snapshot de la rutina con la que se arrancó: viaja aquí hasta `finishSession`,
+   * que lo persiste en `Session.plan`. Ver el JSDoc de `Session.plan`.
+   */
+  plan?: RoutineItem[];
 }
 
 /**

@@ -6,6 +6,10 @@ _shots/
 node_modules/
 dist/
 
+# secretos locales (API keys del coach)
+.env.local
+.env.*.local
+
 # cachés de herramientas
 eslintcache
 *.tsbuildinfo

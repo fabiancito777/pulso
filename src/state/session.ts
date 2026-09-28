@@ -19,6 +19,7 @@
 import { signal } from '@preact/signals';
 
 import { suggestWeight } from '@/domain/analytics';
+import { today } from '@/domain/dates';
 import { num, round } from '@/domain/num';
 import {
   addRest,
@@ -48,9 +49,10 @@ import {
 import type { ActiveSession, RestState, Session } from '@/domain/types';
 import { beep, ensureAudio, vibrate } from '@/platform/audio';
 import {
+  active,
   commitSession,
   exercises,
-  readState,
+  findRoutine,
   readStored,
   sessions,
   settings,
@@ -61,23 +63,19 @@ import {
 
 const NOW = (): number => Date.now();
 
-/* ---------- sesión activa ---------- */
-
-function readActive(): ActiveSession | null {
-  const stored = readState().active;
-  if (!stored || typeof stored !== 'object' || !Array.isArray(stored.entries)) return null;
-  return stored;
-}
-
-/** La sesión en curso, reactiva. `null` = no hay nada empezado. */
-export const active = signal<ActiveSession | null>(readActive());
+/**
+ * La sesión en curso se reexporta aquí (donde la busca la UI de la sesión) pero
+ * **vive en `state/store.ts`**: es la misma signal que escriben `writeActive`,
+ * `commitSession` y `refresh`. Antes cada módulo tenía la suya, así que cerrar una
+ * sesión dejaba viva la copia del otro y una importación se veía y la otra no.
+ */
+export { active };
 
 /** Segundos de sesión, para el cronómetro (el bucle los refresca una vez por segundo). */
 export const sessionSeconds = signal(0);
 
 function setActive(next: ActiveSession | null): void {
-  writeActive(next);
-  active.value = next;
+  writeActive(next); /* ya actualiza la signal `active` */
   sessionSeconds.value = next ? elapsed(next) : 0;
 }
 
@@ -107,6 +105,34 @@ export function startFreeSession(opts: { exIds?: string[]; name?: string } = {})
     exIds: opts.exIds ?? [],
     name: opts.name,
     unit: settings.value.units,
+  });
+  setActive(created);
+  return created;
+}
+
+/**
+ * Arranca una sesión desde una rutina guardada. Devuelve `null` si la rutina no
+ * existe (quien llama avisa); si ya hay una sesión en curso devuelve ESA, igual que
+ * `startFreeSession`: tocar "empezar" dos veces no pisa un entrenamiento a medias.
+ *
+ * `startSession` deriva los ejercicios de `routine.items` (por eso no hacen falta
+ * `exIds`), y el snapshot del plan que guarda ahí es lo que luego permite comparar
+ * lo entrenado con lo que prescribía la rutina.
+ */
+export function startFromRoutine(routineId: string): ActiveSession | null {
+  const current = active.value;
+  if (current) return current;
+  const routine = findRoutine(routineId);
+  if (!routine) return null;
+  ensureAudio();
+  const created = startSession({
+    exercises: exercises.value,
+    suggest: (exId) => suggestWeight(sessions.value, exId, { unit: settings.value.units }),
+    routine: { id: routine.id, name: routine.name, items: routine.items },
+    name: routine.name,
+    source: 'plan',
+    unit: settings.value.units,
+    dayIso: today(),
   });
   setActive(created);
   return created;
@@ -190,9 +216,9 @@ export function finishSession(notes?: string): Session | null {
   if (!current) return null;
   const done = finishActive(current, { notes });
   if (!done) return null;
-  /* apila la sesión y marca el día: dos cosas que en la v1 hacía el store */
+  /* apila la sesión y marca el día: dos cosas que en la v1 hacía el store
+     (`commitSession` también limpia `active`, la signal única) */
   commitSession(done);
-  active.value = null;
   sessionSeconds.value = 0;
   stopRestTimer();
   beep('done', settings.value);
