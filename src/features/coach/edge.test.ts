@@ -555,7 +555,7 @@ suite('edge cases contra Gemini (API real)', () => {
    ====================================================================== */
 
 describe('edge cases sin red', () => {
-  it('8 · sin API key → GeminiError auth antes de tocar la red', async () => {
+  it('8 · sin API key → aviso amable y plan local, sin tocar la red', async () => {
     aiPatch({ apiKey: '   ' });
     expect(coach.hasApiKey()).toBe(false);
     const antes = apiCalls;
@@ -563,13 +563,18 @@ describe('edge cases sin red', () => {
       Promise.resolve({ text: 'nunca debería llegar', model: 'mock', ms: 0 }),
     );
 
-    const err = await coach
-      .runCoachTask('chat', { userText: 'hola' }, { generateFn: gen })
-      .catch((e: unknown) => e);
+    /* chat/analyze no tienen plan local: mensaje corto, sin throw (sin key la app
+       sigue siendo utilizable a medias, que es lo que pide el encargo) */
+    const chat = await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(chat.text).toContain('API key');
+    expect(chat.text).toContain('Ajustes');
+    expect(chat.text).not.toContain('nunca debería llegar');
 
-    expect(err).toBeInstanceOf(GeminiError);
-    expect((err as GeminiError).kind).toBe('auth');
-    expect((err as GeminiError).message).toContain('Falta la API key');
+    /* suggest/plan se resuelven en el dispositivo con el planificador local */
+    const sug = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    expect((sug.payload as { source?: string }).source).toBe('local');
+    expect(sug.text).toContain('```json');
+
     expect(gen).not.toHaveBeenCalled();
     expect(apiCalls).toBe(antes);
   });

@@ -80,8 +80,13 @@ export interface SessionProgress {
 export interface StartOptions {
   /** Biblioteca ya fusionada: de ahí salen nombre, reps y descanso por defecto. */
   exercises: readonly Exercise[];
-  /** Sugerencia de progresión por ejercicio (`analytics.suggestWeight`). */
-  suggest: (exId: string) => Suggestion;
+  /**
+   * Sugerencia de progresión por ejercicio (`analytics.suggestWeight`). Las `reps`
+   * son las de la prescripción (media del rango, o las concretas del plan): con
+   * ellas se pide el peso, igual que hacía `T.prefill` de la v1
+   * (`trainer.js:30`), que nunca preguntaba por un peso «a secas».
+   */
+  suggest: (exId: string, reps?: number) => Suggestion;
   routine?: { id: string; name?: string; items: readonly RoutineItem[] } | null;
   exIds?: readonly string[];
   plan?: readonly PlanItem[];
@@ -158,18 +163,39 @@ export function prefill(entry: ActiveEntry, suggestion: Suggestion): ActiveEntry
 }
 
 /**
+ * Lo que un item del plan puede traer ADEMÁS de `PlanItem`: el `basis` («repetición
+ * de 24 sep») y las `reps` concretas que la v1 metía dentro de `day.plan` y de la
+ * repetición (`views-train.js:299`), más las `notes`. `PlanItem` todavía no los
+ * nombra, así que se leen con este tipo local en vez de ampliar el contrato
+ * compartido: el snapshot y la entrada los conservan tal cual.
+ */
+interface PlanExtras {
+  basis?: string;
+  reps?: number;
+  notes?: string;
+}
+
+/** Item del plan ya resuelto contra la biblioteca: `RoutineItem` + sus extras. */
+type ResolvedPlanItem = RoutineItem & PlanExtras;
+
+/**
  * Resuelve un item del plan del coach contra la biblioteca y lo deja como
  * `RoutineItem` (con `exId`, que es con lo que se compara en la sesión). Los planes
  * del coach a veces traen solo el `name`, y lo que no esté en la biblioteca no pasa
  * a la sesión: mismo criterio que usaba la v1 al montar los ejercicios.
+ *
+ * **No se puede descartar el `basis`/`reps`**: son con lo que la tarjeta de cada
+ * ejercicio explica de dónde sale el peso («repetición de …») y con lo que se
+ * piden las reps al repetir. `resolvePlan` era el punto donde se perdían.
  */
-function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): RoutineItem[] {
-  const out: RoutineItem[] = [];
+function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): ResolvedPlanItem[] {
+  const out: ResolvedPlanItem[] = [];
   for (const item of plan) {
     const ex = item.exId
       ? findExercise(library, item.exId)
       : findExerciseByName(library, item.name ?? null);
     if (!ex) continue;
+    const extra = item as PlanItem & PlanExtras;
     out.push({
       exId: ex.id,
       sets: item.sets,
@@ -177,9 +203,31 @@ function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): R
       repMax: item.repMax,
       rest: item.rest,
       weight: item.weight,
+      ...(extra.notes ? { notes: extra.notes } : {}),
+      ...(extra.basis ? { basis: extra.basis } : {}),
+      ...(extra.reps ? { reps: extra.reps } : {}),
     });
   }
   return out;
+}
+
+/**
+ * Lo que el plan manda sobre lo que sugiere el historial, en la entrada ya
+ * construida (es el `startFromItems` de la v1, `views-train.js:299`):
+ *
+ * - **reps concretas**: las del plan si las trae, si no la media del rango;
+ * - **`basis`**: «repetición de …» si el plan lo trae (si no, se queda el de la
+ *   sugerencia, que es el que ya puso `prefill`);
+ * - **`notes`** del item, si las hay.
+ */
+function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem): ActiveEntry {
+  const reps = int(item.reps, Math.round((entry.repMin + entry.repMax) / 2));
+  return {
+    ...entry,
+    sets: entry.sets.map((set) => ({ ...set, reps })),
+    ...(item.basis ? { basis: item.basis } : {}),
+    ...(item.notes ? { notes: item.notes } : {}),
+  };
 }
 
 /**
@@ -191,7 +239,13 @@ function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): R
  * ejercicio). Prioriza la rutina sobre el plan del coach, igual que los ejercicios.
  */
 export function startSession(opts: StartOptions): ActiveSession {
-  const make = (o: NewEntryOptions): ActiveEntry => prefill(newEntry(o), opts.suggest(o.exId));
+  /* `reps` = reps de la prescripción con las que se pide el peso: si no las trae
+     el plan, la media del rango (v1 `T.prefill`, `trainer.js:30`). */
+  const make = (o: NewEntryOptions, reps?: number): ActiveEntry => {
+    const entry = newEntry(o);
+    const target = int(reps, Math.round((entry.repMin + entry.repMax) / 2));
+    return prefill(entry, opts.suggest(o.exId, target));
+  };
   const withWeight = (entry: ActiveEntry, weight?: number | null): ActiveEntry =>
     weight
       ? {
@@ -200,7 +254,7 @@ export function startSession(opts: StartOptions): ActiveSession {
         }
       : entry;
   let entries: ActiveEntry[] = [];
-  let plan: RoutineItem[] | undefined;
+  let plan: ResolvedPlanItem[] | undefined;
 
   if (opts.routine) {
     const routine = opts.routine;
@@ -226,16 +280,22 @@ export function startSession(opts: StartOptions): ActiveSession {
   } else if (opts.plan?.length) {
     plan = resolvePlan(opts.plan, opts.exercises);
     entries = plan.map((item) =>
-      withWeight(
-        make({
-          exId: item.exId,
-          sets: item.sets,
-          repMin: item.repMin,
-          repMax: item.repMax,
-          rest: item.rest,
-          library: opts.exercises,
-        }),
-        item.weight,
+      fromPlanItem(
+        withWeight(
+          make(
+            {
+              exId: item.exId,
+              sets: item.sets,
+              repMin: item.repMin,
+              repMax: item.repMax,
+              rest: item.rest,
+              library: opts.exercises,
+            },
+            item.reps,
+          ),
+          item.weight,
+        ),
+        item,
       ),
     );
   }
@@ -479,6 +539,84 @@ export function setEntryNotes(
     ...session,
     entries: session.entries.map((en, i) => (i === entryIndex ? { ...en, notes } : en)),
   };
+}
+
+/* ---------- añadir a una sesión en curso ---------- */
+
+/**
+ * Los ejercicios que mete una rutina en una sesión YA ARRANCADA (`train:start-routine`
+ * de la v1 con `T.active()`). Es el mismo relleno que `startFromItems`:
+ *
+ * - `restSec` del item, y si no, el del ejercicio (`newEntry`);
+ * - reps = media de `repMin`/`repMax` (la sugerencia se llama con esas reps, pero
+ *   las series se quedan con la media: es lo que prescribe la rutina);
+ * - peso del item si lo trae (manda sobre el historial, como en `startSession`),
+ *   si no, el que devuelva `suggest`;
+ * - los items cuyo ejercicio no está en la biblioteca se SALTAN (criterio de
+ *   `resolvePlan`): no se inventa un ejercicio que no puedes hacer.
+ *
+ * Devuelve SOLO los ejercicios nuevos, en el orden de la rutina; quien llama los
+ * añade al final de la sesión (el orden de lo que ya estaba no se toca).
+ */
+export function entriesFromRoutine(
+  routine: { items: readonly RoutineItem[] },
+  suggest: (exId: string, reps: number) => Suggestion,
+  library: readonly Exercise[],
+): ActiveEntry[] {
+  const out: ActiveEntry[] = [];
+  for (const item of routine.items) {
+    const ex = findExercise(library, item.exId);
+    if (!ex) continue;
+    const repMin = int(item.repMin, ex.repMin);
+    const repMax = int(item.repMax, ex.repMax);
+    const reps = Math.round((repMin + repMax) / 2);
+    const weight = item.weight ? num(item.weight) : 0;
+    const suggestion: Suggestion = weight
+      ? { weight, reps, kg: weight, basis: '' }
+      : suggest(ex.id, reps);
+    const entry = prefill(
+      newEntry({ exId: ex.id, sets: item.sets, repMin, repMax, rest: item.rest, library }),
+      suggestion,
+    );
+    out.push({
+      ...entry,
+      sets: entry.sets.map((set) => ({
+        ...set,
+        reps,
+        ...(weight ? { weight, suggested: false } : {}),
+      })),
+      notes: item.notes ?? '',
+    });
+  }
+  return out;
+}
+
+/* ---------- discos ---------- */
+
+/**
+ * Peso con el que se abre el modal de discos de un ejercicio: el ÚLTIMO peso
+ * distinto de cero de la entrada y, si no hay ninguno, el de la primera serie
+ * (v1 `views-train.js:477`). `0` = la entrada todavía no tiene peso.
+ */
+export function plateInitialWeight(entry: ActiveEntry): number {
+  let last = 0;
+  for (const set of entry.sets) {
+    const w = num(set.weight);
+    if (w) last = w;
+  }
+  return last || num(entry.sets[0]?.weight);
+}
+
+/**
+ * Qué serie escribe "Usar X kg" del modal de discos (`views-train.js:485`): la
+ * primera serie SIN MARCAR y con el peso vacío — la que de verdad falta por
+ * cargar — y si no queda ninguna, la ÚLTIMA (así el botón siempre hace algo).
+ * Devuelve `-1` solo con una entrada sin series, que no llega a darse.
+ */
+export function plateTarget(entry: ActiveEntry): number {
+  const pending = entry.sets.findIndex((set) => !set.done && !num(set.weight));
+  if (pending >= 0) return pending;
+  return entry.sets.length ? entry.sets.length - 1 : -1;
 }
 
 /* ---------- progreso y cierre ---------- */

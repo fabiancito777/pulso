@@ -28,7 +28,7 @@ import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
 import { applySuggestionAsRoutine, hasApiKey, runCoachTask } from '@/state/coach';
-import { startFromRoutine } from '@/state/session';
+import { addRoutineToSession, startFromRoutine } from '@/state/session';
 import {
   active,
   addRoutine,
@@ -575,11 +575,25 @@ export function RoutinesView() {
   }
 
   function startRoutine(routine: Routine): void {
+    /* Si ya hay sesión en curso NO se bloquea (criterio 3): se ofrecen las dos
+       salidas posibles vía `Notice.action` — apilar la rutina a lo que llevas
+       encima o ir a mirar la sesión. */
     if (active.value) {
       setNotice({
         kind: 'warn',
-        text: 'Ya hay una sesión en curso: termínala (o descártala) antes de empezar otra.',
-        action: { label: 'Ver sesión', run: () => go('entrenar') },
+        text: `Ya hay una sesión en curso: puedes añadir «${routine.name}» a lo que llevas encima.`,
+        action: {
+          label: 'Añadir a la sesión',
+          run: () => {
+            const added = addRoutineToSession(routine.id);
+            if (added === null) {
+              setNotice({ kind: 'err', text: 'No se pudo añadir la rutina a la sesión.' });
+              return;
+            }
+            setNotice(null);
+            go('entrenar');
+          },
+        },
       });
       return;
     }

@@ -7,7 +7,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GenOpts } from './client';
-import { buildBody, DEFAULT_MODEL, GeminiError, generate, testConnection } from './client';
+import {
+  buildBody,
+  DEFAULT_MODEL,
+  GeminiError,
+  generate,
+  listModels,
+  MODELS_LIMIT,
+  testConnection,
+} from './client';
 
 /** Lo que `buildBody` manda a la API, tal y como se serializa. */
 interface SentBody {
@@ -420,5 +428,153 @@ describe('testConnection', () => {
     expect(out.ok).toBe(false);
     expect(out.detail).toContain('API key no válida');
     expect(out.ms).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('testConnection · kind para la UI', () => {
+  it('con la key mala devuelve kind auth (la v1 abría el aviso de errAuth)', async () => {
+    const f = makeFetch(
+      { error: { code: 403, message: 'API key no válida', status: 'PERMISSION_DENIED' } },
+      403,
+    );
+    const out = await testConnection('mala', 'gemini-3.8-flash', f);
+    expect(out).toMatchObject({ ok: false, kind: 'auth' });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('red caída → kind network, sin lanzar', async () => {
+    const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.reject(new TypeError('fetch failed')),
+    );
+    const out = await testConnection('clave', 'gemini-3.8-flash', f);
+    expect(out).toMatchObject({ ok: false, kind: 'network' });
+    expect(out.detail).toContain('fetch failed');
+  });
+
+  it('si responde "OK" no hay kind: la UI pinta el toast de éxito', async () => {
+    const f = makeFetch(
+      reply({ candidates: [{ content: { parts: [{ text: 'OK' }] }, finishReason: 'STOP' }] }),
+    );
+    const out = await testConnection('clave', 'gemini-3.8-flash', f);
+    expect(out).toMatchObject({ ok: true });
+    expect('kind' in out).toBe(false);
+  });
+});
+
+/* ---------- listModels ---------- */
+
+/** Página de `GET /models` con la forma de la API. */
+function modelsPage(
+  models: Record<string, unknown>[],
+  nextPageToken?: string,
+): Record<string, unknown> {
+  return nextPageToken ? { models, nextPageToken } : { models };
+}
+
+function model(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: `models/${id}`,
+    displayName: id,
+    supportedGenerationMethods: ['generateContent'],
+    ...over,
+  };
+}
+
+describe('listModels', () => {
+  it('sin key → kind auth y no se llama a la red', async () => {
+    const f = makeFetch(modelsPage([]));
+    await expect(listModels('   ', f)).rejects.toMatchObject({ kind: 'auth' });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('la key va en la cabecera, nunca en la URL', async () => {
+    const f = makeFetch(modelsPage([model('gemini-3.8-flash')]));
+    await listModels('clave-secreta-123', f);
+    expect(sentUrl(f)).toContain('/models?pageSize=200');
+    expect(sentUrl(f)).not.toContain('key=');
+    expect(f.mock.calls[0][1]?.headers as Record<string, string>).toMatchObject({
+      'x-goog-api-key': 'clave-secreta-123',
+    });
+  });
+
+  it('quita el prefijo models/ y deja solo los que generan contenido', async () => {
+    const f = makeFetch(
+      modelsPage([
+        model('gemini-3.8-flash', {
+          displayName: 'Gemini 3.8 Flash',
+          description: 'La versión rápida de Gemini para tareas cotidianas',
+        }),
+        model('text-embedding-004', { supportedGenerationMethods: ['embedContent'] }),
+        model('imagen-4', { supportedGenerationMethods: ['generateImages'] }),
+        model('gemini-live-001'),
+      ]),
+    );
+    const list = await listModels('clave', f);
+    expect(list.map((m) => m.id)).toEqual(['gemini-3.8-flash']);
+    expect(list[0]).toMatchObject({ label: 'Gemini 3.8 Flash' });
+    expect(list[0].hint).toContain('versión rápida');
+  });
+
+  it('pagina con nextPageToken hasta agotar la respuesta', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(modelsPage([model('uno')], 'tok-1'))),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(modelsPage([model('dos')]))),
+      });
+    const list = await listModels('clave', f);
+    expect(list.map((m) => m.id)).toEqual(['uno', 'dos']);
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(String(f.mock.calls[1][0])).toContain('pageToken=tok-1');
+  });
+
+  it('no devuelve más de MODELS_LIMIT aunque la API mande más', async () => {
+    const enGafas = Array.from({ length: 400 }, (_, i) => model(`modelo-${i}`));
+    const f = makeFetch(modelsPage(enGafas));
+    const list = await listModels('clave', f);
+    expect(list).toHaveLength(MODELS_LIMIT);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('401 → auth, 429 → quota, red caída → network', async () => {
+    const auth = makeFetch({ error: { code: 401, message: 'API key no válida' } }, 401);
+    await expect(listModels('mala', auth)).rejects.toMatchObject({ kind: 'auth' });
+
+    const cuota = makeFetch({ error: { code: 429, message: 'Cuota agotada' } }, 429);
+    await expect(listModels('clave', cuota)).rejects.toMatchObject({ kind: 'quota' });
+
+    const caida = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.reject(new TypeError('fetch failed')),
+    );
+    await expect(listModels('clave', caida)).rejects.toMatchObject({ kind: 'network' });
+  });
+
+  it('si la cuenta no devuelve nada utilizable → empty (la UI se queda en AI_MODELS)', async () => {
+    const f = makeFetch(
+      modelsPage([model('text-embedding-004', { supportedGenerationMethods: ['embedContent'] })]),
+    );
+    await expect(listModels('clave', f)).rejects.toMatchObject({
+      kind: 'empty',
+      message: 'La cuenta no devolvió modelos con generateContent',
+    });
+  });
+
+  it('respuesta no-JSON → parse', async () => {
+    const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('<html>bum</html>'),
+      } as Response),
+    );
+    await expect(listModels('clave', f as unknown as typeof fetch)).rejects.toMatchObject({
+      kind: 'parse',
+    });
   });
 });

@@ -2,6 +2,9 @@
 .playwright-mcp/
 _shots/
 
+# specs de trabajo de la migración (no se versionan)
+_specs/
+
 # dependencias y build de v2
 node_modules/
 dist/

@@ -20,8 +20,16 @@
  * - **Memoria**: el bloque ```memoria``` se vuelca en `settings.ai.memory` con
  *   `applyMemoryEntries` (solo si aporta entradas nuevas) y el texto final que
  *   ve el usuario sale sin él, igual que el ```consulta```.
- * - **API key vacía**: se lanza `GeminiError('auth')` ANTES de llamar a nadie,
- *   aunque `generateFn` esté mockeado.
+ * - **Sin API key → plan LOCAL**: `suggest` y `plan` se resuelven en el
+ *   dispositivo con `features/coach/local` (sin llamar a `generateFn`, sin
+ *   throw) y la respuesta lleva `payload` con el JSON; `chat` y `analyze` no
+ *   tienen plan local, así que devuelven un aviso amable corto — tampoco sin
+ *   throw, para que «probar el coach» sin key no acabe en un error rojo.
+ * - **Con key pero la llamada falla**: se cae al plan local SOLO en
+ *   `GeminiError` de kind `auth`/`network`/`quota` y SOLO en `suggest`/`plan`
+ *   (misma idea que el `.catch` de la v1, que devolvía el local con «IA no
+ *   disponible»); `blocked`/`parse`/`empty`/`http` se propagan porque son
+ *   fallos que el usuario debe ver, no un plan que disfraza un error.
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
@@ -35,6 +43,8 @@ import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
 import { buildContext } from '@/features/coach/context';
 import { queryHistory } from '@/features/coach/history';
 import type { HistoryQuery } from '@/features/coach/history';
+import { localSuggest, localWeek, summarizeLocal } from '@/features/coach/local';
+import type { LocalParams, PlanJSON, SuggestJSON } from '@/features/coach/local';
 import { applyMemoryEntries } from '@/features/coach/memory';
 import { extractBlocks, parseJSON } from '@/features/coach/parse';
 import { buildRequest } from '@/features/coach/prompts';
@@ -79,6 +89,12 @@ export interface CoachTaskOpts {
 export interface CoachOutcome {
   /** respuesta final SIN bloques ```consulta/```memoria */
   text: string;
+  /**
+   * JSON de `suggest`/`plan` ya parseado: el que trae el modelo (extraído de
+   * `text`, que es lo que hoy lee `CoachView`) o el que generó el planificador
+   * local. Es el camino directo para «Aplicar»: no hay que volver a parsear.
+   */
+  payload?: unknown;
   thoughts?: string;
   finish?: string;
   usage?: GenResult['usage'];
@@ -122,6 +138,18 @@ const QUERY_ALIAS: Record<string, keyof HistoryQuery> = {
 
 /** Semanas del análisis (el mismo tope que la v1). */
 const ANALYZE_WEEKS = 6;
+
+/**
+ * Aviso cuando no hay API key y la tarea no tiene plan local. Corto y amable,
+ * sin throw: la app sigue siendo utilizable a medias sin configurar nada.
+ */
+const NO_KEY_TEXT = [
+  'Todavía no tengo API key: añade la de Google AI Studio en Ajustes → Coach AI y podré chatear y analizar tu progreso.',
+  'Mientras tanto, «Sugerir entreno» y «Plan semanal» sí funcionan sin conexión: se generan aquí mismo con tus datos.',
+].join(' ');
+
+/** Fallos del modelo ante los que `suggest`/`plan` caen al plan local. */
+const FALLBACK_KINDS: readonly GeminiError['kind'][] = ['auth', 'network', 'quota'];
 
 /* ---------- helpers ---------- */
 
@@ -199,6 +227,18 @@ function rationaleText(value: unknown): string {
 }
 
 /**
+ * Origen que se guarda en la RUTINA: `'ia'` manda y lo que traía
+ * `localSuggest`/`localWeek` (`'local'`) se guarda como `'generador'`, que es
+ * como la v1 etiquetaba lo nacido en el planificador del dispositivo
+ * (`sug.source === 'ia' ? 'ia' : 'generador'`). El resto de orígenes pasa tal
+ * cual, para no pisar rutinas importadas o manuales.
+ */
+function routineSource(raw: string): string {
+  if (raw === 'local') return 'generador';
+  return raw || 'ia';
+}
+
+/**
  * Tolerante al formato del bloque ```consulta```: el modelo escribe en
  * castellano (`ejercicio`, `tipo`, `desde`, `hasta`, `limite`), pero también
  * se aceptan las claves en inglés de `HistoryQuery`. Devuelve `null` si no hay
@@ -273,6 +313,74 @@ function genOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
   return opts;
 }
 
+/* ---------- plan local (sin IA) ---------- */
+
+/** ¿Es una de las dos tareas que el planificador local sabe resolver solo? */
+function isLocalTask(task: CoachTask): task is 'suggest' | 'plan' {
+  return task === 'suggest' || task === 'plan';
+}
+
+/** ¿Es un fallo del modelo del tipo que compensa caer al plan local? */
+function isFallbackError(err: unknown): err is GeminiError {
+  return err instanceof GeminiError && FALLBACK_KINDS.includes(err.kind);
+}
+
+/**
+ * Genera la propuesta en el dispositivo con el MISMO snapshot de estado que
+ * usaría el modelo: la foto (`base`) que `runCoachTask` tomó al empezar, no una
+ * lectura de las signals llegado el momento (si el usuario cambia el material
+ * a mitad de una llamada cara, la propuesta sigue siendo coherente con lo que
+ * se le contó al modelo).
+ */
+function buildLocal(
+  task: CoachTask,
+  base: Omit<LocalParams, 'todayIso'>,
+  todayIso: string,
+  from: string,
+): SuggestJSON | PlanJSON {
+  const params: LocalParams = { ...base, todayIso };
+  return task === 'suggest' ? localSuggest(params) : localWeek({ ...params, from });
+}
+
+/**
+ * `CoachOutcome` de una propuesta local.
+ *
+ * `text` es el resumen legible (título + rationale) y DEBAJO lleva el JSON en
+ * una cercilla ```json: las vistas de hoy leen `outcome.text` con `parseJSON`
+ * (`RoutinesView`, `CalendarView` y `CoachView`), que es tolerante y se queda
+ * con el trozo JSON, así que «Aplicar» sigue funcionando sin tocar la UI. El
+ * JSON ya parseado va además en `payload`, que es el camino directo.
+ */
+function localOutcome(payload: SuggestJSON | PlanJSON, ms: number, cause?: unknown): CoachOutcome {
+  const note = cause instanceof Error ? `IA no disponible: ${cause.message}` : '';
+  const text = [summarizeLocal(payload), note].filter((line) => line.trim() !== '').join('\n\n');
+  return {
+    text: `${text}\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``,
+    payload,
+    memoryAdded: [],
+    consulted: [],
+    ms,
+  };
+}
+
+/**
+ * JSON de `suggest`/`plan` ya parseado de la respuesta del modelo, con el mismo
+ * criterio que `payloadOf` de CoachView: si no parece una propuesta (o no es
+ * JSON), no hay payload y manda lo que la vista saque del texto.
+ */
+function extractPayload(task: CoachTask, text: string): unknown {
+  if (!isLocalTask(task)) return undefined;
+  let raw: unknown;
+  try {
+    raw = parseJSON<unknown>(text);
+  } catch {
+    return undefined;
+  }
+  if (!isPlain(raw)) return undefined;
+  const list = raw.exercises ?? raw.items ?? raw.days;
+  return Array.isArray(list) ? raw : undefined;
+}
+
 /* ---------- la tarea ---------- */
 
 /**
@@ -281,6 +389,11 @@ function genOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
  * Flujo: contexto → `buildRequest` → `generate` → (bucle de consultas) →
  * memoria → `CoachOutcome`. Las señales se leen al empezar, así que la tarea
  * entera trabaja contra una foto del estado.
+ *
+ * Sin API key no se llega a `buildRequest` en `suggest`/`plan`: el plan sale
+ * del dispositivo (`buildLocal`) y `generateFn` no se invoca ni siquiera
+ * mockeado. Con key, un fallo `auth`/`network`/`quota` en esas dos tareas cae
+ * en el mismo sitio (ver la cabecera del módulo).
  */
 export async function runCoachTask(
   task: CoachTask,
@@ -291,14 +404,29 @@ export async function runCoachTask(
   const t0 = clock();
   const st = settings.value;
   const ai = st.ai;
-  if (!String(ai.apiKey ?? '').trim()) {
-    throw new GeminiError('auth', 'Falta la API key de Gemini (Ajustes → Coach AI)');
-  }
+  const hasKey = String(ai.apiKey ?? '').trim() !== '';
 
-  /* 1 · contexto */
+  /* foto del estado para la tarea entera (la misma para el modelo y para el
+     planificador local, que se usa sin key o si la llamada falla) */
+  const snap: Omit<LocalParams, 'todayIso'> = {
+    settings: st,
+    exercises: exercises.value,
+    equipment: equipment.value,
+    sessions: sessions.value,
+  };
+
+  /* 1 · contexto (también lo necesita el plan local: la fecha de hoy) */
   const todayIso = iso(new Date(clock()));
   const from = startOfWeek(todayIso);
   const to = addDays(from, 6);
+
+  /* 0 · sin API key: NADA de red */
+  if (!hasKey) {
+    if (isLocalTask(task)) {
+      return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0);
+    }
+    return { text: NO_KEY_TEXT, memoryAdded: [], consulted: [], ms: clock() - t0 };
+  }
   const ctx = buildContext({
     settings: st,
     sessions: sessions.value,
@@ -334,7 +462,8 @@ export async function runCoachTask(
   const req = buildRequest(task, reqOpts);
   const base = genOptions(ai, req);
 
-  /* 3 · llamada (sin apiKey no se llega aquí) */
+  /* 3 · llamada (sin key no se llega aquí; el fallo de la PRIMERA llamada en
+     suggest/plan se resuelve con el plan local, ver cabecera del módulo) */
   const genFn: typeof generate = deps.generateFn ?? generate;
   const consultable = task === 'chat' || task === 'analyze';
   const rounds = consultable ? Math.max(0, int(opts.consultRounds ?? 1, 1)) : 0;
@@ -342,7 +471,15 @@ export async function runCoachTask(
 
   let prompt = req.prompt;
   let history: ChatMsg[] | undefined = req.history;
-  let res = await genFn({ ...base, ...(history?.length ? { history } : {}) });
+  let res: GenResult;
+  try {
+    res = await genFn({ ...base, ...(history?.length ? { history } : {}) });
+  } catch (err) {
+    if (isLocalTask(task) && isFallbackError(err)) {
+      return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0, err);
+    }
+    throw err;
+  }
   let text: string;
 
   /* 4 · bucle de consulta: el MISMO system, historial acumulado */
@@ -393,6 +530,7 @@ export async function runCoachTask(
 
   return {
     text: clean.trim(),
+    payload: extractPayload(task, clean),
     thoughts: res.thoughts,
     finish: res.finish,
     usage: res.usage,
@@ -405,7 +543,8 @@ export async function runCoachTask(
 /* ---------- aplicar resultados ---------- */
 
 /**
- * Convierte una sugerencia del coach en una rutina guardada (`source: 'ia'`).
+ * Convierte una sugerencia del coach en una rutina guardada (`source: 'ia'`, o
+ * `'generador'` cuando la propuesta vino del planificador local).
  *
  * Valida `{title, focus?, rationale?, source?, notes?, exercises|items:[…]}`,
  * resuelve cada `name` contra la biblioteca (los que no resuelvan se omiten) y
@@ -423,7 +562,7 @@ export function applySuggestionAsRoutine(sug: unknown): Routine | null {
   const items = resolveItems(list);
   if (!items.length) return null;
 
-  const source = firstString(sug, ['source']) || 'ia';
+  const source = routineSource(firstString(sug, ['source']));
   const focus = firstString(sug, ['focus']);
   const rationale = rationaleText(sug.rationale);
   const notes = joinNotes(firstString(sug, ['notes']), rationale);
@@ -439,8 +578,9 @@ export function applySuggestionAsRoutine(sug: unknown): Routine | null {
 /**
  * Aplica un plan semanal del coach: cada día apunta el calendario
  * (`status: 'rest'` para `descanso`, `'planned'` para el resto, como la v1) y,
- * si el día trae ejercicios reconocibles, se crea su rutina (`source: 'ia'`,
- * nombre `título · fecha`) y se enlaza con `routineId`.
+ * si el día trae ejercicios reconocibles, se crea su rutina (`source: 'ia'` o
+ * `'generador'` para el plan local, nombre `título · fecha`) y se enlaza con
+ * `routineId`.
  *
  * Devuelve cuántos días se escribieron y cuántas rutinas se crearon; un plan
  * sin `days` no toca nada ni siquiera `meta`.
@@ -476,7 +616,7 @@ export function applyWeek(plan: unknown): { days: number; routines: number } {
       const routine = addRoutine({
         name: `${title} · ${dateLabel(dayIso, 'medium')}`,
         focus,
-        source,
+        source: routineSource(source),
         notes: `Plan semanal (${source})`,
         items,
       });

@@ -197,3 +197,12 @@ export function fromPersisted(value: unknown, now: number): RestState {
 /** Texto del aviso de fin: a qué vas, no a qué acabas de ir. */
 export const restNoticeBody = (label: string): string =>
   label ? `Siguiente serie: ${trunc(label, 40)}` : 'Siguiente serie cuando estés listo';
+
+/**
+ * Título del aviso (la v1 lo tenía en `restTitle()` dentro de `trainer.js`). El
+ * `tag` va aquí también porque es parte del MISMO aviso: con el mismo tag el
+ * navegador sustituye la notificación anterior en vez de apilar dos.
+ */
+export const restNoticeTitle = 'Descanso terminado';
+
+export const REST_NOTICE_TAG = 'pulso-rest';

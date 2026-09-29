@@ -9,12 +9,14 @@
  * Nota: los ajustes SIN `onInput` se guardan al perder el foco (su `onChange` de
  * Preact es el evento `change` del navegador), igual que hacía la v1.
  */
+import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 
 import { EQUIPMENT } from '@/domain/catalog';
 import {
   ACCENTS,
   AI_MODELS,
+  EXERCISE_TYPES,
   GOALS,
   GOAL_REPS,
   GOAL_REST,
@@ -30,25 +32,35 @@ import {
   isAvailable,
   missingEquipment,
 } from '@/domain/data';
-import { fmtN } from '@/domain/format';
+import { draftFrom, toExercise } from '@/domain/exercise-draft';
+import type { ExerciseDraft } from '@/domain/exercise-draft';
+import { fmtN, inputNum } from '@/domain/format';
 import { maxLoadable, solvePlates } from '@/domain/plates';
-import type { EquipmentItem, Exercise, PlateStock, Theme, Unit } from '@/domain/types';
+import type { EquipmentItem, Exercise, ModelOption, PlateStock, Theme, Unit } from '@/domain/types';
 import { fromKg } from '@/domain/units';
 import { go } from '@/app/router';
-import { applyTheme } from '@/platform/theme';
+import { listModels, testConnection } from '@/features/coach/client';
+import { DEFAULT_SYSTEM } from '@/features/coach/prompts';
+import { copyText } from '@/platform/clipboard';
 import { downloadJSON, pickTextFile } from '@/platform/files';
+import { requestNotifyPermission } from '@/platform/notify';
+import { applyTheme } from '@/platform/theme';
 import {
   addPlate,
   applyEquipment,
   bulkSetAllowed,
+  clearDemo,
+  demoData,
   equipment,
   exercises,
   exportState,
   importState,
   looksLikeState,
   patchSettings,
+  removeExercise,
   removePlate,
   resetAll,
+  saveExercise,
   sessions,
   setSettingsPath,
   settings,
@@ -68,6 +80,7 @@ import {
   SwitchRow,
   TextRow,
 } from '@/ui/kit';
+import { toast } from '@/ui/toast';
 
 const SUBS = [
   { key: 'perfil', label: 'Perfil', icon: 'user' },
@@ -81,6 +94,48 @@ const SUBS = [
 ] as const;
 
 type SubKey = (typeof SUBS)[number]['key'];
+
+/**
+ * Carcasa de los tres modales de Ajustes (`modal-scrim`/`modal` de `base.css`):
+ * se cierra tocando fuera del recuadro y siempre con Escape/la X, nunca con
+ * botones del propio form dentro de `modal-body`.
+ */
+function Modal({
+  title,
+  sub,
+  onClose,
+  children,
+  foot,
+}: {
+  title: string;
+  sub?: string;
+  onClose: () => void;
+  children: ComponentChildren;
+  foot: ComponentChildren;
+}) {
+  return (
+    <div
+      class="modal-scrim"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
+        <div class="modal-head">
+          <div>
+            <div class="h3">{title}</div>
+            {sub ? <div class="tiny muted">{sub}</div> : null}
+          </div>
+          <button type="button" class="icon-btn" aria-label="Cerrar" onClick={onClose}>
+            <Icon name="x" />
+          </button>
+        </div>
+        <div class="modal-body">{children}</div>
+        <div class="modal-foot">{foot}</div>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- perfil ---------- */
 
@@ -127,7 +182,16 @@ function SecPerfil() {
             { value: 'kg', label: 'Kilogramos (kg)' },
             { value: 'lb', label: 'Libras (lb)' },
           ]}
-          onChange={(u) => setSettingsPath('units', u)}
+          onChange={(u) => {
+            if (u === st.units) return;
+            setSettingsPath('units', u);
+            /* igual que la v1 (app.js:199): cambiar la unidad no convierte nada,
+               los discos del inventario pasan a leerse en la nueva */
+            toast('Los discos del inventario se interpretan en la unidad elegida', {
+              kind: 'warn',
+              ms: 5000,
+            });
+          }}
         />
       </div>
       <InfoCard>
@@ -214,7 +278,19 @@ function SecApariencia() {
           label="Notificaciones del sistema"
           hint="Aviso al terminar el descanso (llega con el bloque PWA)"
           value={st.notify}
-          onChange={(v) => setSettingsPath('notify', v)}
+          onChange={(v) => {
+            setSettingsPath('notify', v);
+            /* solo al ACTIVAR (la v1 callaba al desactivar); tiene que ser dentro
+               del propio click: Safari iOS no deja pedirlo fuera de un gesto */
+            if (!v) return;
+            const state = requestNotifyPermission();
+            if (state === 'denied') {
+              toast('Permiso de notificaciones bloqueado en el navegador', {
+                kind: 'warn',
+                ms: 5000,
+              });
+            }
+          }}
         />
         <SwitchRow
           label="Mantener la sesión despierta"
@@ -506,9 +582,25 @@ function SecEjercicios() {
   const [q, setQ] = useState('');
   const [group, setGroup] = useState('');
   const [state, setState] = useState('all');
+  /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
+  const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
   const list = exercises.value;
   const blocked = list.filter((e) => !e.allowed).length;
   const usable = list.filter((e) => e.allowed && isAvailable(e, equipment.value));
+
+  /* Los de la biblioteca no se borran: `removeExercise` devuelve `false` y aquí
+     se avisa (en la v1 lo hacía el toast del store). */
+  const confirmDelete = (ex: Exercise): void => {
+    if (!window.confirm(`¿Eliminar «${ex.name}» de tu biblioteca personal?`)) return;
+    if (removeExercise(ex.id)) {
+      toast('Ejercicio eliminado', { kind: 'ok' });
+      return;
+    }
+    toast('Solo puedes eliminar ejercicios propios; los de la biblioteca puedes desactivarlos', {
+      kind: 'warn',
+      ms: 5000,
+    });
+  };
 
   const norm = (s: string) =>
     s
@@ -569,6 +661,10 @@ function SecEjercicios() {
           </select>
         </div>
         <div class="row mt-s" style="gap:8px">
+          <button type="button" class="btn sm" onClick={() => setEditor('new')}>
+            <Icon name="plus" />
+            Añadir propio
+          </button>
           <button
             type="button"
             class="btn sm ghost"
@@ -613,20 +709,204 @@ function SecEjercicios() {
       </div>
       <div class="card flush mt">
         {filtered.length ? (
-          filtered.map((e) => <ExerciseRow key={e.id} ex={e} />)
+          filtered.map((e) => (
+            <ExerciseRow
+              key={e.id}
+              ex={e}
+              onEdit={() => setEditor(e)}
+              onDelete={() => confirmDelete(e)}
+            />
+          ))
         ) : (
           <div class="empty">Sin resultados con estos filtros</div>
         )}
       </div>
       <InfoCard>
-        El editor de ejercicios propios (crear, editar y borrar) llega con el bloque de modales; por
-        ahora se permite o se prohíbe cualquier ejercicio de la biblioteca.
+        Los ejercicios del catálogo solo se permiten o se prohíben (si los editaras, la biblioteca
+        se restauraría al recargar). <b>Crear, editar y borrar</b> vale para los <b>propios</b>: usa
+        «Añadir propio» o el lápiz de los que lleven la insignia «propio».
       </InfoCard>
+      {editor === null ? null : (
+        <ExerciseEditor
+          current={editor === 'new' ? null : editor}
+          onClose={() => setEditor(null)}
+        />
+      )}
     </>
   );
 }
 
-function ExerciseRow({ ex }: { ex: Exercise }) {
+/**
+ * Modal de «Nuevo ejercicio» / «Editar ejercicio»: form con estado propio
+ * (`useState`), sin bloque de modales compartido, y con la validación en
+ * `domain/exercise-draft.ts` — aquí solo se pinta y se llamó a `saveExercise`.
+ *
+ * Ojo: los materiales se exponen como CLAVE SIMPLE (como en la v1): escribir un
+ * `equip` compuesto perdería la parte `a&b|c` del ejercicio editado. Por eso el
+ * editor solo se abre para ejercicios propios.
+ */
+function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClose: () => void }) {
+  const [draft, setDraft] = useState<ExerciseDraft>(() => draftFrom(current));
+  const [error, setError] = useState('');
+
+  function set<K extends keyof ExerciseDraft>(key: K, value: ExerciseDraft[K]): void {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setNum(key: 'sets' | 'rest' | 'repMin' | 'repMax', raw: string): void {
+    const value = Number(raw);
+    setDraft((prev) => {
+      const next = { ...prev, [key]: Number.isFinite(value) ? value : prev[key] };
+      /* la v1 igualaba repMax al subir repMin (escuchaba el change de repMin) */
+      if (key === 'repMin' && next.repMax < next.repMin) next.repMax = next.repMin;
+      return next;
+    });
+  }
+
+  const save = (): void => {
+    const built = toExercise(draft, {
+      taken: exercises.value.map((e) => e.id),
+      ...(current ? { currentId: current.id } : {}),
+    });
+    if (!built.ok) {
+      setError(built.error);
+      return;
+    }
+    saveExercise(built.value);
+    toast(current ? 'Ejercicio actualizado' : 'Ejercicio añadido', { kind: 'ok' });
+    onClose();
+  };
+
+  const numRow = (
+    label: string,
+    key: 'sets' | 'rest' | 'repMin' | 'repMax',
+    opts: { min: number; max: number; step?: number },
+  ) => (
+    <label class="field">
+      <span class="label">{label}</span>
+      <input
+        class="input num"
+        type="number"
+        min={opts.min}
+        max={opts.max}
+        step={opts.step ?? 1}
+        value={inputNum(draft[key])}
+        onChange={(e) => setNum(key, e.currentTarget.value)}
+      />
+    </label>
+  );
+
+  return (
+    <Modal
+      title={current ? 'Editar ejercicio' : 'Nuevo ejercicio'}
+      sub={current ? current.name : 'Se guardará como propio'}
+      onClose={onClose}
+      foot={
+        <>
+          <button type="button" class="btn ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" class="btn primary" onClick={save}>
+            Guardar
+          </button>
+        </>
+      }
+    >
+      <div class="col" style="gap:11px">
+        <label class="field">
+          <span class="label">Nombre</span>
+          <input
+            class="input"
+            placeholder="Ej. Remo en polea alta"
+            value={draft.name}
+            onChange={(e) => set('name', e.currentTarget.value)}
+          />
+        </label>
+        <div class="grid c2">
+          <label class="field">
+            <span class="label">Grupo muscular</span>
+            <select
+              class="select"
+              value={draft.group}
+              onChange={(e) => set('group', e.currentTarget.value)}
+            >
+              {GROUPS.map((g) => (
+                <option key={g.key} value={g.key}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">Tipo</span>
+            <select
+              class="select"
+              value={draft.type}
+              onChange={(e) => set('type', e.currentTarget.value as Exercise['type'])}
+            >
+              {EXERCISE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          <span class="label">Material necesario</span>
+          <select
+            class="select"
+            value={draft.equip}
+            onChange={(e) => set('equip', e.currentTarget.value)}
+          >
+            <option value="">Ninguno (peso corporal)</option>
+            {EQUIPMENT.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <span class="sub">
+            Si el ejercicio requiere material, quedará excluido cuando no lo tengas activo.
+          </span>
+        </label>
+        <div class="grid c2">
+          {numRow('Series', 'sets', { min: 1, max: 12 })}
+          {numRow('Descanso (s)', 'rest', { min: 0, max: 600, step: 15 })}
+          {numRow('Rep min', 'repMin', { min: 1, max: 100 })}
+          {numRow('Rep max', 'repMax', { min: 1, max: 100 })}
+        </div>
+        <label class="switch" style="justify-content:space-between">
+          <span>Permitido en sugerencias</span>
+          <input
+            type="checkbox"
+            checked={draft.allowed}
+            onChange={(e) => set('allowed', e.currentTarget.checked)}
+          />
+          <span class="track">
+            <span class="thumb" />
+          </span>
+        </label>
+        {error ? <div class="tiny danger">{error}</div> : null}
+        <div class="tiny muted">
+          {current
+            ? 'El id no cambia aunque renombres: rutinas y sesiones lo referencian.'
+            : 'Los ejercicios propios se pueden editar y borrar cuando quieras.'}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ExerciseRow({
+  ex,
+  onEdit,
+  onDelete,
+}: {
+  ex: Exercise;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const missing = missingEquipment(ex, equipment.value);
   return (
     <div class="ex-pick" style={ex.allowed ? '' : 'opacity:.55'}>
@@ -654,6 +934,16 @@ function ExerciseRow({ ex }: { ex: Exercise }) {
       >
         {ex.allowed ? 'permitido' : 'prohibido'}
       </button>
+      {ex.custom ? (
+        <>
+          <button type="button" class="icon-btn" title="Editar" onClick={onEdit}>
+            <Icon name="pencil" />
+          </button>
+          <button type="button" class="icon-btn" title="Eliminar" onClick={onDelete}>
+            <Icon name="trash" />
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -663,11 +953,90 @@ function ExerciseRow({ ex }: { ex: Exercise }) {
 function SecCoach() {
   const ai = settings.value.ai;
   const [showKey, setShowKey] = useState(false);
+  /* Lista de `GET /models`: vacía (o caída) ⇒ manda el catálogo `AI_MODELS` */
+  const [remote, setRemote] = useState<ModelOption[]>([]);
+  const [busy, setBusy] = useState<'' | 'test' | 'models'>('');
+  const [connErr, setConnErr] = useState<{ auth: boolean; detail: string } | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
   const key = ai.apiKey ?? '';
   const masked = key ? `${key.slice(0, 6)}…${key.slice(-4)}` : '';
-  const models = AI_MODELS.some((m) => m.id === ai.model)
-    ? AI_MODELS
-    : [...AI_MODELS, { id: ai.model, label: ai.model, hint: 'personalizado' }];
+
+  /* Decisión híbrida de la v1 (`V.models`): catálogo remoto si lo hay, si no el
+     estático; el modelo actual entra aunque no esté en ninguno («personalizado»)
+     y todo ordenado por id. */
+  const models: ModelOption[] = [...(remote.length ? remote : AI_MODELS)];
+  if (!models.some((m) => m.id === ai.model)) {
+    models.push({ id: ai.model, label: ai.model, hint: 'personalizado' });
+  }
+  models.sort((a, b) => (a.id < b.id ? -1 : 1));
+
+  /* «Probar conexión»: spinner mientras va y, si falla, el modal con las
+     pistas de la v1 — con la key mala el título es el de `kind === 'auth'`. */
+  const runTest = async (): Promise<void> => {
+    if (busy) return;
+    if (!key) {
+      toast('Añade primero la API key', { kind: 'warn' });
+      return;
+    }
+    setBusy('test');
+    const spin = toast(`Probando ${ai.model}…`, { loading: true, sticky: true });
+    const res = await testConnection(key, ai.model);
+    spin.close();
+    setBusy('');
+    if (res.ok) {
+      toast(`Conexión correcta (${(res.ms / 1000).toFixed(1)}s) · ${ai.model}`, {
+        kind: 'ok',
+        ms: 4000,
+      });
+      return;
+    }
+    setConnErr({ auth: res.kind === 'auth', detail: res.detail });
+  };
+
+  /* «Cargar modelos»: si falla (sin red, 403, 429…) se queda el catálogo. */
+  const runListModels = async (): Promise<void> => {
+    if (busy) return;
+    if (!key) {
+      toast('Añade primero la API key', { kind: 'warn' });
+      return;
+    }
+    setBusy('models');
+    const spin = toast('Consultando modelos disponibles…', { loading: true, sticky: true });
+    try {
+      const list = await listModels(key);
+      setRemote(list);
+      toast(`${list.length} modelos con generateContent`, { kind: 'ok' });
+    } catch (err) {
+      toast(`No se pudieron cargar: ${err instanceof Error ? err.message : String(err)}`, {
+        kind: 'err',
+        ms: 7000,
+      });
+    } finally {
+      spin.close();
+      setBusy('');
+    }
+  };
+
+  /* Lo que se manda de verdad: el guardado o, vacío, el de fábrica. */
+  const activePrompt = (): string => (ai.systemPrompt ?? '').trim() || DEFAULT_SYSTEM;
+
+  const copyPrompt = async (): Promise<void> => {
+    const ok = await copyText(activePrompt());
+    toast(ok ? 'Prompt copiado al portapapeles' : 'No se pudo copiar el prompt', {
+      kind: ok ? 'ok' : 'err',
+      ms: ok ? 3000 : 6000,
+    });
+  };
+
+  const restorePrompt = (): void => {
+    if ((ai.systemPrompt ?? '') === '') {
+      toast('Ya estaba el prompt por defecto de Pulso', { kind: 'warn' });
+      return;
+    }
+    setSettingsPath('ai.systemPrompt', '');
+    toast('Prompt por defecto de Pulso restaurado', { kind: 'ok' });
+  };
+
   return (
     <>
       <div class="card">
@@ -697,6 +1066,24 @@ function SecCoach() {
           </button>
         </div>
         <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
+          <button
+            type="button"
+            class="btn sm"
+            disabled={busy !== ''}
+            onClick={() => void runTest()}
+          >
+            <Icon name="zap" />
+            {busy === 'test' ? 'Probando…' : 'Probar conexión'}
+          </button>
+          <button
+            type="button"
+            class="btn sm ghost"
+            disabled={busy !== ''}
+            onClick={() => void runListModels()}
+          >
+            <Icon name="refresh" />
+            {busy === 'models' ? 'Cargando…' : 'Cargar modelos'}
+          </button>
           <a
             class="btn sm quiet"
             href="https://aistudio.google.com/apikey"
@@ -777,6 +1164,24 @@ function SecCoach() {
             onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
           />
         </label>
+        <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn sm" onClick={() => setShowPrompt(true)}>
+            <Icon name="eye" />
+            Ver prompt activo
+          </button>
+          <button type="button" class="btn sm ghost" onClick={() => void copyPrompt()}>
+            <Icon name="copy" />
+            Copiar prompt
+          </button>
+          <button type="button" class="btn sm ghost" onClick={restorePrompt}>
+            <Icon name="refresh" />
+            Restaurar por defecto
+          </button>
+        </div>
+        <p class="sub mt-s">
+          Se guarda al perder el foco. Vacío = se usa el de fábrica, y ahí no se escribe nunca desde
+          Ajustes: lo resuelve el cliente al generar la petición.
+        </p>
       </div>
       <InfoCard>
         El coach recibe tu perfil, equipamiento, inventario, ejercicios permitidos e historial
@@ -784,20 +1189,126 @@ function SecCoach() {
         <b>el cliente de Gemini llega con el bloque del Coach</b> (pestaña Coach, plan semanal y
         análisis).
       </InfoCard>
+      {connErr ? (
+        <ConnErrModal
+          auth={connErr.auth}
+          detail={connErr.detail}
+          onClose={() => setConnErr(null)}
+        />
+      ) : null}
+      {showPrompt ? (
+        <PromptModal value={ai.systemPrompt ?? ''} onClose={() => setShowPrompt(false)} />
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Modal de fallo de «Probar conexión»: con la key mala usa el título de la v1
+ * (`errAuth`) y siempre muestra el detalle crudo de `fetch`.
+ */
+function ConnErrModal({
+  auth,
+  detail,
+  onClose,
+}: {
+  auth: boolean;
+  detail: string;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      title={auth ? 'API key no válida' : 'No se pudo probar la conexión'}
+      sub="El modelo no ha respondido"
+      onClose={onClose}
+      foot={
+        <button type="button" class="btn primary" onClick={onClose}>
+          Entendido
+        </button>
+      }
+    >
+      <div class="card tight" style="border-color:var(--danger)">
+        <div class="tiny danger" style="white-space:pre-wrap">
+          {detail}
+        </div>
+      </div>
+      <div class="tiny muted mt-s">
+        Comprueba que la key es válida y del proyecto correcto, que el modelo existe para tu cuenta
+        y que hay conexión a internet. La API de Gemini no necesita CORS especial: puedes usarla
+        abriendo el archivo en local.
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Modal «Ver prompt activo»: abre con lo que se manda de verdad
+ * (`systemPrompt.trim() || DEFAULT_SYSTEM`) y es editable; al perder el foco ya
+ * ha quedado guardado, igual que el textarea de la tarjeta.
+ */
+function PromptModal({ value, onClose }: { value: string; onClose: () => void }) {
+  const [text, setText] = useState(() => value.trim() || DEFAULT_SYSTEM);
+
+  const apply = (next: string): void => {
+    setText(next);
+    setSettingsPath('ai.systemPrompt', next);
+  };
+
+  const copy = async (): Promise<void> => {
+    const ok = await copyText(text);
+    toast(ok ? 'Prompt copiado al portapapeles' : 'No se pudo copiar el prompt', {
+      kind: ok ? 'ok' : 'err',
+      ms: ok ? 3000 : 6000,
+    });
+  };
+
+  return (
+    <Modal
+      title="Instrucciones del sistema"
+      sub="systemInstruction que recibe Gemini"
+      onClose={onClose}
+      foot={
+        <>
+          <button type="button" class="btn ghost" onClick={onClose}>
+            Cerrar
+          </button>
+          <button type="button" class="btn primary" onClick={() => void copy()}>
+            <Icon name="copy" />
+            Copiar
+          </button>
+        </>
+      }
+    >
+      <textarea
+        class="input"
+        style="min-height:240px"
+        value={text}
+        onChange={(e) => apply(e.currentTarget.value)}
+      />
+      <div class="tiny muted mt-s">
+        Dejarlo vacío = vuelve al prompt por defecto de Pulso en la siguiente petición.
+      </div>
+    </Modal>
   );
 }
 
 /* ---------- datos ---------- */
 
+/** Cuánto trae un array importado (`routines` es `unknown` en el estado). */
+function countOf(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 function SecDatos() {
   const [msg, setMsg] = useState('');
   const sess = sessions.value.length;
+  /* las de ejemplo llevan `demo: true` (mismo selector que `clearDemo`) */
+  const demo = sessions.value.filter((s) => s.demo === true).length;
   const kb = Math.round(storageBytes() / 1024);
   return (
     <>
       <div class="grid c2">
-        <Kpi label="Sesiones" value={sess} delta="guardadas" />
+        <Kpi label="Sesiones" value={sess} delta={demo ? `${demo} de ejemplo` : 'guardadas'} />
         <Kpi
           label="Almacenamiento"
           value={fmtN(kb)}
@@ -824,7 +1335,8 @@ function SecDatos() {
           title="Exportar copia de seguridad"
           sub="JSON con ajustes, equipo, rutinas, sesiones y calendario"
           onClick={() => {
-            downloadJSON(exportState());
+            /* mismo prefijo que la v1 (`pulso-backup-<fecha>.json`) */
+            downloadJSON(exportState(), 'pulso-backup');
             setMsg('Copia descargada.');
           }}
         />
@@ -835,18 +1347,53 @@ function SecDatos() {
           onClick={() => {
             void pickTextFile().then((text) => {
               if (text === null) return;
+              /* igual que la v1 (`views-settings.js`): se confirma ANTES de pisar nada */
+              if (
+                !window.confirm('Se reemplazarán todos los datos actuales por los del archivo.')
+              ) {
+                return;
+              }
               try {
                 const raw: unknown = JSON.parse(text);
                 if (!looksLikeState(raw)) {
                   setMsg('Ese archivo no parece una copia de Pulso.');
                   return;
                 }
-                importState(raw);
-                setMsg('Copia importada. Los ajustes y las sesiones se han reemplazado.');
+                const next = importState(raw);
+                setMsg(
+                  `Importadas ${countOf(next.sessions)} sesiones y ${countOf(next.routines)} rutinas.`,
+                );
               } catch {
                 setMsg('No se pudo leer el archivo (¿JSON válido?).');
               }
             });
+          }}
+        />
+        <ListButton
+          icon="zap"
+          title="Cargar 8 semanas de ejemplo"
+          sub={
+            demo
+              ? `Ahora mismo hay ${demo} sesiones de ejemplo`
+              : 'Sesiones ficticias para ver las gráficas'
+          }
+          onClick={() => {
+            const n = demoData(8);
+            setMsg(
+              n
+                ? `Añadidas ${n} sesiones de ejemplo (se marcan como ejemplo y las puedes quitar).`
+                : 'No se pudo generar el ejemplo.',
+            );
+          }}
+        />
+        <ListButton
+          icon="trash"
+          title="Quitar datos de ejemplo"
+          sub="Deja solo tus sesiones reales"
+          onClick={() => {
+            if (!window.confirm('Se quitan solo las sesiones de ejemplo. ¿Seguro?')) return;
+            const n = clearDemo();
+            setMsg(n ? `Quitadas ${n} sesiones de ejemplo.` : 'No había sesiones de ejemplo.');
           }}
         />
         <ListButton

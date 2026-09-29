@@ -9,8 +9,14 @@
  * de una red caída.
  */
 
+import { trunc } from '@/domain/text';
+import type { ModelOption } from '@/domain/types';
+
 /** Modelo por defecto de la app (el mismo que en la v1). */
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
+
+/** Cuántos modelos se quedan como máximo al listar (`C.listModels` de la v1). */
+export const MODELS_LIMIT = 120;
 
 /** Mensaje ya mantenido con el modelo. El rol de Gemini es `model`, no `assistant`. */
 export interface ChatMsg {
@@ -433,13 +439,15 @@ export async function generate(o: GenOpts, fetchFn?: typeof fetch): Promise<GenR
 /**
  * Comprobación rápida de conexión: manda un prompt que solo se puede contestar
  * con "OK" y sin thinking para que sea barata. No lanza nunca: devuelve `ok` y,
- * si falla, el mensaje del error en `detail`.
+ * si falla, el mensaje del error en `detail` y su `kind` (`auth` = la key no
+ * vale o el modelo no está disponible para tu proyecto), para que la UI pueda
+ * abrir el aviso concreto en vez de un toast genérico.
  */
 export async function testConnection(
   apiKey: string,
   model: string,
   fetchFn?: typeof fetch,
-): Promise<{ ok: boolean; ms: number; detail: string }> {
+): Promise<{ ok: boolean; ms: number; detail: string; kind?: GeminiError['kind'] }> {
   const t0 = Date.now();
   try {
     const res = await generate(
@@ -462,6 +470,102 @@ export async function testConnection(
       ok: false,
       ms: Date.now() - t0,
       detail: err instanceof Error ? err.message : String(err),
+      kind: err instanceof GeminiError ? err.kind : undefined,
     };
   }
+}
+
+/** Respuesta de `GET /models`, leída campo a campo y de forma tolerante. */
+interface ModelsPage {
+  error?: ApiError;
+  models?: {
+    name?: string;
+    displayName?: string;
+    description?: string;
+    supportedGenerationMethods?: string[];
+  }[];
+  nextPageToken?: string;
+}
+
+/** Modelos que la v1 excluía del selector: no sirven para generar contenido. */
+const MODEL_EXCLUDE = /embedding|aqa|imagen|veo|tts|live/i;
+
+/**
+ * Modelos disponibles PARA TU proyecto: `GET /models` con la key en la
+ * cabecera `x-goog-api-key` (nunca en la URL, política de este módulo),
+ * paginando `nextPageToken` hasta `MODELS_LIMIT`, como `C.listModels` de la v1.
+ *
+ * Solo se quedan los que soportan `generateContent` y que no son de imagen,
+ * audio, vídeo ni embeddings. El listado NO consume cuota de `generateContent`
+ * (es una request HTTP más), pero sí necesita key y red: por eso, si esto
+ * falla o viene vacío, la UI sigue con el catálogo `AI_MODELS`.
+ *
+ * Lanza `GeminiError`: `auth` sin key o con 401/403, `quota` con 429, `http`
+ * para el resto de errores HTTP, `network` si no hay conexión y `empty` si la
+ * cuenta no devuelve ningún modelo utilizable. Con `fetchFn` mockeado (tests)
+ * no se espera entre páginas y no se toca la red.
+ */
+export async function listModels(apiKey: string, fetchFn?: typeof fetch): Promise<ModelOption[]> {
+  const key = String(apiKey ?? '').trim();
+  if (!key) throw new GeminiError('auth', 'Falta la API key de Gemini (Ajustes → Coach AI)');
+  const call: (url: string, init: RequestInit) => Promise<unknown> = fetchFn ?? fetch;
+
+  const out: ModelOption[] = [];
+  let token = '';
+  for (;;) {
+    const url = `${BASE}/models?pageSize=200${
+      token ? `&pageToken=${encodeURIComponent(token)}` : ''
+    }`;
+    let fetched: unknown;
+    try {
+      fetched = await call(url, { headers: { 'x-goog-api-key': key } });
+    } catch (err) {
+      throw networkError(err);
+    }
+
+    const res = fetched as LooseResponse;
+    const status = typeof res.status === 'number' ? res.status : undefined;
+    let data: unknown = null;
+    let raw = '';
+    try {
+      if (typeof res.text === 'function') raw = await res.text();
+      else if (typeof res.json === 'function') data = await res.json();
+    } catch (err) {
+      throw networkError(err);
+    }
+    if (raw.trim()) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new GeminiError('parse', fallbackMessage(status, raw));
+      }
+    }
+
+    const failed =
+      res.ok === false || (res.ok === undefined && status !== undefined && status >= 400);
+    if (failed) throw httpError(status, data, raw);
+    if (!data || typeof data !== 'object')
+      throw new GeminiError('empty', 'Respuesta vacía de la API');
+    const page = data as ModelsPage;
+    if (page.error) throw httpError(status, page, '');
+
+    for (const model of page.models ?? []) {
+      const id = String(model.name ?? '').replace(/^models\//, '');
+      if (!id || MODEL_EXCLUDE.test(id)) continue;
+      if (!(model.supportedGenerationMethods ?? []).includes('generateContent')) continue;
+      out.push({
+        id,
+        label: model.displayName || id,
+        hint: model.description ? trunc(model.description, 90) : '',
+      });
+      if (out.length >= MODELS_LIMIT) break;
+    }
+
+    token = String(page.nextPageToken ?? '');
+    if (!token || out.length >= MODELS_LIMIT) break;
+  }
+
+  if (!out.length)
+    throw new GeminiError('empty', 'La cuenta no devolvió modelos con generateContent');
+  return out;
 }

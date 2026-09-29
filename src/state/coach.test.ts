@@ -98,6 +98,13 @@ function makeGen(results: GenResult[]) {
   });
 }
 
+/** `generate` mockeado que FALLA con el `GeminiError` dado (para el fallback). */
+function makeFailing(err: GeminiError) {
+  return vi.fn((_opts: GenOpts, _fetchFn?: typeof fetch): Promise<GenResult> =>
+    Promise.reject(err),
+  );
+}
+
 beforeEach(() => {
   mem.clear();
   store.writeState(store.defaultState());
@@ -207,19 +214,103 @@ describe('runCoachTask', () => {
     expect(out.consulted).toEqual([]);
   });
 
-  it('sin apiKey → rechaza con GeminiError auth sin llamar a nadie', async () => {
+  it('sin apiKey → chat y analyze: aviso amable, SIN lanzar y sin llamar a nadie', async () => {
     store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: '   ' } });
     expect(coach.hasApiKey()).toBe(false);
     const gen = makeGen([res('nunca debería llegar')]);
 
-    const err = await coach
-      .runCoachTask('chat', { userText: 'hola' }, { generateFn: gen })
-      .catch((e: unknown) => e);
+    const chat = await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    const analyze = await coach.runCoachTask(
+      'analyze',
+      { userText: '¿cómo voy?' },
+      { generateFn: gen },
+    );
 
-    expect(err).toBeInstanceOf(GeminiError);
-    expect((err as GeminiError).kind).toBe('auth');
-    expect((err as GeminiError).message).toContain('Falta la API key');
+    for (const out of [chat, analyze]) {
+      expect(out.text).toContain('API key');
+      expect(out.text).toContain('Ajustes');
+      expect(out.payload).toBeUndefined();
+      expect(out.memoryAdded).toEqual([]);
+      expect(out.consulted).toEqual([]);
+      expect(out.ms).toBeGreaterThanOrEqual(0);
+    }
     expect(gen).not.toHaveBeenCalled();
+  });
+
+  it('sin apiKey → suggest y plan se resuelven en el dispositivo con payload aplicable', async () => {
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: '' } });
+    const gen = makeGen([res('{"title":"nunca","exercises":[]}')]);
+
+    const sug = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    expect(gen).not.toHaveBeenCalled();
+    expect(sug.payload).toBeTruthy();
+    const payloadSug = sug.payload as Record<string, unknown>;
+    expect(payloadSug.source).toBe('local');
+    expect(Array.isArray(payloadSug.exercises)).toBe(true);
+    expect((payloadSug.exercises as unknown[]).length).toBeGreaterThan(0);
+    expect(sug.text).toContain('```json');
+    expect(sug.text).toContain(payloadSug.title as string);
+
+    /* el mismo payload que ve la vista es el que se aplica */
+    const creada = coach.applySuggestionAsRoutine(sug.payload);
+    expect(creada).not.toBeNull();
+    expect(creada?.source).toBe('generador'); /* 'local' se guarda como 'generador' (v1) */
+    expect(creada?.items.length).toBeGreaterThan(0);
+
+    const plan = await coach.runCoachTask('plan', {}, { generateFn: gen });
+    expect(gen).not.toHaveBeenCalled();
+    const payloadPlan = plan.payload as { source: string; days: unknown[]; from: string };
+    expect(payloadPlan.source).toBe('local');
+    expect(payloadPlan.days).toHaveLength(7);
+    expect(payloadPlan.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const aplicado = coach.applyWeek(plan.payload);
+    expect(aplicado.days).toBe(7);
+    expect(aplicado.routines).toBeGreaterThan(0);
+    expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
+  });
+
+  it('con apiKey → suggest sigue yendo a la IA y el payload sale de su respuesta', async () => {
+    const gen = makeGen([
+      res(
+        '{"title":"Propuesta IA","focus":"Pecho","rationale":["por cierto"],' +
+          '"exercises":[{"name":"Press de banca con barra","sets":4,"repMin":6,"repMax":8,' +
+          '"weight":80,"rest":180,"notes":""}]}',
+      ),
+    ]);
+
+    const out = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+    expect(gen).toHaveBeenCalledTimes(1);
+    expect((out.payload as { title: string }).title).toBe('Propuesta IA');
+    expect(out.text).toBe(
+      '{"title":"Propuesta IA","focus":"Pecho","rationale":["por cierto"],' +
+        '"exercises":[{"name":"Press de banca con barra","sets":4,"repMin":6,"repMax":8,' +
+        '"weight":80,"rest":180,"notes":""}]}',
+    );
+  });
+
+  it('con apiKey pero fallo de auth/red/cuota en suggest → plan local, sin lanzar', async () => {
+    for (const kind of ['auth', 'network', 'quota'] as const) {
+      const gen = makeFailing(new GeminiError(kind, `se cayó ${kind}`));
+      const out = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+      expect(gen).toHaveBeenCalledTimes(1);
+      expect((out.payload as { source: string }).source).toBe('local');
+      expect(out.text).toContain('IA no disponible');
+      expect(out.text).toContain('```json');
+    }
+  });
+
+  it('con apiKey y un fallo que no compensa disfrazar → se propaga como antes', async () => {
+    const blocked = makeFailing(new GeminiError('blocked', 'respuesta bloqueada'));
+    await expect(coach.runCoachTask('suggest', {}, { generateFn: blocked })).rejects.toBeInstanceOf(
+      GeminiError,
+    );
+
+    const sinRed = makeFailing(new GeminiError('network', 'sin conexión'));
+    await expect(
+      coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: sinRed }),
+    ).rejects.toBeInstanceOf(GeminiError);
   });
 
   it('consultRounds: 0 → ni una segunda llamada y el bloque sale del texto', async () => {

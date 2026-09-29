@@ -17,10 +17,13 @@ import {
   blankSet,
   editSetField,
   elapsedSec,
+  entriesFromRoutine,
   finishSession,
   moveEntry,
   newEntry,
   nextLabel,
+  plateInitialWeight,
+  plateTarget,
   prefill,
   progress,
   propagateSet,
@@ -31,7 +34,7 @@ import {
   startSession,
   toggleSet,
 } from './session';
-import type { ActiveSession, Exercise, RoutineItem } from './types';
+import type { ActiveEntry, ActiveSession, Exercise, PlanItem, RoutineItem } from './types';
 
 /* ---------- datos de prueba ---------- */
 
@@ -235,6 +238,63 @@ describe('startSession', () => {
   it('un arranque manual no lleva plan', () => {
     expect(nuevaSesion().plan).toBeUndefined();
     expect(nuevaSesion({ exIds: ['press-banca'] }).plan).toBeUndefined();
+  });
+
+  /* El plan de Hoy (día con plan suelto, «repetición de …», sugerencia del coach)
+     trae reps concretas y `basis`: si `resolvePlan` los tira, la tarjeta de la
+     sesión no puede decir de dónde sale el peso (informe de I2). */
+
+  type PlanLine = PlanItem & { reps?: number; basis?: string; notes?: string };
+
+  it('el plan manda reps, basis y notas a la entrada y al snapshot', () => {
+    const line: PlanLine = {
+      exId: 'press-banca',
+      sets: 3,
+      reps: 5,
+      weight: 100,
+      basis: 'repetición de 24 sep 2026',
+      notes: 'sin prisa',
+    };
+    const session = nuevaSesion({ exIds: undefined, suggest: conHistorial(80), plan: [line] });
+    const entry = session.entries[0];
+    expect(entry).toMatchObject({ basis: 'repetición de 24 sep 2026', notes: 'sin prisa' });
+    expect(entry?.sets.map((s) => s.reps)).toEqual([5, 5, 5]);
+    expect(entry?.sets.map((s) => s.weight)).toEqual([100, 100, 100]);
+    expect(session.plan?.[0]).toMatchObject({
+      exId: 'press-banca',
+      reps: 5,
+      basis: 'repetición de 24 sep 2026',
+      notes: 'sin prisa',
+    });
+  });
+
+  it('sin basis en el plan se queda el de la sugerencia y las reps son la media', () => {
+    const session = nuevaSesion({
+      exIds: undefined,
+      suggest: conHistorial(80),
+      plan: [{ name: 'Press de banca', sets: 2 }],
+    });
+    const entry = session.entries[0];
+    expect(entry?.basis).toBe('última vez 60 kg × 8 · hace 3 días');
+    /* press-banca: repMin 8 + repMax 12 → 10, aunque la sugerencia diga 8 */
+    expect(entry?.sets.map((s) => s.reps)).toEqual([10, 10]);
+    expect(entry?.sets.map((s) => s.weight)).toEqual([80, 80]);
+    /* sin `basis` en el plan no se inventa ninguno en el snapshot */
+    expect(session.plan?.[0]).toEqual({ exId: 'press-banca', sets: 2 });
+  });
+
+  it('la sugerencia se pide con las reps de la prescripción (v1 T.prefill)', () => {
+    const seen: (number | undefined)[] = [];
+    const conReps: PlanLine = { name: 'Press de banca', sets: 2, reps: 6 };
+    nuevaSesion({
+      exIds: undefined,
+      suggest: (_exId, reps) => {
+        seen.push(reps);
+        return sinHistorial();
+      },
+      plan: [conReps],
+    });
+    expect(seen).toEqual([6]);
   });
 });
 
@@ -548,5 +608,125 @@ describe('finishSession', () => {
       restSec: 150,
       name: 'Press de banca',
     });
+  });
+});
+
+/* ---------- añadir a una sesión en curso ---------- */
+
+/** Entrada de prueba con los pesos y marcas que se le indiquen serie a serie. */
+function entrada(pesos: (number | '')[], done: boolean[] = []): ActiveEntry {
+  const base = newEntry({ exId: 'press-banca', library: BIBLIOTECA });
+  return {
+    ...base,
+    sets: pesos.map((weight, i) => ({ ...blankSet(), weight, done: done[i] ?? false })),
+  };
+}
+
+describe('entriesFromRoutine', () => {
+  it('salta lo que no está en la biblioteca y devuelve el orden de la rutina', () => {
+    const items: RoutineItem[] = [
+      { exId: 'press-banca', sets: 2 },
+      { exId: 'no-existe', sets: 3 },
+      { exId: 'sentadilla', sets: 2 },
+    ];
+    const entries = entriesFromRoutine({ items }, sinHistorial, BIBLIOTECA);
+    expect(entries.map((e) => e.exId)).toEqual(['press-banca', 'sentadilla']);
+    expect(entries[0]?.sets).toHaveLength(2);
+    expect(entries[1]?.sets).toHaveLength(2);
+  });
+
+  it('las reps de cada serie son la media de repMin/repMax (del item si viene)', () => {
+    const [press, sentadilla] = entriesFromRoutine(
+      { items: [{ exId: 'press-banca' }, { exId: 'sentadilla', repMin: 4, repMax: 8 }] },
+      sinHistorial,
+      BIBLIOTECA,
+    );
+    expect(press?.sets.every((s) => s.reps === 10)).toBe(true);
+    expect(sentadilla?.sets.every((s) => s.reps === 6)).toBe(true);
+  });
+
+  it('la sugerencia se pide con esas reps', () => {
+    const pedidas: [string, number][] = [];
+    entriesFromRoutine(
+      { items: [{ exId: 'press-banca' }] },
+      (exId, reps) => {
+        pedidas.push([exId, reps]);
+        return sinHistorial();
+      },
+      BIBLIOTECA,
+    );
+    expect(pedidas).toEqual([['press-banca', 10]]);
+  });
+
+  it('el peso del item manda sobre el historial y no queda como sugerido', () => {
+    const [conPeso] = entriesFromRoutine(
+      { items: [{ exId: 'press-banca', weight: 70 }] },
+      () => sugerencia(40),
+      BIBLIOTECA,
+    );
+    expect(conPeso?.sets[0]).toMatchObject({ weight: 70, suggested: false, reps: 10 });
+    const [sinPeso] = entriesFromRoutine(
+      { items: [{ exId: 'press-banca' }] },
+      () => sugerencia(40),
+      BIBLIOTECA,
+    );
+    expect(sinPeso?.sets[0]).toMatchObject({ weight: 40, suggested: true });
+  });
+
+  it('el descanso es el del item si trae uno, si no el del ejercicio', () => {
+    const entries = entriesFromRoutine(
+      { items: [{ exId: 'press-banca', rest: 60 }, { exId: 'sentadilla' }] },
+      sinHistorial,
+      BIBLIOTECA,
+    );
+    expect(entries[0]?.restSec).toBe(60);
+    expect(entries[1]?.restSec).toBe(240);
+  });
+
+  it('las notes del item viajan al ejercicio añadido', () => {
+    const [entry] = entriesFromRoutine(
+      { items: [{ exId: 'press-banca', notes: 'SUPERSERIE 1 (1/2)' }] },
+      sinHistorial,
+      BIBLIOTECA,
+    );
+    expect(entry?.notes).toBe('SUPERSERIE 1 (1/2)');
+  });
+});
+
+/* ---------- discos ---------- */
+
+describe('plateInitialWeight', () => {
+  it('coge el último peso distinto de cero, no el de la última serie', () => {
+    expect(plateInitialWeight(entrada([40, 45, '', '']))).toBe(45);
+    expect(plateInitialWeight(entrada([40, 0, 42.5]))).toBe(42.5);
+    expect(plateInitialWeight(entrada([40]))).toBe(40);
+  });
+
+  it('si no hay peso escrito, devuelve 0 (el modal abre en vacío)', () => {
+    expect(plateInitialWeight(entrada(['', '', '']))).toBe(0);
+    expect(plateInitialWeight(entrada([0, 0]))).toBe(0);
+  });
+});
+
+describe('plateTarget', () => {
+  it('escribe en la primera serie sin marcar y con el peso vacío', () => {
+    expect(plateTarget(entrada(['', '', '']))).toBe(0);
+    expect(plateTarget(entrada([50, '', '', '']))).toBe(1);
+    expect(plateTarget(entrada([50, 55, '', '']))).toBe(2);
+  });
+
+  it('una serie marcada no es destino aunque venga sin peso', () => {
+    expect(plateTarget(entrada(['', ''], [true, false]))).toBe(1);
+    expect(plateTarget(entrada(['', ''], [true, true]))).toBe(1);
+  });
+
+  it('si todas tienen peso, la última (el botón siempre hace algo)', () => {
+    expect(plateTarget(entrada([50, 55, 60, 65]))).toBe(3);
+  });
+
+  it('una entrada sin series devuelve -1', () => {
+    expect(
+      plateTarget({ ...newEntry({ exId: 'press-banca', library: BIBLIOTECA }), sets: [] }),
+    ).toBe(-1);
   });
 });

@@ -54,6 +54,7 @@ import {
   dayTypeLabel,
   monthDays,
   parsePlan,
+  restDayPatch,
   weekCounts,
 } from './calendar-helpers';
 import type { DayState, DayStatus, DayType, PlanResult } from './calendar-helpers';
@@ -116,7 +117,7 @@ function assignRoutine(iso: string, routineId: string): void {
 
 /** Marca el día como descanso: el título manda, la rutina asignada se conserva. */
 function markRest(iso: string): void {
-  setDay(iso, { status: 'rest', type: 'descanso', title: 'Descanso', source: 'manual' });
+  setDay(iso, restDayPatch());
 }
 
 function clearDay(iso: string): void {

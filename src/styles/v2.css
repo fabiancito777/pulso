@@ -31,6 +31,12 @@
   font-size: 17px;
 }
 
+/* Chip de racha (el #btn-streak de la v1): a la derecha de la marca, con el
+   mismo dato que Progreso y con el click que ya tenía en la v1. */
+.v2-streak {
+  margin-left: auto;
+}
+
 .v2-main {
   flex: 1;
   width: 100%;

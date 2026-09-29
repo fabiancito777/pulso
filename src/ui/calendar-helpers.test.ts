@@ -18,6 +18,7 @@ import {
   monthDays,
   normalizePlan,
   parsePlan,
+  restDayPatch,
   weekCounts,
 } from './calendar-helpers';
 
@@ -95,6 +96,25 @@ describe('limpiar un día', () => {
     expect(Object.keys(patch).sort()).toEqual(['routineId', 'source', 'status', 'title', 'type']);
     expect(Object.values(patch)).toEqual([undefined, undefined, undefined, undefined, undefined]);
     expect('sessionId' in patch).toBe(false);
+  });
+});
+
+describe('marcar un día como descanso', () => {
+  it('pone estado y tipo sin borrar campos (el merge conserva la rutina)', () => {
+    const patch = restDayPatch();
+    expect(patch.status).toBe('rest');
+    expect(patch.type).toBe('descanso');
+    expect(patch.title).toBe('Descanso');
+    /* el «Saltar» de Hoy y el del Calendario escriben exactamente este patch */
+    expect(patch).toEqual({
+      status: 'rest',
+      type: 'descanso',
+      title: 'Descanso',
+      source: 'manual',
+    });
+    /* nada de claves en undefined: como clearDayPatch borraría la rutina */
+    expect(Object.values(patch)).not.toContain(undefined);
+    expect('routineId' in patch).toBe(false);
   });
 });
 

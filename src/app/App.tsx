@@ -4,138 +4,24 @@
  * `legacy/` muestran el aviso de "pendiente" (flag `ported` del router), que es el
  * estado real de la migración y no un error de la app.
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useRef } from 'preact/hooks';
 
-import { ROADMAP, type PortState } from '@/app/roadmap';
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
-import { equipLabel, enabledEquipment, groupLabel, isAvailable } from '@/domain/data';
-import { customExercises } from '@/domain/library';
-import type { PlateModeKey } from '@/domain/types';
+import { totals } from '@/domain/analytics';
 import { applyTheme } from '@/platform/theme';
-import { active, startLoop } from '@/state/session';
-import {
-  equipment,
-  exercises,
-  rememberPlateMode,
-  settings,
-  storageAvailable,
-  TOOL_MODE_KEY,
-} from '@/state/store';
+import { active, rest, startLoop } from '@/state/session';
+import { sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
+import { HoyView } from '@/ui/HoyView';
 import { Icon } from '@/ui/Icon';
-import { Plates } from '@/ui/Plates';
+import { MigrationCards } from '@/ui/MigrationCards';
+import { PlatesCard } from '@/ui/PlatesCard';
 import { ProgressCard } from '@/ui/ProgressCard';
 import { RoutinesView } from '@/ui/RoutinesView';
 import { SessionCard } from '@/ui/SessionCard';
 import { SettingsView } from '@/ui/SettingsView';
 import { ProgressCharts } from '@/ui/charts';
-
-const STATE_LABEL: Record<PortState, string> = {
-  portado: 'portado',
-  'en curso': 'en curso',
-  pendiente: 'pendiente',
-};
-
-function LibraryCard() {
-  const all = exercises.value;
-  const equip = equipment.value;
-  const available = all.filter((ex) => isAvailable(ex, equip));
-  const enabled = enabledEquipment(equip);
-
-  return (
-    <section class="card">
-      <div class="row between mb-s">
-        <b>Biblioteca y material</b>
-        <span class="tiny muted">catálogo portado de la v1</span>
-      </div>
-      <div class="kv">
-        <span class="k">Ejercicios</span>
-        <span class="v">
-          {all.length} · {all.filter((e) => e.allowed).length} permitidos · {available.length}{' '}
-          disponibles
-        </span>
-      </div>
-      <div class="kv">
-        <span class="k">Propios</span>
-        <span class="v">{customExercises(all).length}</span>
-      </div>
-      <div class="kv">
-        <span class="k">Material activo</span>
-        <span class="v">{enabled.length} piezas</span>
-      </div>
-      <div class="tiny muted mt-s">
-        {enabled.length ? enabled.map((k) => equipLabel(k)).join(' · ') : 'ninguna pieza activada'}
-      </div>
-      <div class="tiny muted">
-        Ejemplo con tu material:{' '}
-        {available
-          .slice(0, 2)
-          .map((ex) => `${ex.name} (${groupLabel(ex.group)})`)
-          .join(' · ')}
-      </div>
-    </section>
-  );
-}
-
-/** La calculadora de discos con sus ajustes reales (recuerda el modo por herramienta). */
-function PlatesCard() {
-  const s = settings.value;
-  const [applied, setApplied] = useState<string | null>(null);
-  const mode = s.plateModes[TOOL_MODE_KEY] ?? 'bar';
-  return (
-    <section class="card">
-      <div class="row between mb-s">
-        <b>Calculadora de discos</b>
-        <span class="tiny muted">usa tus ajustes reales de la v1</span>
-      </div>
-      <Plates
-        plates={s.plates}
-        bars={s.bars}
-        unit={s.units}
-        initialMode={mode}
-        onModeChange={(m: PlateModeKey) => rememberPlateMode(TOOL_MODE_KEY, m)}
-        onUse={(kg) => setApplied(`${kg} ${s.units}`)}
-      />
-      {applied ? (
-        <div class="tiny ok mt-s">
-          Se aplicarían {applied} a la serie (aquí no hay sesión activa todavía).
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-/** Estado de la migración visible en la app (no sustituye a los tests, orienta). */
-function RoadmapCard() {
-  return (
-    <section class="card">
-      <div class="row between mb-s">
-        <b>Estado de la migración</b>
-        <span class="tiny muted">
-          {ROADMAP.filter((r) => r.state === 'portado').length} de {ROADMAP.length} bloques
-        </span>
-      </div>
-      <div class="rm">
-        {ROADMAP.map((item) => (
-          <div key={item.area} class="rm-row">
-            <span class={`rm-dot ${item.state === 'en curso' ? 'curso' : item.state}`} />
-            <div>
-              <div class="rm-head">
-                <b>{item.area}</b>
-                <span class="tiny muted">{STATE_LABEL[item.state]}</span>
-              </div>
-              <div class="tiny muted">
-                {item.v1} → {item.v2}
-              </div>
-              <div class="tiny muted">{item.note}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 /** Vistas que siguen en `legacy/`: el `ported: false` del router, explicado. */
 function PendingTab({ tab }: { tab: Tab }) {
@@ -171,6 +57,8 @@ function PendingTab({ tab }: { tab: Tab }) {
 function CurrentView({ tab }: { tab: Tab }) {
   if (!tab.ported) return <PendingTab tab={tab} />;
   switch (tab.key) {
+    case 'hoy':
+      return <HoyView />;
     case 'ajustes':
       return <SettingsView sub={route.value.sub} />;
     case 'progreso':
@@ -195,18 +83,7 @@ function CurrentView({ tab }: { tab: Tab }) {
     case 'coach':
       return <CoachView />;
     default:
-      return (
-        <>
-          <LibraryCard />
-          <RoadmapCard />
-          <section class="card tight">
-            <div class="tiny muted">
-              La v1 completa (HTML + JS vanilla) sigue congelada en <code>legacy/</code> y es la app
-              que corre en la rama <code>main</code>. Aquí se porta bloque a bloque.
-            </div>
-          </section>
-        </>
-      );
+      return <MigrationCards />;
   }
 }
 
@@ -214,9 +91,14 @@ export function App() {
   const s = settings.value;
   const bar = useRef<HTMLElement | null>(null);
   const current = TABS.find((t) => t.key === route.value.tab) ?? TABS[0];
-  /* La sesión y su descanso no se esconden al cambiar de pestaña (en la v1 la barra
-     de descanso era global); lo demás vive solo en su pestaña. */
-  const onTrainingTab = current.key === 'hoy' || current.key === 'entrenar';
+  const streak = totals(sessions.value).streak;
+  /* La sesión (y el descanso, que también puede ser el temporizador libre de Hoy)
+     no se esconden al cambiar de pestaña (en la v1 la barra de descanso era
+     global); el placeholder de "sin sesión" solo manda en Entrenar, porque en
+     Hoy el hero ya dice por dónde empezar (spec hoy.md, decisiones 6-7). Con
+     `rest.running` y sin sesión, `SessionCard` pinta el recuadro ÚNICO de
+     descanso (su rama `!session && resting`), nunca el placeholder. */
+  const showSession = current.key === 'entrenar' || active.value || rest.value.running;
 
   useEffect(() => applyTheme(s.theme, s.accent), [s.theme, s.accent]);
 
@@ -247,6 +129,15 @@ export function App() {
         <div class="v2-brand">
           <b>Pulso</b>
           <span class="badge">v2</span>
+          <button
+            type="button"
+            class="chip v2-streak"
+            title="Racha de entrenamiento"
+            onClick={() => go('progreso')}
+          >
+            <Icon name="fire" />
+            <span>{streak}</span>
+          </button>
         </div>
         <div class="tiny muted">Vite · TypeScript · Preact — migración en curso</div>
       </header>
@@ -260,7 +151,7 @@ export function App() {
           </div>
         ) : null}
 
-        {onTrainingTab || active.value ? <SessionCard /> : null}
+        {showSession ? <SessionCard /> : null}
 
         <CurrentView tab={current} />
       </main>

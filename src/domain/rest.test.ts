@@ -11,7 +11,9 @@ import {
   IDLE_REST,
   isOver,
   remainingSec,
+  REST_NOTICE_TAG,
   restNoticeBody,
+  restNoticeTitle,
   restView,
   startRest,
   stopRest,
@@ -198,5 +200,10 @@ describe('texto del aviso', () => {
 
   it('recorta los nombres larguísimos', () => {
     expect(restNoticeBody('x'.repeat(80))).toHaveLength('Siguiente serie: '.length + 40);
+  });
+
+  it('el título y la etiqueta son los de la v1 (una sola notificación viva)', () => {
+    expect(restNoticeTitle).toBe('Descanso terminado');
+    expect(REST_NOTICE_TAG).toBe('pulso-rest');
   });
 });

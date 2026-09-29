@@ -140,6 +140,17 @@ export function clearDayPatch(): Partial<ScheduleDay> {
   };
 }
 
+/**
+ * Patch que MARCA el día como descanso (el `cal:mark` de la v1 con `rest`,
+ * usado por el «Saltar» de Hoy y por `markRest` del Calendario).
+ *
+ * Como `setDay` hace merge y no borra claves, la rutina asignada se CONSERVA
+ * (igual que en la v1): el día queda en descanso pero se puede retomar después.
+ */
+export function restDayPatch(): Partial<ScheduleDay> {
+  return { status: 'rest', type: 'descanso', title: 'Descanso', source: 'manual' };
+}
+
 /* ---------- plan del coach IA ---------- */
 
 function isPlain(value: unknown): value is Record<string, unknown> {

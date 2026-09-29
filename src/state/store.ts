@@ -8,9 +8,12 @@
  */
 import { signal } from '@preact/signals';
 
-import { SEED_EXERCISES } from '@/domain/catalog';
+import { SEED_EXERCISES, TEMPLATES } from '@/domain/catalog';
 import { defaultEquipment, type EquipmentMap } from '@/domain/data';
+import { today } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
+import { demoSessions } from '@/domain/demo';
+import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
 import type {
@@ -412,25 +415,61 @@ export function bulkSetAllowed(ids: readonly string[], allowed: boolean): void {
   exercises.value = next;
 }
 
-/** Crea (o edita) un ejercicio propio. Devuelve el id final. */
-export function saveExercise(patch: Exercise): void {
-  const exists = exercises.value.some((e) => e.id === patch.id);
-  const next = exists
-    ? exercises.value.map((e) => (e.id === patch.id ? { ...patch, custom: true } : e))
-    : [...exercises.value, { ...patch, custom: true }];
+/**
+ * Crea (o edita) un ejercicio de la biblioteca y devuelve el registro guardado.
+ *
+ * La primera versión pedía el `id` ya montado y forzaba `custom: true` aunque
+ * el ejercicio viniera del catálogo; ahora:
+ * - el id lo GENERA aquí (`idFor`: slug del nombre y, si choca con el de la
+ *   semilla o de otro propio, `uid('ex')`) salvo que YA exista un registro con
+ *   ese id, que se conserva tal cual — rutinas y sesiones lo referencian;
+ * - el flag `custom` es el del registro existente (el de los nuevos es `true`),
+ *   así editar un ejercicio del catálogo no lo convierte en «propio»;
+ * - `tags` y `tips` se rellenan si no traen nada.
+ *
+ * Ojo: `mergeSeed` restaura nombre/grupo/material/tipo/rango de los que no son
+ * `custom`, así que un catálogo editado se revertiría al recargar — por eso el
+ * editor de Ajustes solo se abre para los propios.
+ */
+export function saveExercise(patch: Exercise): Exercise {
+  const current = exercises.value.find((e) => e.id === patch.id) ?? null;
+  const id =
+    current?.id ??
+    idFor(
+      patch.name,
+      exercises.value.map((e) => e.id),
+    );
+  const saved: Exercise = {
+    ...patch,
+    id,
+    custom: current ? current.custom : true,
+    tags: patch.tags ?? [],
+    tips: patch.tips ?? '',
+  };
+  const next = current
+    ? exercises.value.map((e) => (e.id === id ? saved : e))
+    : [...exercises.value, saved];
   const state = readState();
   state.exercises = next.filter((e) => e.custom || e.allowed === false);
   writeState(state);
   exercises.value = next;
+  return saved;
 }
 
-/** Borra un ejercicio propio. Los de biblioteca no se borran (se prohíben). */
-export function removeExercise(id: string): void {
+/**
+ * Borra un ejercicio. Los de la biblioteca NO se borran (la semilla los
+ * reharía en `refresh`): se devuelven `false`, como en la v1, y el aviso lo
+ * pinta la UI.
+ */
+export function removeExercise(id: string): boolean {
+  const current = exercises.value.find((e) => e.id === id);
+  if (!current || !current.custom) return false;
   const next = exercises.value.filter((e) => e.id !== id);
   const state = readState();
   state.exercises = next.filter((e) => e.custom || e.allowed === false);
   writeState(state);
   exercises.value = next;
+  return true;
 }
 
 /* ---------- datos (copia, importar, borrar) ---------- */
@@ -455,7 +494,8 @@ export function looksLikeState(value: unknown): boolean {
 /**
  * Reemplaza el estado entero (importación). Se conserva tal cual lo que traiga el
  * archivo, porque el formato es el mismo de la v1: importar una copia hecha en
- * `main` tiene que dejar los datos igual que allí.
+ * `main` tiene que dejar los datos igual que allí. Única excepción:
+ * `meta.onboarded = true` (lo que hacía la v1, `store.js:197`).
  */
 export function importState(raw: unknown): AppState {
   if (!looksLikeState(raw)) throw new Error('El archivo no parece una copia de Pulso');
@@ -465,6 +505,9 @@ export function importState(raw: unknown): AppState {
     version: STATE_VERSION,
     createdAt:
       typeof incoming.createdAt === 'string' ? incoming.createdAt : new Date().toISOString(),
+    /* igual que `S.importJSON` (store.js:197): importar una copia cuenta como
+       onboarding visto; las claves desconocidas de `meta` se conservan */
+    meta: { ...(isPlainObject(incoming.meta) ? incoming.meta : {}), onboarded: true },
   };
   writeState(next);
   refresh();
@@ -558,11 +601,14 @@ export function writeActive(next: ActiveSession | null): void {
  * `S.addSession` + `S.setDay(iso, {status:'done'})` en la v1, así que el calendario
  * de la rama `main` ve el día igual que si lo hubieras entrenado allí.
  */
+/** Misma ordenación que la v1: `startedAt` descendente (lo más reciente arriba). */
+function byStartedAtDesc(a: Session, b: Session): number {
+  return (a.startedAt ?? '') < (b.startedAt ?? '') ? 1 : -1;
+}
+
 export function commitSession(session: Session): void {
   const state = readState();
-  const all = [session, ...asSessions(state.sessions)].sort((a, b) =>
-    (a.startedAt ?? '') < (b.startedAt ?? '') ? 1 : -1,
-  );
+  const all = [session, ...asSessions(state.sessions)].sort(byStartedAtDesc);
   state.sessions = all;
   /* ojo: el nombre local no puede ser `schedule` (sombrería al signal homónimo) */
   const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
@@ -580,6 +626,64 @@ export function commitSession(session: Session): void {
   sessions.value = all;
   schedule.value = plan;
   active.value = null;
+}
+
+/* ---------- datos de ejemplo ---------- */
+
+/**
+ * Apila sesiones ya terminadas SIN tocar el calendario (a diferencia de
+ * `commitSession`, que marca el día como hecho): es la base de `demoData`.
+ * Devuelve el array completo, ya ordenado por `startedAt` descendente.
+ */
+export function appendSessions(list: readonly Session[]): Session[] {
+  const state = readState();
+  const current = asSessions(state.sessions);
+  if (!list.length) return current;
+  const all = [...list, ...current].sort(byStartedAtDesc);
+  state.sessions = all;
+  writeState(state);
+  sessions.value = all;
+  return all;
+}
+
+/**
+ * Crea `weeks` semanas de sesiones de ejemplo (8, como la v1) para ver las
+ * gráficas con contenido. Van al MISMO array que las reales —la analítica no
+ * las filtra, igual que en la v1— y no se deduplican: dos clics = doble sesión.
+ * Devuelve cuántas se han añadido.
+ */
+export function demoData(weeks = 8): number {
+  const state = readState();
+  const list = demoSessions({
+    weeks,
+    unit: state.settings.units,
+    exercises: exercises.value,
+    equipment: isPlainObject(state.equipment)
+      ? { ...(state.equipment as EquipmentMap) }
+      : defaultEquipment(),
+    sessions: asSessions(state.sessions),
+    todayIso: today(),
+    templates: TEMPLATES,
+  });
+  if (!list.length) return 0;
+  appendSessions(list);
+  return list.length;
+}
+
+/**
+ * Quita SOLO las sesiones de ejemplo (`demo: true`) y deja intactas las
+ * reales. Devuelve cuántas se han quitado.
+ */
+export function clearDemo(): number {
+  const state = readState();
+  const list = asSessions(state.sessions);
+  const kept = list.filter((s) => !s.demo);
+  const removed = list.length - kept.length;
+  if (!removed) return 0;
+  state.sessions = kept;
+  writeState(state);
+  sessions.value = kept;
+  return removed;
 }
 
 /* ---------- chat del coach ---------- */
