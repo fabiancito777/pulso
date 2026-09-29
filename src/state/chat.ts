@@ -14,8 +14,8 @@
  *   que en la v1. `reloadChat()` vuelve a leerla (montaje de la vista, import).
  * - **Markdown**: aquí en AST plano (`parseMd`/`mdInline`), no en HTML: la vista
  *   lo convierte en nodos de Preact y el texto del modelo queda escapado solo.
- *   Cubre lo que el coach usa de verdad (negritas, listas, código, títulos),
- *   sin librerías.
+ *   Cubre lo que el coach usa de verdad (negritas, listas, código, títulos,
+ *   tablas y enlaces automáticos), sin librerías.
  */
 import { signal } from '@preact/signals';
 
@@ -162,17 +162,51 @@ export function promptHistory(list: readonly ChatLine[] = chat.value): ChatMsg[]
 
 /* ---------- markdown mínimo ---------- */
 
-/** Trozo de línea: texto plano o un inline con formato. */
-export type MdSpan = { kind: 'text'; text: string } | { kind: 'b' | 'i' | 'code'; text: string };
+/** Trozo de línea: texto plano, un inline con formato o un enlace automático. */
+export type MdSpan =
+  | { kind: 'text'; text: string }
+  | { kind: 'b' | 'i' | 'code'; text: string }
+  /** URL detectada a pelo (el `<a target="_blank" rel="noopener">` de la v1) */
+  | { kind: 'a'; text: string; href: string };
 
-/** Bloque de mensaje: párrafo, título, lista o código cercillado. */
+/** Fila de tabla: una celda por columna, ya con su inline parseado. */
+export type MdRow = MdSpan[][];
+
+/** Bloque de mensaje: párrafo, título, lista, tabla o código cercillado. */
 export type MdBlock =
   | { kind: 'p' | 'h'; spans: MdSpan[] }
   | { kind: 'ul' | 'ol'; items: MdSpan[][] }
+  | { kind: 'table'; head: MdRow; rows: MdRow[] }
   | { kind: 'code'; text: string };
 
 /** `**negrita**`, `*cursiva*` y `` `código` `` (nada de HTML, nada de librerías). */
 const INLINE_RE = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
+
+/** URL a secas, el mismo patrón que enlazaba `U.md` de la v1 (`core.js:551`). */
+const URL_RE = /https?:\/\/[^\s<]+/g;
+
+/**
+ * Trocea texto plano en (texto · enlace · texto…): lo que hacía la v1 con un
+ * `replace` sobre el HTML escrito, aquí como spans para que la vista pinte
+ * `<a href target="_blank" rel="noopener">` sin innerHTML por medio.
+ *
+ * Solo se aplica a texto PLANO: una URL entre `` ` `` se queda literal (mejor
+ * que en la v1, que enlazaba hasta dentro del código) y una entre `**` o `*`
+ * se queda en negrita/cursiva sin enlazar, que es el precio de no rehacer el
+ * formato inline por dentro.
+ */
+function linkify(text: string): MdSpan[] {
+  const out: MdSpan[] = [];
+  let from = 0;
+  for (const hit of text.matchAll(URL_RE)) {
+    const at = hit.index;
+    if (at > from) out.push({ kind: 'text', text: text.slice(from, at) });
+    out.push({ kind: 'a', text: hit[0], href: hit[0] });
+    from = at + hit[0].length;
+  }
+  if (from < text.length) out.push({ kind: 'text', text: text.slice(from) });
+  return out;
+}
 
 /** Divide una línea en spans con formato. El resto queda como texto normal. */
 export function mdInline(text: string): MdSpan[] {
@@ -186,16 +220,42 @@ export function mdInline(text: string): MdSpan[] {
     } else if (part.length > 2 && part.startsWith('*') && part.endsWith('*')) {
       out.push({ kind: 'i', text: part.slice(1, -1) });
     } else {
-      out.push({ kind: 'text', text: part });
+      out.push(...linkify(part));
     }
   }
   return out;
 }
 
 /**
+ * Celdas de una línea de tabla (`| a | b |`), ya recortadas; `null` si la línea
+ * no pinta nada de tabla. Misma condición que `U.md` de la v1 (`core.js:574`):
+ * empieza por `|` y lleva otro `|` por detrás.
+ */
+function tableCells(line: string): string[] | null {
+  if (!line.startsWith('|') || line.indexOf('|', 1) < 0) return null;
+  return line
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+/** Fila separadora GFM (`| --- | :--: |`): misma regla tolerante de la v1. */
+function isSeparator(cells: string[]): boolean {
+  return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell));
+}
+
+/**
  * Convierte el texto del modelo en bloques. Solo lo que el coach usa de verdad:
- * títulos `#`, viñetas `-`/`*`, listas numeradas `1.`, código ``` cercillado y
- * párrafos (las líneas seguidas se unen con `\n` y el CSS las respeta).
+ * títulos `#`, viñetas `-`/`*`, listas numeradas `1.`, código ``` cercillado,
+ * tablas `| a | b |` con su fila separadora y párrafos (las líneas seguidas se
+ * unen con `\n` y el CSS las respeta).
+ *
+ * Una tabla SOLO empieza si la línea de cabecera viene seguida de su fila
+ * separadora (GFM): sin separadora la línea se queda como párrafo, y una
+ * separadora suelta se descarta igual que en la v1 (`core.js:576`), así que
+ * nunca se ve un `|---|` crudo. La tabla se cierra sola en cuanto aparece una
+ * línea que no lleva `|`, y dentro de ella una separadora de más se salta sin
+ * cortarla (también como la v1).
  */
 export function parseMd(text: string): MdBlock[] {
   const lines = String(text ?? '').split(/\r?\n/);
@@ -240,6 +300,29 @@ export function parseMd(text: string): MdBlock[] {
     if (heading) {
       closeAll();
       out.push({ kind: 'h', spans: mdInline(heading[1]) });
+      continue;
+    }
+
+    /* tabla: cabecera + separadora en la misma línea de «qué es»; el resto de
+       líneas con `|` son filas hasta que una no lo sea */
+    const cells = tableCells(t);
+    if (cells && isSeparator(cells)) {
+      /* separadora suelta: la v1 la tiraba a la basura y aquí también */
+      continue;
+    }
+    if (cells && isSeparator(tableCells((lines[i + 1] ?? '').trim()) ?? [])) {
+      closeAll();
+      const head: MdRow = cells.map((cell) => mdInline(cell));
+      const rows: MdRow[] = [];
+      i++; /* salta la fila separadora */
+      for (i++; i < lines.length; i++) {
+        const row = tableCells(lines[i].trim());
+        if (!row) break;
+        if (isSeparator(row)) continue; /* separadora de más: no corta la tabla */
+        rows.push(row.map((cell) => mdInline(cell)));
+      }
+      out.push({ kind: 'table', head, rows });
+      i--; /* el `i++` del bucle exterior vuelve a mirar ESTA línea */
       continue;
     }
 

@@ -1,6 +1,7 @@
 import { render } from 'preact';
 
 import { App } from '@/app/App';
+import { runDemoBoot } from '@/app/demo-boot';
 import { initInstall } from '@/platform/install';
 import { applyTheme } from '@/platform/theme';
 import { registerSW } from '@/platform/sw';
@@ -45,9 +46,19 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/* `?demo=1` (el arranque de la v1, `app.js:1261-1277`): sesiones de ejemplo y
+   onboarding por visto ANTES del primer pintado, para que la app nazca cargada.
+   Sin la query o con datos ya existentes no hace nada. */
+const demoAdded = runDemoBoot(location.search);
+
 const root = document.getElementById('app');
 if (root) render(<App />, root);
 else console.error('[pulso] no encuentro #app en index.html');
+
+/* El aviso va después del render: el host de los toasts se monta en el DOM. */
+if (demoAdded > 0) {
+  toast(`Modo demo: ${demoAdded} sesiones de ejemplo cargadas`, { kind: 'ok', ms: 5000 });
+}
 
 /* Service worker (solo producción, https/localhost): offline + avisos de descanso */
 registerSW();

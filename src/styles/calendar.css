@@ -277,6 +277,18 @@
   font-weight: 700;
 }
 
+/* Intensidad del día (los `lv1`-`lv3` de la v1, `views-calendar.js:217`): la v2
+   ya cubre «planificado» y «1 sesión» con `cal-planned`/`cal-done` y su leyenda,
+   así que solo se distingue el día con 2+ sesiones, con el verde más cargado.
+   Va con especificidad por encima de `.month-cell.lv3` de `base.css`: ese color
+   es el de acento de la v1 y aquí chocaría con el verde de «hecho». */
+.cal-view .month-grid .month-cell.cal-done.lv3 {
+  background: color-mix(in srgb, var(--ok) 60%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--ok) 70%, var(--border));
+  color: var(--text);
+  font-weight: 700;
+}
+
 .cal-view .month-grid .month-cell.cal-planned {
   background: color-mix(in srgb, var(--accent) 28%, var(--surface-2));
   color: var(--text);

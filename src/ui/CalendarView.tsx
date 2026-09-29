@@ -80,6 +80,7 @@ import {
   dayType,
   dayTypeLabel,
   monthDays,
+  monthLevel,
   parsePlan,
   planControls,
   planEngine,
@@ -88,6 +89,7 @@ import {
   restDayPatch,
   takeAutoPlanRequest,
   weekCounts,
+  weekSubtitle,
 } from './calendar-helpers';
 import type { DayState, DayStatus, DayType, PlanEngine, PlanResult } from './calendar-helpers';
 import { Icon } from './Icon';
@@ -413,12 +415,18 @@ function MonthCell({
   onSelect: (iso: string) => void;
 }) {
   const day = schedule.value[iso];
-  const state = dayState(day, sessionsOn(iso).length);
+  const count = sessionsOn(iso).length;
+  const state = dayState(day, count);
   const modifier = state === 'free' ? '' : ` cal-${state}`;
+  /* Intensidad mensual de la v1 (`views-calendar.js:217`): `lv3` = 2+ sesiones
+     (ver `monthLevel`: lv1 y lv2 los pinta ya `cal-planned`/`cal-done`). */
+  const level = monthLevel(count);
   return (
     <button
       type="button"
-      class={`month-cell${modifier}${iso === today() ? ' today' : ''}${selected ? ' cal-sel' : ''}`}
+      class={`month-cell${modifier}${level ? ` ${level}` : ''}${iso === today() ? ' today' : ''}${
+        selected ? ' cal-sel' : ''
+      }`}
       title={`${dateLabel(iso)} · ${DAY_STATE_LABEL[state]}`}
       onClick={() => onSelect(iso)}
     >
@@ -540,6 +548,10 @@ function MonthView({
           <span>
             <i style="background:color-mix(in srgb,var(--ok) 45%,var(--surface-2))" />
             hecho
+          </span>
+          <span>
+            <i style="background:color-mix(in srgb,var(--ok) 60%,var(--surface-2))" />
+            2+ sesiones
           </span>
           <span>
             <i style="background:color-mix(in srgb,var(--accent) 35%,var(--surface-2))" />
@@ -679,6 +691,14 @@ export function CalendarView() {
     mode === 'week'
       ? `${dateLabel(weekStart, 'medium')} – ${dateLabel(addDays(weekStart, 6), 'medium')}`
       : monthLabel;
+  /* Subtítulo `V.sub` de la v1 (`views-calendar.js:13-19`), pintado arriba de la
+     vista como el de Hoy y el de Progreso. Los estados salen de la MISMA lógica
+     que las tarjetas (`dayState` + `sessionsOn`), así que nunca miente sobre lo
+     de abajo, y sigue siendo la semana del cursor en los dos modos (como la v1). */
+  const subtitle = weekSubtitle(
+    weekStart,
+    weekDates(cursor).map((iso) => dayState(schedule.value[iso], sessionsOn(iso).length)),
+  );
 
   function move(delta: number): void {
     setCursor(mode === 'week' ? addDays(cursor, delta * 7) : addMonths(cursor, delta));
@@ -792,6 +812,9 @@ export function CalendarView() {
 
   return (
     <section class="cal-view">
+      {/* Subtítulo de la pestaña (el `#appbar-sub` de la v1): `weekSubtitle`. */}
+      <div class="v2-sub">{subtitle}</div>
+
       {notice ? (
         <div class={`cal-notice ${notice.kind}`}>
           <Icon name={notice.kind === 'ok' ? 'check-circle' : 'alert'} />

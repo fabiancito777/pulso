@@ -8,10 +8,11 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
 import { totals } from '@/domain/analytics';
+import { TEMPLATES } from '@/domain/catalog';
 import { fmtClock } from '@/domain/format';
 import { applyTheme } from '@/platform/theme';
 import { active, rest, sessionSeconds, startLoop } from '@/state/session';
-import { meta, sessions, settings, storageAvailable } from '@/state/store';
+import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
@@ -75,6 +76,28 @@ function PendingTab({ tab }: { tab: Tab }) {
   );
 }
 
+/**
+ * Subtítulo de pestaña: el `V.sub` de la v1, que `updateAppbar` (`app.js:60-63`)
+ * pintaba bajo el título en `#appbar-sub`.
+ *
+ * Solo lo pintan aquí las pestañas que no lo llevan ya DENTRO de su vista: Hoy
+ * sale con el saludo (`HoyView`), Progreso con `ProgressCard` y Coach con su
+ * tarjeta de conexión; Entrenar es nuevo en la v2 y no tenía. El de Calendario
+ * depende del cursor, que vive en `CalendarView`, así que lo pinta esa vista.
+ * `App.test.ts` vigila que las 6 pestañas de la v1 sigan cubiertas entre las
+ * dos mitades.
+ */
+export function tabSub(tab: string): string {
+  if (tab === 'rutinas') {
+    const n = routines.value.length;
+    return n
+      ? `${n} ${n === 1 ? 'rutina guardada' : 'rutinas guardadas'} · ${TEMPLATES.length} plantillas`
+      : 'Crea tu primera rutina o usa una plantilla';
+  }
+  if (tab === 'ajustes') return 'Personaliza Pulso a tu medida';
+  return '';
+}
+
 /** El contenido de la pestaña activa: portada, o el aviso si aún no lo está. */
 function CurrentView({ tab }: { tab: Tab }) {
   if (!tab.ported) return <PendingTab tab={tab} />;
@@ -104,6 +127,7 @@ export function App() {
   const s = settings.value;
   const bar = useRef<HTMLElement | null>(null);
   const current = TABS.find((t) => t.key === route.value.tab) ?? TABS[0];
+  const sub = tabSub(current.key);
   const streak = totals(sessions.value).streak;
   /* La sesión (y el descanso, que también puede ser el temporizador libre de Hoy)
      no se esconden al cambiar de pestaña (en la v1 la barra de descanso era
@@ -171,6 +195,8 @@ export function App() {
       </header>
 
       <main class="v2-main">
+        {sub ? <div class="v2-sub">{sub}</div> : null}
+
         {!storageAvailable ? (
           <div class="card tight">
             <div class="tiny warn">

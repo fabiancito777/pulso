@@ -163,6 +163,15 @@ function Spans({ spans }: { spans: MdSpan[] }) {
         if (span.kind === 'b') return <b key={i}>{span.text}</b>;
         if (span.kind === 'i') return <i key={i}>{span.text}</i>;
         if (span.kind === 'code') return <code key={i}>{span.text}</code>;
+        if (span.kind === 'a') {
+          /* Enlace automático: la v1 lo abría con `target="_blank"
+             rel="noopener"`; el href es texto plano, nunca HTML del modelo. */
+          return (
+            <a key={i} href={span.href} target="_blank" rel="noopener">
+              {span.text}
+            </a>
+          );
+        }
         return <Fragment key={i}>{span.text}</Fragment>;
       })}
     </>
@@ -184,6 +193,34 @@ function renderMd(text: string): ComponentChildren[] {
         <h3 key={i}>
           <Spans spans={block.spans} />
         </h3>
+      );
+    }
+    if (block.kind === 'table') {
+      /* Las clases las pone el CSS de la v1 (`.msg table`, heredado en base.css):
+         cabecera con `th` y filas con `td`, igual que el `<table>` de `U.md`. */
+      return (
+        <table key={i}>
+          <thead>
+            <tr>
+              {block.head.map((cell, j) => (
+                <th key={j}>
+                  <Spans spans={cell} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {block.rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((cell, j) => (
+                  <td key={j}>
+                    <Spans spans={cell} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       );
     }
     if (block.kind === 'ul' || block.kind === 'ol') {

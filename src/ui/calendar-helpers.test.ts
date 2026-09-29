@@ -21,6 +21,7 @@ import {
   dayType,
   dayTypeLabel,
   monthDays,
+  monthLevel,
   normalizePlan,
   parsePlan,
   planControls,
@@ -31,6 +32,7 @@ import {
   restDayPatch,
   takeAutoPlanRequest,
   weekCounts,
+  weekSubtitle,
 } from './calendar-helpers';
 
 /* `state/store` decide `storageAvailable` AL CARGARSE, así que el stub de
@@ -113,6 +115,15 @@ describe('resumen de la semana', () => {
     });
     expect(weekCounts(['free', 'rest', 'skipped'])).toEqual({ done: 0, planned: 0 });
   });
+
+  it('el subtítulo de la pestaña es el literal de la v1', () => {
+    expect(weekSubtitle('2026-09-28', ['done', 'planned', 'rest', 'free'])).toBe(
+      'Semana del 28 sep 2026 · 1/2 completados',
+    );
+    expect(weekSubtitle('2026-09-28', ['free', 'skipped'])).toBe(
+      'Semana del 28 sep 2026 · 0/0 completados',
+    );
+  });
 });
 
 describe('cuadrícula mensual', () => {
@@ -124,6 +135,13 @@ describe('cuadrícula mensual', () => {
     expect(monthDays('2028-02-10')).toHaveLength(29);
     expect(monthDays('2026-04-01')).toHaveLength(30);
     expect(monthDays('2026-01')).toHaveLength(31);
+  });
+
+  it('la intensidad de la v1 solo marca `lv3` a partir de 2 sesiones', () => {
+    expect(monthLevel(0)).toBe('');
+    expect(monthLevel(1)).toBe('');
+    expect(monthLevel(2)).toBe('lv3');
+    expect(monthLevel(5)).toBe('lv3');
   });
 });
 

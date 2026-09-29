@@ -10,7 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ChatLine } from './chat';
+import type { ChatLine, MdBlock } from './chat';
 
 const mem = new Map<string, string>();
 
@@ -182,6 +182,39 @@ describe('mdInline', () => {
   });
 });
 
+describe('mdInline · enlaces automáticos', () => {
+  it('trocea la URL en un span `a` con su href, sin tocar lo que rodea', () => {
+    expect(chat.mdInline('Ver https://pulso.app/ayuda y seguir')).toEqual([
+      { kind: 'text', text: 'Ver ' },
+      { kind: 'a', text: 'https://pulso.app/ayuda', href: 'https://pulso.app/ayuda' },
+      { kind: 'text', text: ' y seguir' },
+    ]);
+  });
+
+  it('una URL al principio de la línea también enlaza', () => {
+    expect(chat.mdInline('https://x.es es la web')).toEqual([
+      { kind: 'a', text: 'https://x.es', href: 'https://x.es' },
+      { kind: 'text', text: ' es la web' },
+    ]);
+  });
+
+  it('dentro de `código` se queda literal y dentro de negrita no enlaza', () => {
+    expect(chat.mdInline('ver `https://x.es`')).toEqual([
+      { kind: 'text', text: 'ver ' },
+      { kind: 'code', text: 'https://x.es' },
+    ]);
+    expect(chat.mdInline('**https://x.es**')).toEqual([{ kind: 'b', text: 'https://x.es' }]);
+  });
+
+  it('sin URL no inventa enlaces', () => {
+    expect(chat.mdInline('2+3 = 5 y http://es')).toEqual([
+      { kind: 'text', text: '2+3 = 5 y ' },
+      { kind: 'a', text: 'http://es', href: 'http://es' },
+    ]);
+    expect(chat.mdInline('nada de enlaces')).toEqual([{ kind: 'text', text: 'nada de enlaces' }]);
+  });
+});
+
 describe('parseMd', () => {
   it('título, párrafo (líneas seguidas unidas) y lista', () => {
     const blocks = chat.parseMd(
@@ -214,5 +247,95 @@ describe('parseMd', () => {
   it('una lista numerada y una viñeta sin espacio no se cuelan', () => {
     expect(chat.parseMd('3.1 es un número').map((b) => b.kind)).toEqual(['p']);
     expect(chat.parseMd('*cursiva en mitad de una frase*').map((b) => b.kind)).toEqual(['p']);
+  });
+});
+
+/* ---------- markdown · tablas ---------- */
+
+/** La primera tabla del mensaje, o el test falla. */
+function tableOf(blocks: MdBlock[]): Extract<MdBlock, { kind: 'table' }> {
+  const found = blocks.find((b) => b.kind === 'table');
+  if (!found || found.kind !== 'table') throw new Error('no hay tabla');
+  return found;
+}
+
+describe('parseMd · tablas', () => {
+  it('cabecera + separadora + filas, con el inline parseado EN las celdas', () => {
+    const blocks = chat.parseMd(
+      [
+        '| Ejercicio | **Series** | Reps |',
+        '| --- | ---: | :---: |',
+        '| Press banca | 3 | 8 |',
+        '| `sentadilla` | 4 | 6 |',
+      ].join('\n'),
+    );
+
+    expect(blocks.map((b) => b.kind)).toEqual(['table']);
+    const table = tableOf(blocks);
+    expect(table.head).toEqual([
+      [{ kind: 'text', text: 'Ejercicio' }],
+      [{ kind: 'b', text: 'Series' }],
+      [{ kind: 'text', text: 'Reps' }],
+    ]);
+    expect(table.rows).toEqual([
+      [
+        [{ kind: 'text', text: 'Press banca' }],
+        [{ kind: 'text', text: '3' }],
+        [{ kind: 'text', text: '8' }],
+      ],
+      [
+        [{ kind: 'code', text: 'sentadilla' }],
+        [{ kind: 'text', text: '4' }],
+        [{ kind: 'text', text: '6' }],
+      ],
+    ]);
+  });
+
+  it('la cabecera NO se repite como primera fila (la v1 lo hacía)', () => {
+    const table = tableOf(chat.parseMd('| a | b |\n| --- | --- |\n| 1 | 2 |'));
+    expect(table.head).toHaveLength(2);
+    expect(table.rows).toHaveLength(1);
+    expect((table.rows[0][0] ?? [])[0]).toMatchObject({ text: '1' });
+  });
+
+  it('sin fila separadora se queda en párrafo, con las barras a la vista', () => {
+    const blocks = chat.parseMd('| a | b |\n| 1 | 2 |');
+    expect(blocks.map((b) => b.kind)).toEqual(['p']);
+    const p = blocks[0];
+    expect(p.kind === 'p' ? p.spans.map((s) => s.text).join('') : '').toBe('| a | b |\n| 1 | 2 |');
+  });
+
+  it('una separadora suelta se descarta (como en la v1) y no corta el párrafo', () => {
+    expect(chat.parseMd('| --- | --- |').map((b) => b.kind)).toEqual([]);
+    expect(chat.parseMd('una línea\n|---|---|\n').map((b) => b.kind)).toEqual(['p']);
+  });
+
+  it('la tabla se corta en la primera línea sin `|` y lo que viene va aparte', () => {
+    const blocks = chat.parseMd('| a | b |\n| --- | --- |\n| 1 | 2 |\n\ndespués');
+
+    expect(blocks.map((b) => b.kind)).toEqual(['table', 'p']);
+    expect(tableOf(blocks).rows).toHaveLength(1);
+  });
+
+  it('una separadora de más dentro de la tabla la salta sin cortarla', () => {
+    const table = tableOf(chat.parseMd('| a |\n| --- |\n| 1 |\n| --- |\n| 2 |'));
+    expect(table.rows).toHaveLength(2);
+  });
+
+  it('la tabla cierra la lista que tenga encima y la de abajo empieza nueva', () => {
+    const blocks = chat.parseMd('- uno\n| a |\n| --- |\n| 1 |\n- otra');
+
+    expect(blocks.map((b) => b.kind)).toEqual(['ul', 'table', 'ul']);
+    expect(blocks[2].kind === 'ul' ? blocks[2].items : []).toHaveLength(1);
+  });
+
+  it('una URL en una celda sale enlazada con su href', () => {
+    const table = tableOf(chat.parseMd('| web |\n| --- |\n| https://pulso.app |'));
+    const cell = table.rows[0]?.[0] ?? [];
+    expect(cell).toEqual([{ kind: 'a', text: 'https://pulso.app', href: 'https://pulso.app' }]);
+  });
+
+  it('una línea con barras que NO empieza por `|` sigue siendo párrafo', () => {
+    expect(chat.parseMd('serie A | serie B').map((b) => b.kind)).toEqual(['p']);
   });
 });

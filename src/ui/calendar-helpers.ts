@@ -11,6 +11,7 @@
  */
 import { signal } from '@preact/signals';
 
+import { label } from '@/domain/dates';
 import { parseJSON } from '@/features/coach/parse';
 import type { ScheduleDay } from '@/state/store';
 
@@ -112,6 +113,27 @@ export function weekCounts(states: readonly DayState[]): { done: number; planned
     }
   }
   return { done, planned };
+}
+
+/**
+ * Subtítulo de la pestaña: el `V.sub` de la v1 (`views-calendar.js:13-19`),
+ * «Semana del <inicio> · N/M completados» con el MISMO formato de fecha
+ * (`label(..., 'medium')`, «28 sep 2026»).
+ */
+export function weekSubtitle(from: string, states: readonly DayState[]): string {
+  const { done, planned } = weekCounts(states);
+  return `Semana del ${label(from, 'medium')} · ${done}/${Math.max(planned, 0)} completados`;
+}
+
+/**
+ * Intensidad de una celda del mes: el `lv1`-`lv3` de la v1
+ * (`views-calendar.js:217`), que pintaba el `month-cell` por número de
+ * sesiones. Solo se porta `lv3` (2 o más sesiones): `lv1` (día planificado) y
+ * `lv2` (1 sesión) los pinta ya la v2 con `cal-planned` y `cal-done`, con su
+ * propia leyenda, así que aplicarlos encima solo duplicaría color.
+ */
+export function monthLevel(sessionCount: number): 'lv3' | '' {
+  return sessionCount >= 2 ? 'lv3' : '';
 }
 
 /**
