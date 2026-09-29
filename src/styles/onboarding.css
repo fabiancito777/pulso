@@ -1,0 +1,9 @@
+/* Onboarding: solo lo que `base.css` no cubre (la fila de pills de material).
+   El resto — `.field`, `.select`, `.toggle-pill`, `.modal-*` — es CSS heredado
+   de la v1, así que el modal se ve igual que el de la rama `main`. */
+
+.ob-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}

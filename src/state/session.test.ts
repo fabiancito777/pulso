@@ -1,12 +1,14 @@
 /**
- * `startFromPlan`: el envoltorio que la vista Hoy lanza al pulsar «Empezar sesión»
- * (plan de hoy), «Repetir» o «Empezar ahora» (sugerencia).
+ * El envoltorio de la sesión en curso: `startFromPlan` (lo que la vista Hoy lanza
+ * al pulsar «Empezar sesión» —plan de hoy—, «Repetir» o «Empezar ahora»
+ * —sugerencia—) y `finishSession` (lo que hace «Terminar»).
  *
  * Lo que hay que verificar aquí, y no en `domain/session.test.ts`, es el ENVOLVENTE:
  * que la sesión llega a la signal `active` y a `pulso.state.active` (el mismo sitio
  * que la v1) con `source: 'plan'`, que el `basis` del plan («repetición de …»)
- * sobrevive hasta la entrada, y que tocar «Empezar» dos veces no pisa un
- * entrenamiento a medias.
+ * sobrevive hasta la entrada, que tocar «Empezar» dos veces no pisa un
+ * entrenamiento a medias, y que cerrar apila la sesión en el historial y marca el
+ * día como hecho (las dos comprobaciones del auto-test de la v1).
  *
  * Mismo patrón que `store.test.ts`: `localStorage` simulado ANTES del import
  * dinámico, porque `storageAvailable` y el estado inicial se deciden al cargar.
@@ -102,5 +104,61 @@ describe('startFromPlan', () => {
   it('el día por defecto es hoy (v1 `startFromItems`)', () => {
     const creada = session.startFromPlan([{ exId: firstId() }]);
     expect(creada.dayIso).toBe(today());
+  });
+});
+
+/* ---------- cerrar la sesión: las dos comprobaciones del auto-test de la v1
+   («sesión: se guarda en el historial» y «sesión: día marcado como hecho») ---------- */
+
+describe('finishSession', () => {
+  it('apila la sesión, marca el día como hecho y apaga sesión y descanso', () => {
+    const creada = session.startFromPlan([{ exId: firstId(), sets: 2 }], {
+      dayIso: '2026-09-28',
+    });
+    session.toggleSetAt(0, 0);
+    /* marcar una serie arranca el descanso automático (lo comprueba el dominio) */
+    expect(session.rest.value.running).toBe(true);
+
+    const guardada = session.finishSession();
+
+    expect(guardada).not.toBeNull();
+    expect(guardada?.date).toBe('2026-09-28');
+    /* la v1 también estrena id al cerrar (`T.finish` → `U.uid('s')`) */
+    expect(guardada?.id).not.toBe(creada.id);
+    expect(store.sessions.value.map((s) => s.id)).toEqual([guardada?.id]);
+    expect((store.readState().sessions as { id: string }[]).map((s) => s.id)).toEqual([
+      guardada?.id,
+    ]);
+    expect(store.schedule.value['2026-09-28']).toMatchObject({
+      status: 'done',
+      sessionId: guardada?.id,
+    });
+    expect(session.active.value).toBeNull();
+    expect(store.readState().active).toBeNull();
+    expect(session.rest.value.running).toBe(false);
+    expect(session.sessionSeconds.value).toBe(0);
+  });
+
+  it('sin ninguna serie marcada no se guarda nada y el día no se toca', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }], { dayIso: '2026-09-28' });
+
+    expect(session.finishSession()).toBeNull();
+
+    expect(store.sessions.value).toHaveLength(0);
+    expect(store.schedule.value['2026-09-28']).toBeUndefined();
+    expect(session.active.value).not.toBeNull();
+  });
+
+  it('descartar la sesión no deja ni rastro en el historial', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }], { dayIso: '2026-09-28' });
+    session.toggleSetAt(0, 0);
+
+    session.discardSession();
+
+    expect(session.active.value).toBeNull();
+    expect(store.readState().active).toBeNull();
+    expect(store.sessions.value).toHaveLength(0);
+    expect(store.schedule.value['2026-09-28']).toBeUndefined();
+    expect(session.rest.value.running).toBe(false);
   });
 });

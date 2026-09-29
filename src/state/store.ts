@@ -26,6 +26,7 @@ import type {
   Session,
   Settings,
 } from '@/domain/types';
+import { toast } from '@/ui/toast';
 
 export const STATE_KEY = 'pulso.state';
 export const STATE_VERSION = 1;
@@ -99,12 +100,31 @@ export function readState(): AppState {
   }
 }
 
+/**
+ * Aviso de fallo de escritura YA DADO (spec `onboarding.md`, hueco 6). El
+ * estado sigue viviendo en memoria, pero si `setItem` falla (cuota llena,
+ * modo privado…) el usuario tiene que enterarse una vez, no una por serie
+ * escrita. Es el `S._warned` de `store.js:171`.
+ *
+ * Ojo: `ui/toast` se importa aquí a sabiendas (la regla de dependencias es
+ * domain ← state ← ui) porque el aviso es exactamente el del store y el módulo
+ * se auto-monta en el DOM; sin DOM (tests en Node) el toast se descarta solo.
+ */
+let writeWarned = false;
+
 export function writeState(state: AppState): void {
   if (!storageAvailable) return;
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
+    if (!writeWarned) {
+      writeWarned = true;
+      toast('No se pudo guardar en localStorage: los datos viven solo en esta pestaña', {
+        kind: 'warn',
+        ms: 6000,
+      });
+    }
   }
 }
 
@@ -368,6 +388,33 @@ export function removeRoutine(id: string): void {
   schedule.value = plan;
 }
 
+/**
+ * Duplica una rutina: id nuevo, nombre «… (copia)» y `createdAt` de ahora —
+ * tal cual `S.duplicateRoutine` de la v1 (`store.js:357`).
+ *
+ * Los items pasan por `normalizeRoutineItems` (lo mismo que `addRoutine`) y el
+ * resto se clona en profundidad: la copia NO puede compartir objetos con el
+ * original, o editar una rutina modificaría también la otra. Devuelve `null`
+ * si no existe, como la v1.
+ */
+export function duplicateRoutine(id: string): Routine | null {
+  const state = readState();
+  const current = asRoutines(state.routines).find((r) => r.id === id);
+  if (!current) return null;
+  const copy: Routine = {
+    ...structuredClone(current),
+    id: uid('rt'),
+    name: `${current.name} (copia)`,
+    createdAt: new Date().toISOString(),
+    items: normalizeRoutineItems(current.items),
+  };
+  const next = [...asRoutines(state.routines), copy];
+  state.routines = next;
+  writeState(state);
+  routines.value = next;
+  return copy;
+}
+
 /* ---------- meta ---------- */
 
 /**
@@ -402,6 +449,28 @@ export function setDay(iso: string, patch: Partial<ScheduleDay>): void {
   state.schedule = next;
   writeState(state);
   schedule.value = next;
+}
+
+/**
+ * Borra un día del calendario entero: es `S.clearDay` de la v1 (`store.js:402`).
+ *
+ * NO se cubre con `setDay(iso, { …: undefined })`: el merge de `setDay` deja la
+ * clave en el mapa (un `{}` que además se persiste), mientras que la v1 hacía
+ * `delete state.schedule[iso]` y `S.getDay(iso)` devolvía `null`.
+ *
+ * Ojo, es distinto del `clearDayPatch` del Calendario, que vacía la
+ * planificación PERO conserva `sessionId` (el enlace a la sesión registrada);
+ * este setter borra el día completo, como la v1.
+ */
+export function clearDay(iso: string): void {
+  const state = readState();
+  const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
+    ? { ...(state.schedule as Record<string, ScheduleDay>) }
+    : {};
+  delete plan[iso];
+  state.schedule = plan;
+  writeState(state);
+  schedule.value = plan;
 }
 
 /* ---------- biblioteca: edición ---------- */
@@ -626,6 +695,44 @@ export function commitSession(session: Session): void {
   sessions.value = all;
   schedule.value = plan;
   active.value = null;
+}
+
+/**
+ * Edita una sesión guardada (nombre, notas, fecha, RPE…): es `S.updateSession`
+ * de la v1 (`store.js:376`), que aplicaba el parche tal cual sobre la sesión
+ * encontrada. Devuelve `null` si no existe, como allí.
+ *
+ * - El `id` NO se puede cambiar (igual que en `updateRoutine`): el calendario
+ *   lo referencia con `schedule[día].sessionId`.
+ * - Como la v1, NO reordena por `startedAt`: el orden solo lo fija `addSession`
+ *   al apilar, así que editar una fecha no reorganiza la lista.
+ */
+export function updateSession(id: string, patch: Partial<Session>): Session | null {
+  const state = readState();
+  const current = asSessions(state.sessions).find((s) => s.id === id);
+  if (!current) return null;
+  const updated: Session = { ...current, ...patch, id };
+  const next = asSessions(state.sessions).map((s) => (s.id === id ? updated : s));
+  state.sessions = next;
+  writeState(state);
+  sessions.value = next;
+  return updated;
+}
+
+/**
+ * Borra una sesión guardada (`S.removeSession` de la v1, `store.js:383`).
+ *
+ * La v1 NO tocaba el calendario, y aquí se hereda tal cual: el día se queda con
+ * su `status: 'done'` y su `sessionId`, así que sigue pintándose hecho (en
+ * `views-calendar.js` el día sale hecho si `p.status === 'done'`, no solo si
+ * hay sesiones). Quien quiera desmarcarlo lo hace a mano con `clearDay`.
+ */
+export function removeSession(id: string): void {
+  const state = readState();
+  const next = asSessions(state.sessions).filter((s) => s.id !== id);
+  state.sessions = next;
+  writeState(state);
+  sessions.value = next;
 }
 
 /* ---------- datos de ejemplo ---------- */

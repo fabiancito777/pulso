@@ -43,6 +43,7 @@ import { listModels, testConnection } from '@/features/coach/client';
 import { DEFAULT_SYSTEM } from '@/features/coach/prompts';
 import { copyText } from '@/platform/clipboard';
 import { downloadJSON, pickTextFile } from '@/platform/files';
+import { hasSW, install, installable, installed } from '@/platform/install';
 import { requestNotifyPermission } from '@/platform/notify';
 import { applyTheme } from '@/platform/theme';
 import {
@@ -94,6 +95,14 @@ const SUBS = [
 ] as const;
 
 type SubKey = (typeof SUBS)[number]['key'];
+
+/**
+ * Versión para «Acerca de»: la `version` de `package.json`, inyectada por
+ * `define` en `vite.config.ts` (nada de `resolveJsonModule`, que está apagado).
+ * El `typeof` es el fallback de entornos sin `define` (tests en node, spec
+ * onboarding.md hueco 5).
+ */
+const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '2.0';
 
 /**
  * Carcasa de los tres modales de Ajustes (`modal-scrim`/`modal` de `base.css`):
@@ -1301,6 +1310,11 @@ function countOf(value: unknown): number {
 
 function SecDatos() {
   const [msg, setMsg] = useState('');
+  const [howto, setHowto] = useState(false);
+  /* lee el signal: si el navegador emite `beforeinstallprompt` con Ajustes ya
+     abierto, la fila se actualiza sola (espec. hueco 3) */
+  const disponible = installable.value;
+  const instalada = installed();
   const sess = sessions.value.length;
   /* las de ejemplo llevan `demo: true` (mismo selector que `clearDemo`) */
   const demo = sessions.value.filter((s) => s.demo === true).length;
@@ -1330,6 +1344,29 @@ function SecDatos() {
         </div>
       ) : null}
       <div class="card flush mt">
+        <ListButton
+          icon="download"
+          title={instalada ? 'Instalada como aplicación' : 'Instalar como aplicación'}
+          sub={
+            instalada
+              ? 'Funciona sin conexión y avisa con el móvil bloqueado'
+              : disponible
+                ? 'PWA: a pantalla completa, sin conexión y con notificaciones'
+                : 'PWA · sin instalación automática, te enseñamos cómo añadirla'
+          }
+          onClick={() => {
+            /* ya instalada ⇒ aviso y nada más (la v1 no volvía a preguntar) */
+            if (installed()) {
+              toast('Ya la estás usando como app instalada', { kind: 'ok' });
+              return;
+            }
+            /* sin `beforeinstallprompt` (Firefox/Safari, o en dev) `install()`
+               devuelve false y se enseñan las instrucciones manuales */
+            void install().then((accepted) => {
+              if (!accepted) setHowto(true);
+            });
+          }}
+        />
         <ListButton
           icon="download"
           title="Exportar copia de seguridad"
@@ -1402,17 +1439,67 @@ function SecDatos() {
           danger
           sub="Deja la app como recién instalada"
           onClick={() => {
-            if (!window.confirm('Se van a borrar todos tus datos de Pulso. ¿Seguro?')) return;
+            if (
+              !window.confirm(
+                'Se van a borrar todos tus datos de Pulso. ¿Seguro? Exporta una copia antes si quieres conservarlos.',
+              )
+            ) {
+              return;
+            }
             resetAll();
             setMsg('Datos borrados.');
           }}
         />
       </div>
       <InfoCard>
-        Sin dependencias externas ni cuentas: todo lo que hay aquí vive en este navegador. La
-        calculadora, la sesión y la analítica leen y escriben el <b>mismo</b> formato de datos que
-        la v1, así que las dos ramas pueden abrir los mismos datos.
+        <b>Acerca de</b> · Pulso, app de entrenamiento sin dependencias externas: datos 100 %
+        locales, sin cuentas ni servidores propios · Coach AI opcional con tu propia API key de
+        Gemini. Se lee y escribe el mismo formato que la v1, así que las dos ramas abren los mismos
+        datos. Versión {APP_VERSION}.
       </InfoCard>
+
+      {/* Instrucciones manuales: cuando `install()` no ha podido (navegador sin
+          `beforeinstallprompt`, o abierto con doble clic). Texto de la v1
+          (`app.js:327-333`), con el matiz del service worker según `hasSW()`. */}
+      {howto ? (
+        <Modal
+          title="Instalar Pulso"
+          sub="Añádela a la pantalla de inicio"
+          onClose={() => setHowto(false)}
+          foot={
+            <button type="button" class="btn ghost" onClick={() => setHowto(false)}>
+              Cerrar
+            </button>
+          }
+        >
+          <div class="col" style="gap:10px">
+            <div class="card tight">
+              <div class="h3">iPhone / iPad (Safari)</div>
+              <div class="tiny muted">
+                Compartir → «Añadir a pantalla de inicio». En iOS es obligatorio para recibir las
+                notificaciones del timer (16.4+).
+              </div>
+            </div>
+            <div class="card tight">
+              <div class="h3">Android (Chrome)</div>
+              <div class="tiny muted">
+                Menú → «Instalar aplicación» o «Añadir a pantalla de inicio».
+              </div>
+            </div>
+            <div class="card tight">
+              <div class="h3">Escritorio</div>
+              <div class="tiny muted">
+                El icono de instalar de la barra de direcciones (Chrome/Edge).
+              </div>
+            </div>
+            <div class="tiny muted">
+              {hasSW()
+                ? 'Con la app instalada funciona sin conexión y el timer avisa con el móvil bloqueado.'
+                : 'Sirviendo la carpeta por http:// funciona sin conexión; abriendo el archivo con doble clic no hay service worker ni notificaciones.'}
+            </div>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
 }

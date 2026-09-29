@@ -1,106 +1,39 @@
 /**
- * Tarjeta de progreso: la cara visible de `src/domain/analytics.ts`.
+ * Cabecera de la pestaña Progreso.
  *
- * Sirve además de comprobación del port: lee las MISMAS sesiones que guarda la v1
- * en `pulso.state`, así que si estos números cuadran con la pestaña Progreso de la
- * rama `main`, la analítica está bien portada.
+ * Antes era una tarjeta de "comprobación del port" con sus propios KPIs y sus
+ * barras de volumen, que salían DUPLICADOS junto a los de `ProgressCharts` (la
+ * única rejilla que replica a la v1). Ahora es la cabecera de la pestaña: el
+ * subtítulo `V.sub` de la v1 (`N sesiones · N kg movidos · racha N días`) y la
+ * fecha desde la que hay datos; los KPIs y los gráficos viven en
+ * `ProgressCharts`, que es donde los pinta la v1 también.
+ *
+ * Su estado vacío se fue a `ProgressView`, que monta este componente SOLO si
+ * hay sesiones.
  */
-import { prs, sessionDate, totals, weeklySeries } from '@/domain/analytics';
-import { relative } from '@/domain/dates';
-import { fmtDur, fmtN, fmtVol } from '@/domain/format';
-import { exercises, sessions } from '@/state/store';
+import { totals } from '@/domain/analytics';
+import { label as dateLabel } from '@/domain/dates';
+import { fmtN, fmtVol } from '@/domain/format';
+import { sessions } from '@/state/store';
+
+/** El `V.sub` de la v1 (`views-stats.js:13-17`), en componentes. */
+function subtitle(count: number, volume: number, streak: number): string {
+  if (!count) return 'Aún sin datos · empieza a entrenar';
+  return `${fmtN(count, 0)} sesiones · ${fmtVol(volume)} kg movidos · racha ${fmtN(streak, 0)} días`;
+}
 
 export function ProgressCard() {
-  const list = sessions.value;
-  const t = totals(list);
-  const weeks = weeklySeries(list);
-  const records = Object.values(prs(list));
-  const dates = list.map(sessionDate).sort();
-  const lastDate = dates.length ? (dates[dates.length - 1] ?? null) : null;
-  const maxVolume = weeks.reduce((a, w) => Math.max(a, w.volume), 0);
-
-  if (!list.length) {
-    return (
-      <section class="card">
-        <div class="row between mb-s">
-          <b>Progreso</b>
-          <span class="tiny muted">analítica portada de la v1</span>
-        </div>
-        <div class="tiny muted">
-          No hay sesiones en <code>pulso.state</code>. Entrena desde la rama <code>main</code> (o
-          carga los datos de ejemplo) y aquí aparecerán los mismos números.
-        </div>
-      </section>
-    );
-  }
+  const t = totals(sessions.value);
 
   return (
     <section class="card">
       <div class="row between mb-s">
         <b>Progreso</b>
-        <span class="tiny muted">analítica portada de la v1</span>
+        <span class="tiny muted">
+          {t.firstDate ? `Desde ${dateLabel(t.firstDate, 'medium')}` : ''}
+        </span>
       </div>
-
-      <div class="pg-kpis">
-        <Kpi label="Sesiones" value={fmtN(t.sessions, 0)} sub={`desde ${t.firstDate ?? '—'}`} />
-        <Kpi label="Volumen" value={fmtVol(t.volume)} sub="kg movidos" />
-        <Kpi label="Series" value={fmtN(t.sets, 0)} sub={`media ${fmtDur(t.avgDuration)}`} />
-        <Kpi
-          label="Racha"
-          value={fmtN(t.streak, 0)}
-          sub={`mejor ${fmtN(t.bestStreak, 0)} d · ${records.length} récords`}
-        />
-      </div>
-
-      <div class="pg-chart">
-        {weeks.map((w) => (
-          <div key={w.iso} class="pg-col" title={`${w.label}: ${fmtVol(w.volume)} kg`}>
-            <div class="pg-bar-wrap">
-              <div
-                class="pg-bar"
-                style={{ height: `${maxVolume ? Math.max(3, (w.volume / maxVolume) * 100) : 3}%` }}
-              />
-            </div>
-            <span class="pg-cap">{w.label.split(' ')[1] ?? w.label}</span>
-            <span class={`pg-dot ${w.sessions ? 'on' : ''}`} />
-          </div>
-        ))}
-      </div>
-      <div class="tiny muted">
-        8 semanas · volumen semanal (el mayor de la ventana: {fmtVol(maxVolume)} kg)
-        {lastDate ? ` · último entrenamiento ${relative(lastDate)}` : ''}
-      </div>
-
-      {records.length ? (
-        <div class="mt-s">
-          <div class="tiny muted mb-s">Mejores marcas (1RM estimado con Epley)</div>
-          {records
-            .sort((a, b) => b.e1rm - a.e1rm)
-            .slice(0, 3)
-            .map((r) => {
-              const ex = exercises.value.find((e) => e.id === r.exId);
-              return (
-                <div key={r.exId} class="kv">
-                  <span class="k">{ex ? ex.name : r.exId}</span>
-                  <span class="v">
-                    {fmtN(r.weight)} × {fmtN(r.reps)} · {fmtN(r.e1rm)} kg
-                    <span class="tiny muted"> {relative(r.date)}</span>
-                  </span>
-                </div>
-              );
-            })}
-        </div>
-      ) : null}
+      <div class="tiny muted">{subtitle(t.sessions, t.volume, t.streak)}</div>
     </section>
-  );
-}
-
-function Kpi(props: { label: string; value: string; sub: string }) {
-  return (
-    <div class="pg-kpi">
-      <div class="pg-kpi-label">{props.label}</div>
-      <div class="pg-kpi-value">{props.value}</div>
-      <div class="tiny muted">{props.sub}</div>
-    </div>
   );
 }

@@ -20,6 +20,7 @@
  * Tooltips: `<title>` SVG nativo (se ve al pasar el ratón y es lo que usa la
  * accesibilidad), colores con `var(--…)` de `base.css` y ejes con `fmtN`.
  */
+import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 
 import {
@@ -37,6 +38,7 @@ import { GROUPS, findExercise, groupColor } from '@/domain/data';
 import { dowIdx, label as dateLabel, today } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { max as maxOf, sum } from '@/domain/num';
+import { pickExercise, pickedExercise } from '@/state/progress';
 import { exercises, sessions } from '@/state/store';
 
 import {
@@ -52,8 +54,10 @@ import {
   targetY,
 } from './charts-helpers';
 import type { BarDatum, ChartFormat, DonutDatum, HeatCell, LineSeries } from './charts-helpers';
+import { ExercisePickerModal } from './ExercisePickerModal';
 import { Icon } from './Icon';
 import { Kpi, SectionHead } from './kit';
+import { historyExerciseIds } from './progress-helpers';
 
 import '../styles/charts.css';
 
@@ -487,19 +491,33 @@ const RANGES: readonly { k: number; l: string }[] = [
 
 const DOW_NAMES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
+export interface ProgressChartsProps {
+  /** Contenido tras el reparto por grupo (el «último estímulo» de la v1). */
+  groupExtra?: ComponentChildren;
+  /** Contenido tras la lista de récords (el botón de «Ver tabla completa»). */
+  prExtra?: ComponentChildren;
+}
+
 /**
  * La pestaña Progreso de la v1 (`views-stats.js`) montada con componentes:
  * KPIs → volumen semanal → sesiones/series/minutos → reparto por grupo →
  * progresión del ejercicio elegido → récords con sparkline → frecuencia por día
- * → consistencia. Lee `sessions` y `exercises` del store y NO recibe props
- * (las vistas nuevas funcionan así); los datos intermedios salen de
- * `domain/analytics` igual que en la v1.
+ * → consistencia. Lee `sessions` y `exercises` del store; los datos intermedios
+ * salen de `domain/analytics` igual que en la v1.
+ *
+ * Los dos huecos externos (`groupExtra`, `prExtra`) son la forma de montar el
+ * resto de la pestaña SIN que este archivo tenga que conocerlo: el «último
+ * estímulo» va DENTRO del bloque de grupo y «Ver tabla completa» inmediatamente
+ * después de los récords, como en `main`.
  */
-export function ProgressCharts() {
+export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}) {
   const list = sessions.value;
   const exs = exercises.value;
   const [range, setRange] = useState(8);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  /* la elección vive en una signal (`state/progress.ts`): la comparten los chips,
+     las filas de récords y el picker de «Otro» */
+  const picked = pickedExercise.value;
 
   if (!list.length) {
     return (
@@ -586,7 +604,14 @@ export function ProgressCharts() {
     value: n,
     color: i === dowIdx(today()) ? 'var(--accent)' : 'var(--surface-4)',
   }));
-  const heatCells: HeatCell[] = list.map((s) => ({ iso: sessionDate(s), value: 1 }));
+  /* el heatmap cuenta sesiones por DÍA (dos entrenamientos el mismo día son más
+     opacos), no un 1 fijo: `heatLayout` ya normaliza contra el máximo */
+  const heatByDay = new Map<string, number>();
+  for (const s of list) {
+    const iso = sessionDate(s);
+    heatByDay.set(iso, (heatByDay.get(iso) ?? 0) + 1);
+  }
+  const heatCells: HeatCell[] = [...heatByDay].map(([iso, value]) => ({ iso, value }));
   const heatWeeks = Math.min(26, Math.max(8, range || 12));
 
   return (
@@ -682,6 +707,7 @@ export function ProgressCharts() {
         <div class="mt">
           <HBars data={setsRows} format="n" unit="series" empty="Sin series por grupo" />
         </div>
+        {groupExtra}
       </section>
 
       {activeId ? (
@@ -705,13 +731,29 @@ export function ProgressCharts() {
                   key={ex.id}
                   type="button"
                   class={activeId === ex.id ? 'chip accent' : 'chip'}
-                  onClick={() => setPicked(ex.id)}
+                  onClick={() => pickExercise(ex.id)}
                 >
                   {info ? info.name : ex.id}
                 </button>
               );
             })}
+            <button type="button" class="chip" onClick={() => setPickerOpen(true)}>
+              <Icon name="search" />
+              Otro
+            </button>
           </div>
+          {pickerOpen ? (
+            <ExercisePickerModal
+              title="Elegir ejercicio"
+              onlyIds={historyExerciseIds(list)}
+              onClose={() => setPickerOpen(false)}
+              onPick={(ids) => {
+                const first = ids[0];
+                setPickerOpen(false);
+                if (first) pickExercise(first);
+              }}
+            />
+          ) : null}
           {!pts.length || !last ? (
             <ChartEmpty msg="Todavía no hay series registradas de este ejercicio" />
           ) : (
@@ -771,7 +813,12 @@ export function ProgressCharts() {
                 const info = findExercise(exs, r.exId);
                 const hist = exerciseSeries(list, r.exId).slice(-8);
                 return (
-                  <div key={r.exId} class="list-item">
+                  <button
+                    key={r.exId}
+                    type="button"
+                    class="list-item tappable"
+                    onClick={() => pickExercise(r.exId)}
+                  >
                     <div class="li-main">
                       <div class="li-title">{info ? info.name : r.exId}</div>
                       <div class="li-sub">
@@ -787,7 +834,7 @@ export function ProgressCharts() {
                       color={info ? groupColor(info.group) : 'var(--accent)'}
                       ariaLabel={`Tendencia de 1RM de ${info ? info.name : r.exId}`}
                     />
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -795,6 +842,7 @@ export function ProgressCharts() {
         ) : (
           <ChartEmpty msg="Sin récords aún" />
         )}
+        {prExtra}
       </section>
 
       <section class="mt">

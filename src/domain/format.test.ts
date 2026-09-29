@@ -52,6 +52,10 @@ describe('unidades', () => {
     expect(toKg(20, 'kg')).toBe(20);
   });
 
+  it('100 lb pesa 45,359237 kg (comprobación del auto-test de la v1)', () => {
+    expect(toKg(100, 'lb')).toBeCloseTo(45.359237, 5);
+  });
+
   it('el salto de los botones depende de la unidad', () => {
     expect(unitIncrement('kg')).toBe(2.5);
     expect(unitIncrement('lb')).toBe(5);

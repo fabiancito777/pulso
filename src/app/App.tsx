@@ -4,24 +4,46 @@
  * `legacy/` muestran el aviso de "pendiente" (flag `ported` del router), que es el
  * estado real de la migración y no un error de la app.
  */
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
 import { totals } from '@/domain/analytics';
+import { fmtClock } from '@/domain/format';
 import { applyTheme } from '@/platform/theme';
-import { active, rest, startLoop } from '@/state/session';
-import { sessions, settings, storageAvailable } from '@/state/store';
+import { active, rest, sessionSeconds, startLoop } from '@/state/session';
+import { meta, sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
 import { Icon } from '@/ui/Icon';
 import { MigrationCards } from '@/ui/MigrationCards';
+import { Onboarding } from '@/ui/Onboarding';
 import { PlatesCard } from '@/ui/PlatesCard';
-import { ProgressCard } from '@/ui/ProgressCard';
+import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
 import { SessionCard } from '@/ui/SessionCard';
 import { SettingsView } from '@/ui/SettingsView';
-import { ProgressCharts } from '@/ui/charts';
+
+/**
+ * Reloj de la sesión en la barra (el `#btn-session-clock` de la v1,
+ * `trainer.js:485`). Es un componente aparte A PROPÓSITO: es lo único de la
+ * barra que lee `sessionSeconds`, así que solo él se repinta cada segundo y los
+ * inputs de SessionCard no se reescriben mientras escribes.
+ */
+function SessionClock() {
+  if (!active.value) return null;
+  return (
+    <button
+      type="button"
+      class="chip accent v2-clock"
+      title="Sesión en curso · ir a Hoy"
+      onClick={() => go('hoy')}
+    >
+      <span class="dot-live" />
+      <span class="num">{fmtClock(sessionSeconds.value)}</span>
+    </button>
+  );
+}
 
 /** Vistas que siguen en `legacy/`: el `ported: false` del router, explicado. */
 function PendingTab({ tab }: { tab: Tab }) {
@@ -62,18 +84,9 @@ function CurrentView({ tab }: { tab: Tab }) {
     case 'ajustes':
       return <SettingsView sub={route.value.sub} />;
     case 'progreso':
-      return (
-        <>
-          <ProgressCard />
-          <section class="card">
-            <div class="row between mb-s">
-              <b>Gráficos</b>
-              <span class="tiny muted">charts.js portado · SVG sin librerías</span>
-            </div>
-            <ProgressCharts />
-          </section>
-        </>
-      );
+      /* contrato con I7: montaje único de la pestaña (ProgressCard + charts +
+         historial) en su propio componente */
+      return <ProgressView />;
     case 'entrenar':
       return <PlatesCard />;
     case 'rutinas':
@@ -101,6 +114,20 @@ export function App() {
   const showSession = current.key === 'entrenar' || active.value || rest.value.running;
 
   useEffect(() => applyTheme(s.theme, s.accent), [s.theme, s.accent]);
+
+  /* Onboarding de primera vez (spec `onboarding.md`, hueco 1): 350 ms después de
+     arrancar, como la v1 (`app.js:1279`), y solo si sigue sin verse. No se abre
+     con una sesión o un descanso en marcha: taparía el entreno (caso e). El
+     cierre lo detecta la signal `meta` (el modal la escribe al cerrarse). */
+  const [boarding, setBoarding] = useState(false);
+  useEffect(() => {
+    if (meta.value.onboarded === true) return;
+    const timer = setTimeout(() => {
+      if (meta.value.onboarded === true || active.value || rest.value.running) return;
+      setBoarding(true);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, []);
 
   /* Escucha `hashchange`: cualquier cambio de pestaña actualiza `route` y, con ella,
      la vista (el signal repinta solo). */
@@ -138,6 +165,7 @@ export function App() {
             <Icon name="fire" />
             <span>{streak}</span>
           </button>
+          <SessionClock />
         </div>
         <div class="tiny muted">Vite · TypeScript · Preact — migración en curso</div>
       </header>
@@ -171,6 +199,10 @@ export function App() {
           </button>
         ))}
       </nav>
+
+      {/* Overlay global de primera visita: se desmonta en cuanto la signal
+          `meta.onboarded` pasa a true (los dos botones del modal lo marcan). */}
+      {boarding && meta.value.onboarded !== true ? <Onboarding /> : null}
     </div>
   );
 }

@@ -61,7 +61,14 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v1: 'charts.js + views-stats.js',
     v2: 'src/ui/charts.tsx + charts-helpers.ts',
     state: 'portado',
-    note: 'Bar/line/donut/hbars/heat/sparkline como componentes SVG con props puras y sin librerías; `ProgressCharts` monta la pestaña Progreso (rango, reparto por grupo, progresión por ejercicio, récords y consistencia). Adiós al montaje en dos pasos (spec → Ch.mountAll).',
+    note: 'Bar/line/donut/hbars/heat/sparkline como componentes SVG con props puras y sin librerías; `ProgressView` monta la pestaña Progreso (rango, KPIs, reparto por grupo, progresión por ejercicio, récords y consistencia). Adiós al montaje en dos pasos (spec → Ch.mountAll).',
+  },
+  {
+    area: 'Progreso · historial y acciones',
+    v1: 'views-stats.js (lista + ver todo) + app.js (sessionDetail)',
+    v2: 'src/ui/ProgressView.tsx + SessionHistory/SessionDetailModal/PrTableModal/LastStimulus + progress-helpers.ts',
+    state: 'portado',
+    note: 'Cabecera con el sub de la v1, último estímulo por grupo dentro del reparto, tabla completa de récords (la fila selecciona el ejercicio en Progresión), historial de 40 con «Ver todo», detalle con ver/borrar/repetir y estado vacío con «Ir a entrenar» y datos de ejemplo. Editar una sesión queda fuera de spec (la v1 no lo hacía).',
   },
   {
     area: 'Coach IA',
@@ -111,5 +118,12 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v2: 'public/ + src/platform/sw.ts',
     state: 'portado',
     note: 'Manifest instalable con iconos, service worker network-first (shell offline sin congelar versiones) y registro desde main.tsx en producción. El aviso de descanso con el móvil bloqueado va en su bloque (portado).',
+  },
+  {
+    area: 'Onboarding, instalación y arranque',
+    v1: 'app.js (onboarding / pwa:install / errores globales) + views-settings.js (Datos) + store.js (aviso de escritura)',
+    v2: 'src/ui/Onboarding.tsx + src/state/onboarding.ts + src/platform/install.ts',
+    state: 'portado',
+    note: 'Modal de primera visita que marca meta.onboarded (los dos caminos), fila «Instalar» en Ajustes → Datos con el modal de instrucciones manuales, «Acerca de» con la versión, aviso único de fallo de escritura, reloj de sesión en la barra y errores globales con toast. Banner de instalación en Hoy: decidido no (paridad con la v1).',
   },
 ];

@@ -26,16 +26,23 @@ export interface ModalProps {
   children?: ComponentChildren;
   /** Botones del pie (van con `flex:1`, lo pone `.modal-foot .btn`). */
   foot?: ComponentChildren;
+  /**
+   * `false` = solo se cierra con los botones del pie: ni ESC, ni clic fuera, ni la
+   * X de la cabecera (el onboarding de la v1 era así, `dismissable:false`).
+   */
+  dismissable?: boolean;
 }
 
-export function Modal({ title, onClose, children, foot }: ModalProps) {
+export function Modal({ title, onClose, children, foot, dismissable = true }: ModalProps) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  const open = useRef(dismissable);
+  open.current = dismissable;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') close.current();
+      if (open.current && event.key === 'Escape') close.current();
     };
     document.addEventListener('keydown', onKey);
     box.current?.focus();
@@ -47,16 +54,18 @@ export function Modal({ title, onClose, children, foot }: ModalProps) {
       class="modal-scrim"
       role="presentation"
       onMouseDown={(event: MouseEvent) => {
-        if (event.target === event.currentTarget) onClose();
+        if (open.current && event.target === event.currentTarget) onClose();
       }}
     >
       <div class="modal" role="dialog" aria-modal="true" aria-label={title} ref={box} tabIndex={-1}>
         <div class="grabber" />
         <div class="modal-head">
           <b class="ellipsis">{title}</b>
-          <button type="button" class="icon-btn" title="Cerrar" onClick={onClose}>
-            <Icon name="x" />
-          </button>
+          {dismissable ? (
+            <button type="button" class="icon-btn" title="Cerrar" onClick={onClose}>
+              <Icon name="x" />
+            </button>
+          ) : null}
         </div>
         <div class="modal-body">{children}</div>
         {foot ? <div class="modal-foot">{foot}</div> : null}

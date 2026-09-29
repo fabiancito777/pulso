@@ -16,6 +16,13 @@ import type { Routine } from './store';
 
 const mem = new Map<string, string>();
 
+/* El aviso de fallo de escritura llama a `toast`: se sustituye por un espión
+   para poder contar los avisos (se aplica también al import dinámico de store,
+   que es posterior). */
+vi.mock('@/ui/toast', () => ({
+  toast: vi.fn(() => ({ close: () => {} })),
+}));
+
 vi.stubGlobal('localStorage', {
   getItem: (key: string): string | null => (mem.has(key) ? (mem.get(key) as string) : null),
   setItem: (key: string, value: string): void => {
@@ -92,6 +99,32 @@ describe('rutinas', () => {
     expect(store.schedule.value['2026-09-28']?.routineId).toBe(otra.id);
     expect(persistedRoutines().map((r) => r.id)).toEqual([otra.id]);
   });
+
+  it('duplicateRoutine cambia id y nombre y COPIA los items (sin referencias compartidas)', () => {
+    const creada = store.addRoutine({
+      name: 'Empuje A',
+      items: [{ exId: 'press-banca', sets: 4, weight: 40 }],
+    });
+
+    const copia = store.duplicateRoutine(creada.id);
+
+    expect(copia).not.toBeNull();
+    if (!copia) return;
+    expect(copia.id).not.toBe(creada.id);
+    expect(copia.id).toMatch(/^rt_/);
+    expect(copia.name).toBe('Empuje A (copia)');
+    expect(copia.items).toEqual(creada.items);
+    expect(copia.items[0]).not.toBe(creada.items[0]);
+    expect(persistedRoutines().map((r) => r.id)).toContain(copia.id);
+
+    /* la copia vive su vida: tocarla no debe mover la original */
+    copia.items[0].sets = 9;
+    expect(creada.items[0].sets).toBe(4);
+    expect(store.routines.value.find((r) => r.id === creada.id)?.items[0].sets).toBe(4);
+
+    expect(store.routines.value).toHaveLength(2);
+    expect(store.duplicateRoutine('rt_no-existe')).toBeNull();
+  });
 });
 
 describe('meta', () => {
@@ -119,8 +152,41 @@ describe('meta', () => {
   });
 });
 
-/* ---------- ejercicios propios (Ajustes → Ejercicios) ---------- */
+/* ---------- fallo de escritura (spec onboarding.md, hueco 6) ---------- */
 
+describe('writeState con setItem roto', () => {
+  it('avisa UNA sola vez y el estado sigue vivo en memoria (la signal no se pierde)', async () => {
+    const { toast } = await import('@/ui/toast');
+    const aviso = vi.mocked(toast);
+    aviso.mockClear();
+
+    const roto = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+
+    try {
+      store.writeState(store.defaultState());
+      store.patchSettings({ name: 'En memoria' });
+
+      expect(aviso).toHaveBeenCalledTimes(1);
+      expect(aviso).toHaveBeenCalledWith(
+        expect.stringContaining('los datos viven solo en esta pestaña'),
+        expect.objectContaining({ kind: 'warn', ms: 6000 }),
+      );
+      /* la signal es la fuente de verdad aunque el disco falle */
+      expect(store.settings.value.name).toBe('En memoria');
+      expect(store.storageAvailable).toBe(true);
+
+      /* un fallo más (una serie escrita) no repite el aviso */
+      store.writeState(store.defaultState());
+      expect(aviso).toHaveBeenCalledTimes(1);
+    } finally {
+      roto.mockRestore();
+    }
+  });
+});
+
+/* ---------- ejercicios propios (Ajustes → Ejercicios) ---------- */
 const persistedExercises = (): Exercise[] => {
   const raw = store.readState().exercises;
   return Array.isArray(raw) ? (raw as Exercise[]) : [];
@@ -265,6 +331,125 @@ describe('datos de ejemplo', () => {
     expect(store.sessions.value.map((s) => s.id)).toEqual(['s_real']);
     expect(store.schedule.value).toEqual(antes);
     expect(store.appendSessions([])).toHaveLength(1);
+  });
+});
+
+/* ---------- sesiones: edición y borrado ---------- */
+
+describe('sesiones: updateSession / removeSession', () => {
+  it('updateSession parchea, conserva el id y devuelve null si no existe', () => {
+    store.appendSessions([realSession('s_1')]);
+
+    expect(store.updateSession('s_no-existe', { name: 'Nada' })).toBeNull();
+
+    const editada = store.updateSession('s_1', {
+      name: 'Tren inferior',
+      notes: 'sin prisa',
+      date: '2026-09-03',
+      id: 'otro-id',
+    });
+
+    /* el id del parche se ignora: lo referencian schedule.sessionId */
+    expect(editada).toMatchObject({ id: 's_1', name: 'Tren inferior', notes: 'sin prisa' });
+    expect(store.sessions.value).toHaveLength(1);
+    expect(store.sessions.value[0]).toMatchObject({ id: 's_1', name: 'Tren inferior' });
+    expect(persistedSessions()[0]).toMatchObject({ notes: 'sin prisa', date: '2026-09-03' });
+
+    /* la señal y lo persistido se releen igual tras un refresh */
+    store.refresh();
+    expect(store.sessions.value[0]?.name).toBe('Tren inferior');
+  });
+
+  it('updateSession no reordena por startedAt (la v1 solo ordenaba al apilar)', () => {
+    const vieja = { ...realSession('s_vieja'), startedAt: '2026-09-01T18:00:00.000Z' };
+    const reciente = { ...realSession('s_reciente'), startedAt: '2026-09-08T18:00:00.000Z' };
+    store.appendSessions([vieja, reciente]);
+    expect(store.sessions.value.map((s) => s.id)).toEqual(['s_reciente', 's_vieja']);
+
+    store.updateSession('s_vieja', { startedAt: '2026-09-20T18:00:00.000Z' });
+
+    expect(store.sessions.value.map((s) => s.id)).toEqual(['s_reciente', 's_vieja']);
+  });
+
+  it('removeSession quita la sesión y NO desmarca el día (así lo hacía la v1)', () => {
+    store.commitSession({ ...realSession('s_borra'), date: '2026-09-05' });
+    expect(store.schedule.value['2026-09-05']).toMatchObject({
+      status: 'done',
+      sessionId: 's_borra',
+    });
+
+    store.removeSession('s_borra');
+
+    expect(store.sessions.value).toHaveLength(0);
+    expect(persistedSessions()).toHaveLength(0);
+    /* la v1 no tocaba el calendario: el día se queda hecho (views-calendar
+       pintaba `p.status === 'done'` aunque la sesión ya no existiera) */
+    expect(store.schedule.value['2026-09-05']).toMatchObject({
+      status: 'done',
+      sessionId: 's_borra',
+    });
+
+    /* id desconocido o lista vacía: no revienta y deja el estado como está */
+    store.removeSession('s_no-existe');
+    expect(store.sessions.value).toHaveLength(0);
+    expect(store.schedule.value['2026-09-05']).toMatchObject({ status: 'done' });
+  });
+
+  it('lo editado y lo borrado sobreviven a refresh() y al export/import', () => {
+    store.appendSessions([realSession('s_queda')]);
+    store.updateSession('s_queda', { name: 'Editada' });
+    store.commitSession({ ...realSession('s_fuera'), date: '2026-09-10' });
+    store.removeSession('s_fuera');
+
+    const copia = store.exportState();
+    store.resetAll();
+    expect(store.sessions.value).toHaveLength(0);
+
+    store.importState(copia);
+
+    expect(store.sessions.value.map((s) => [s.id, s.name])).toEqual([['s_queda', 'Editada']]);
+    expect(store.schedule.value['2026-09-10']).toMatchObject({ status: 'done' });
+    store.refresh();
+    expect(store.sessions.value).toHaveLength(1);
+    expect(store.sessions.value[0]?.name).toBe('Editada');
+  });
+});
+
+/* ---------- calendario: clearDay ---------- */
+
+describe('calendario: clearDay', () => {
+  it('setDay con undefined NO borra la clave; clearDay sí (como la v1)', () => {
+    store.setDay('2026-09-30', { status: 'planned', title: 'Ciclo', routineId: 'rt_1' });
+    store.setDay('2026-09-29', { status: 'rest', type: 'descanso' });
+
+    store.setDay('2026-09-30', {
+      status: undefined,
+      title: undefined,
+      routineId: undefined,
+      type: undefined,
+      source: undefined,
+    });
+
+    /* el merge deja la clave en el mapa (un `{}` que además se persiste), así
+       que "limpiar con undefined" no llega a lo que hacía S.clearDay */
+    expect('2026-09-30' in store.schedule.value).toBe(true);
+    expect('2026-09-30' in (store.readState().schedule as Record<string, unknown>)).toBe(true);
+
+    store.clearDay('2026-09-30');
+
+    expect('2026-09-30' in store.schedule.value).toBe(false);
+    expect('2026-09-30' in (store.readState().schedule as Record<string, unknown>)).toBe(false);
+    /* los demás días quedan intactos */
+    expect(store.schedule.value['2026-09-29']).toMatchObject({ status: 'rest' });
+    store.refresh();
+    expect('2026-09-30' in store.schedule.value).toBe(false);
+  });
+
+  it('clearDay de un día que no existe no toca nada', () => {
+    store.setDay('2026-09-28', { status: 'planned' });
+    store.clearDay('2030-01-01');
+    expect(Object.keys(store.schedule.value)).toEqual(['2026-09-28']);
+    expect('2026-09-28' in (store.readState().schedule as Record<string, unknown>)).toBe(true);
   });
 });
 

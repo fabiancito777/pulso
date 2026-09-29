@@ -7,12 +7,17 @@
  * aquí es la orquestación: número de llamadas, qué prompt viaja en cada una,
  * que la memoria y las rutinas se PERSISTEN y que una API key vacía ni siquiera
  * llega a la red.
+ *
+ * Al final se agregan tres describes con aserciones SUELTAS del store
+ * (`setSettingsPath` anidado, `rememberPlateMode` y `setEquipment`): son
+ * comprobaciones del auto-test de la v1 que no podían entrar en `store.test.ts`
+ * en esta tanda, y este es el fichero que ya manipula el estado fuera del coach.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { findExerciseByName } from '@/domain/data';
+import { findExerciseByName, isAvailable } from '@/domain/data';
 import { addDays } from '@/domain/dates';
-import type { Session } from '@/domain/types';
+import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
 import type { GenOpts, GenResult } from '@/features/coach/client';
 import { queryHistory } from '@/features/coach/history';
@@ -471,5 +476,72 @@ describe('hasApiKey', () => {
     expect(coach.hasApiKey()).toBe(true);
     store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: '  ' } });
     expect(coach.hasApiKey()).toBe(false);
+  });
+});
+
+/* ---------- ajustes: lo que el auto-test de la v1 hacía con `A.setSettingPath` ----------
+   Están aquí (y no en `store.test.ts`, que lleva otro agente) porque son aserciones
+   sueltas sobre exports ya existentes del store y este fichero ya manipula
+   `settings` fuera de su ámbito de coach. */
+
+describe('ajustes anidados (v1: `setSettingsPath`)', () => {
+  it('escribe rutas anidadas sin pisar el resto del objeto y lo persiste', () => {
+    const model = store.settings.value.ai.model;
+
+    store.setSettingsPath('bars.olimpica', 20);
+    store.setSettingsPath('ai.temperature', 0.7);
+
+    expect(store.settings.value.bars.olimpica).toBe(20);
+    expect(store.settings.value.bars.ez).toBe(0);
+    expect(store.settings.value.ai.temperature).toBe(0.7);
+    expect(store.settings.value.ai.model).toBe(model);
+    expect(store.settings.value.ai.apiKey).toBe('test-key');
+
+    /* escrito de verdad en `pulso.state` (lectura-modificación-escritura) */
+    store.refresh();
+    expect(store.settings.value.bars.olimpica).toBe(20);
+    expect(store.settings.value.ai.temperature).toBe(0.7);
+    expect(store.settings.value.ai.model).toBe(model);
+  });
+
+  it('una ruta vacía no rompe ni borra nada', () => {
+    store.setSettingsPath('', 1);
+    store.setSettingsPath('.temperature', 1);
+    expect(store.settings.value.ai.temperature).toBe(0.7);
+  });
+});
+
+describe('discos: el modo se recuerda por ejercicio (v1 `T.setPlateMode`)', () => {
+  it('guarda el modo elegido para ESE ejercicio y lo deja tras refresh()', () => {
+    store.rememberPlateMode('press-de-banca-con-barra', 'db2');
+
+    expect(store.settings.value.plateModes['press-de-banca-con-barra']).toBe('db2');
+    expect(store.settings.value.plateModes['remo-con-mancuerna-a-una-mano']).toBeUndefined();
+
+    store.refresh();
+    expect(store.settings.value.plateModes['press-de-banca-con-barra']).toBe('db2');
+  });
+});
+
+describe('material (v1: «equipo: detecta material faltante» / «disponible al activarlo»)', () => {
+  it('apagar y encender el material cambia la disponibilidad y se persiste', () => {
+    const press = store.exercises.value.find(
+      (e) => e.id === 'press-de-banca-con-barra',
+    ) as Exercise;
+    expect(press).toBeDefined();
+
+    store.setEquipment('barra_olimpica', false);
+    store.setEquipment('banco_plano', false);
+    store.setEquipment('banco_inclinable', false);
+    expect(isAvailable(press, store.equipment.value)).toBe(false);
+
+    store.setEquipment('barra_olimpica', true);
+    store.setEquipment('banco_plano', true);
+    expect(isAvailable(press, store.equipment.value)).toBe(true);
+
+    store.refresh();
+    expect(store.equipment.value.barra_olimpica).toBe(true);
+    expect(store.equipment.value.banco_plano).toBe(true);
+    expect(store.equipment.value.banco_inclinable).toBe(false);
   });
 });

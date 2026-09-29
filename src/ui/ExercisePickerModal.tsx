@@ -8,7 +8,9 @@
  *   ya has hecho, de más a menos) → nombre. Lo que te falta material o lo tienes
  *   desactivado queda ABAJO, pero **se puede añadir igual**: solo es un aviso;
  * - búsqueda tolerante a tildes (`domain/text.norm`) y filtro por grupo;
- * - el contador dice «N seleccionados» mientras no confirmes.
+ * - el contador dice «N seleccionados» mientras no confirmes;
+ * - con `onlyIds` solo se pueden elegir los que ya aparecen en el historial (es
+ *   el `onlyDone` de la v1, con el que Progresión abre el picker de «Otro»).
  */
 import { useState } from 'preact/hooks';
 
@@ -24,6 +26,8 @@ export interface ExercisePickerModalProps {
   title?: string;
   /** `exId` que no se pueden elegir (los que ya están en la sesión). */
   exclude?: readonly string[];
+  /** Si se pasa, SOLO se pueden elegir estos (v1 `onlyDone`: los ya entrenados). */
+  onlyIds?: readonly string[];
   onClose: () => void;
   onPick: (ids: string[]) => void;
 }
@@ -31,6 +35,7 @@ export interface ExercisePickerModalProps {
 export function ExercisePickerModal({
   title = 'Añadir ejercicios',
   exclude = [],
+  onlyIds,
   onClose,
   onPick,
 }: ExercisePickerModalProps) {
@@ -40,6 +45,7 @@ export function ExercisePickerModal({
 
   const equip = equipment.value;
   const hidden = new Set(exclude);
+  const only = onlyIds ? new Set(onlyIds) : null;
   const needle = norm(query);
 
   /* familiaridad: cuántas sesiones del historial traen cada ejercicio (v1 `S.familiarity`) */
@@ -51,6 +57,7 @@ export function ExercisePickerModal({
 
   const items = exercises.value
     .filter((ex) => !hidden.has(ex.id))
+    .filter((ex) => (only ? only.has(ex.id) : true))
     .filter((ex) => !group || ex.group === group)
     .filter((ex) => !needle || norm(ex.name).includes(needle))
     .sort((a, b) => {
