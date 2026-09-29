@@ -1,11 +1,16 @@
 /**
- * Helpers puros de la vista Calendario: estado de un día, cuadrícula mensual,
- * resumen de la semana y normalización del plan del coach IA.
+ * Helpers de la vista Calendario: estado de un día, cuadrícula mensual,
+ * resumen de la semana, normalización del plan del coach y la distinción
+ * **local vs IA** (el `data-ai="0"|"1"` de la v1).
  *
  * Están aparte del componente para poder probarlos con Vitest sin DOM ni
- * `localStorage`: aquí solo entran datos por parámetro y salen datos (el único
- * import con efectos es `parseJSON`, que también es puro).
+ * `localStorage`: aquí solo entran datos por parámetro y salen datos (los
+ * imports con efectos son `parseJSON`, que es puro, y la signal
+ * `autoPlanRequest`, el ÚNICO estado del módulo y el único aparte que no es
+ * una función pura — está justificado en su sección).
  */
+import { signal } from '@preact/signals';
+
 import { parseJSON } from '@/features/coach/parse';
 import type { ScheduleDay } from '@/state/store';
 
@@ -251,6 +256,112 @@ export function parsePlan(text: string): PlanResult | null {
   } catch {
     return null;
   }
+  return planFromJson(raw);
+}
+
+/**
+ * Envuelve un plan YA parseado (el `payload` de `runCoachTask`, que sin API key
+ * es el JSON del planificador local, o el objeto que devuelve `localWeek`) en la
+ * propuesta que pinta la vista. Devuelve `null` si no parece un plan, con el
+ * mismo criterio que `parsePlan`.
+ *
+ * Es el camino que usa «Auto-planificar»: el plan local NUNCA pasa por la red
+ * ni por un JSON en texto, así que aquí no hay nada que parsear de verdad.
+ */
+export function planFromJson(raw: unknown): PlanResult | null {
   const preview = normalizePlan(raw);
   return preview ? { raw, preview } : null;
+}
+
+/* ---------- local vs IA (el `data-ai` de la v1) ---------- */
+
+/** Quién ha generado una propuesta: el planificador del dispositivo o el coach IA. */
+export type PlanEngine = 'ia' | 'local';
+
+/**
+ * Motor de una propuesta a partir del `source` que normaliza `normalizePlan`.
+ *
+ * Solo `'ia'` manda: el plan local escribe `source: 'local'` (`localWeek`) y un
+ * plan del modelo sin `source` (el prompt de `prompts.ts` no lo pide) cuenta
+ * como IA, que es como lo normaliza la v1. Cualquier otra cadena — la
+ * `'local (IA no disponible)'` con la que la v1 etiquetaba el fallback — es
+ * plan del dispositivo, y así «Regenerar» y el pie de la tarjeta cuentan la
+ * verdad aunque la llamada a la IA se haya caído.
+ */
+export function planEngine(source: string): PlanEngine {
+  return source === 'ia' ? 'ia' : 'local';
+}
+
+/**
+ * Motor con el que se pide un auto-plan cuando solo se sabe si hay key: IA si
+ * la hay, dispositivo si no. Es lo que hacía la v1 con `data-ai` +
+ * `C.planWeek({useAI:true})`, que sin key devolvía el plan local en vez de
+ * fallar (`legacy/js/coach.js:470`).
+ */
+export function autoPlanEngine(hasKey: boolean): PlanEngine {
+  return hasKey ? 'ia' : 'local';
+}
+
+/** Qué ofrece la barra de planificación del Calendario. */
+export interface PlanControls {
+  /** mostrar el botón «Con IA» (la mejora opcional); el local va SIEMPRE */
+  ai: boolean;
+  /** pie discreto bajo los botones; `''` cuando no hace falta */
+  foot: string;
+}
+
+/**
+ * La v1 tenía dos botones (`cal:autoplan` con `data-ai="0"` y `"1"`); aquí el
+ * local no se puede esconder nunca porque es el único que funciona sin
+ * configurar nada. Sin key la opción IA se oculta y deja un pie discreto: no se
+ * bloquea NADA, solo se explica por qué no hay dos botones.
+ */
+export function planControls(hasKey: boolean): PlanControls {
+  const ai = autoPlanEngine(hasKey) === 'ia';
+  return { ai, foot: ai ? '' : 'sin API key: plan local' };
+}
+
+/** Cómo se etiqueta una propuesta en su tarjeta (texto y badge). */
+export interface PlanOrigin {
+  engine: PlanEngine;
+  /** subtítulo: la v1 escribía «generada por IA» / «generada en el dispositivo» */
+  subtitle: string;
+  /** clase del badge: la IA lleva acento, la local no */
+  badge: string;
+}
+
+export function planOrigin(source: string): PlanOrigin {
+  const engine = planEngine(source);
+  return {
+    engine,
+    subtitle: engine === 'ia' ? 'generada por el coach IA' : 'generada en el dispositivo',
+    badge: engine === 'ia' ? 'badge a' : 'badge',
+  };
+}
+
+/**
+ * Petición de auto-plan lanzada desde OTRA pestaña.
+ *
+ * Es el `App.views.calendario.autoPlan(...)` que la v1 ejecutaba a través de
+ * `coach:quick` (`views-train.js:566`: navega a Calendario y le pide el plan).
+ * Aquí hace falta un trozo de estado módulo (el único del fichero): un motor o
+ * `null`, no un booleano, para que dos peticiones seguidas no se confundan y
+ * para que la vista sepa si tocaba IA o dispositivo.
+ */
+export const autoPlanRequest = signal<PlanEngine | null>(null);
+
+/** Pide un plan a la pestaña Calendario (la llama Hoy: «Plan automático»). */
+export function requestAutoPlan(engine: PlanEngine): void {
+  autoPlanRequest.value = engine;
+}
+
+/**
+ * La vista de Calendario consume la petición al montar (o al cambiar la
+ * signal): devuelve el motor pendiente y la deja vacía, así que una petición
+ * solo dispara UN plan.
+ */
+export function takeAutoPlanRequest(): PlanEngine | null {
+  const engine = autoPlanRequest.value;
+  if (engine) autoPlanRequest.value = null;
+  return engine;
 }

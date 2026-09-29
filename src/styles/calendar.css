@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Pulso v2 · Calendario — semana, mes y plan con IA
+   Pulso v2 · Calendario — semana, mes y propuesta semanal (local o IA)
    `base.css` ya trae la franja semanal (`.week-strip`, `.day-cell`), la
    cuadrícula mensual (`.month-grid`, `.month-cell`), `.seg`, `.badge`, `.chip`
    y `.empty`: aquí solo se añade lo que falta y se rematan las piezas nuevas.
@@ -328,7 +328,29 @@
   gap: 6px;
 }
 
-/* ---------- plan con IA ---------- */
+/* ---------- barra de planificación: local SIEMPRE, IA solo con key ---------- */
+
+.cal-plan-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* con dos botones comparten la fila; si no caben (o solo hay uno) cada uno
+   ocupa lo que toque sin desbordar el shell */
+.cal-plan-bar .btn {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/* el pie explica por qué no hay botón de IA: va pegado a la barra, no como
+   otro bloque suelto (`.cal-view` ya separa los bloques con 12 px) */
+.cal-plan-foot {
+  margin-top: -6px;
+  text-align: center;
+}
+
+/* ---------- propuesta de semana (plan local o IA) ---------- */
 
 .cal-plan-days {
   display: flex;

@@ -10,9 +10,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { today } from '@/domain/dates';
 import { emptyDraft, toExercise } from '@/domain/exercise-draft';
 import type { Exercise, Session } from '@/domain/types';
-import type { Routine } from './store';
+import type { Routine, ScheduleDay } from './store';
 
 const mem = new Map<string, string>();
 
@@ -505,5 +506,126 @@ describe('export / import', () => {
     expect(() => store.importState({ version: 1 })).toThrow();
     expect(() => store.importState('texto')).toThrow();
     expect(store.sessions.value.map((s) => s.id)).toEqual(['s_mia']);
+  });
+});
+
+/* ---------- semilla personal (v1: seedPersonalRoutines / applyPersonalSetup) ---------- */
+
+/** El día de hoy, ya como plan del calendario. */
+function planDeHoy(state: ReturnType<typeof store.readState>): ScheduleDay | undefined {
+  const plan = state.schedule;
+  return plan && typeof plan === 'object'
+    ? (plan as Record<string, ScheduleDay>)[today()]
+    : undefined;
+}
+
+describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () => {
+  it('instalación limpia: siembra la rutina, agenda hoy y deja las claves de la v1', () => {
+    mem.clear();
+
+    store.loadInitialState();
+
+    expect(store.readStored<string[]>(store.SEED_KEY)).toEqual(['rt-personal-kroc']);
+    expect(store.readStored<string[]>(store.SETUP_KEY)).toEqual(['inventario-v2']);
+
+    const guardadas = persistedRoutines();
+    expect(guardadas).toHaveLength(1);
+    expect(guardadas[0]).toMatchObject({
+      id: 'rt-personal-kroc',
+      name: 'Espalda + Pecho + Brazos (superseries)',
+      source: 'manual',
+    });
+    expect(typeof guardadas[0]?.createdAt).toBe('string');
+    /* los 11 ejercicios apuntan a la biblioteca REAL (si el catálogo cambia,
+       la semilla tendría que cambiar con él) */
+    expect(guardadas[0]?.items).toHaveLength(11);
+    const ids = store.exercises.value.map((e) => e.id);
+    expect(guardadas[0]?.items.every((item) => ids.includes(item.exId))).toBe(true);
+
+    expect(planDeHoy(store.readState())).toEqual({
+      routineId: 'rt-personal-kroc',
+      type: 'entreno',
+      title: 'Espalda + Pecho + Brazos (superseries)',
+      status: 'planned',
+      source: 'manual',
+    });
+  });
+
+  it('la segunda carga no duplica ni la rutina ni el día', () => {
+    mem.clear();
+    store.loadInitialState();
+    store.loadInitialState();
+
+    expect(persistedRoutines()).toHaveLength(1);
+    const plan = store.readState().schedule as Record<string, ScheduleDay>;
+    expect(Object.keys(plan)).toHaveLength(1);
+    expect(store.readStored<string[]>(store.SEED_KEY)).toEqual(['rt-personal-kroc']);
+  });
+
+  it('con la clave puesta la rutina NO vuelve (así lo deja un «Borrar todo»)', () => {
+    mem.clear();
+    store.loadInitialState();
+    store.resetAll();
+
+    expect(store.readStored<string[]>(store.SEED_KEY)).toEqual(['rt-personal-kroc']);
+    expect(store.readStored<string[]>(store.SETUP_KEY)).toEqual(['inventario-v2']);
+    expect(persistedRoutines()).toHaveLength(0);
+
+    store.loadInitialState();
+    expect(persistedRoutines()).toHaveLength(0);
+    expect(planDeHoy(store.readState())).toBeUndefined();
+  });
+
+  it('con datos existentes no pisa ni las rutinas ni el día ya planificado', () => {
+    mem.clear();
+    const state = store.defaultState();
+    state.routines = [{ id: 'rt-mia', name: 'Empuje A', items: [] }];
+    state.schedule = { [today()]: { status: 'rest', type: 'descanso', title: 'Viaje' } };
+    store.writeState(state);
+
+    store.loadInitialState();
+
+    const tras = store.readState();
+    const guardadas = persistedRoutines();
+    expect(guardadas.map((r) => r.id)).toEqual(['rt-mia', 'rt-personal-kroc']);
+    expect(guardadas[0]).toMatchObject({ name: 'Empuje A' });
+    /* la v1 solo rellenaba el día si estaba libre */
+    expect(planDeHoy(tras)).toEqual({ status: 'rest', type: 'descanso', title: 'Viaje' });
+  });
+
+  it('si la rutina ya está guardada solo se marca: no duplica ni agenda', () => {
+    mem.clear();
+    const state = store.defaultState();
+    state.routines = [{ id: 'rt-personal-kroc', name: 'Mía, copiada a mano', items: [] }];
+    store.writeState(state);
+
+    store.loadInitialState();
+
+    const tras = store.readState();
+    expect(persistedRoutines()).toHaveLength(1);
+    expect(persistedRoutines()[0]).toMatchObject({ name: 'Mía, copiada a mano' });
+    /* la v1 hacía `return` antes de agendar el día */
+    expect(planDeHoy(tras)).toBeUndefined();
+    expect(store.readStored<string[]>(store.SEED_KEY)).toEqual(['rt-personal-kroc']);
+  });
+
+  it('el setup solo deja la clave: no reescribe inventario ni material', () => {
+    mem.clear();
+    const state = store.defaultState();
+    state.settings = {
+      ...state.settings,
+      plates: [{ w: 20, unit: 'kg', pairs: 1, on: true }],
+      bars: { olimpica: 15, ez: 0, mancuerna: 0 },
+    };
+    state.equipment = { mancuernas_ajustables: false };
+    store.writeState(state);
+
+    store.loadInitialState();
+
+    const tras = store.readState();
+    expect(tras.settings.plates).toEqual([{ w: 20, unit: 'kg', pairs: 1, on: true }]);
+    expect(tras.settings.bars).toEqual({ olimpica: 15, ez: 0, mancuerna: 0 });
+    expect(tras.equipment).toEqual({ mancuernas_ajustables: false });
+    expect(store.readStored<string[]>(store.SETUP_KEY)).toEqual(['inventario-v2']);
   });
 });

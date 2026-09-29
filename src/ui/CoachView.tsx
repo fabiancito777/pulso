@@ -14,6 +14,10 @@
  *   modelo queda escapado solo.
  * - **JSON de `suggest`/`plan`**: no se pinta en crudo; se guarda como `payload`
  *   del mensaje y se resume en una tarjeta con su botón de «Aplicar».
+ * - **Tarjeta de estado**: «Probar» hace el ping real con `testConnection` (el
+ *   `coach:test` de la v1) y deja ms/ok en la propia tarjeta. Son los mismos 6
+ *   chips rápidos de `views-coach.js:30`: los tres que faltaban van a un `chat`
+ *   con el prompt literal de la v1.
  * - El textarea de entrada usa `onInput` (no `change`): el borrador es estado
  *   local y Enter tiene que ver el valor ACTUAL; los campos que se PERSISTEN al
  *   confirmar —el de la memoria— también, para que el contador de caracteres
@@ -26,7 +30,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { go } from '@/app/router';
 import { nowTs } from '@/domain/dates';
 import { int } from '@/domain/num';
-import { GeminiError } from '@/features/coach/client';
+import { GeminiError, testConnection } from '@/features/coach/client';
 import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
 import { parseJSON } from '@/features/coach/parse';
 import type { CoachTask } from '@/features/coach/types';
@@ -44,6 +48,7 @@ import {
 import type { ChatLine, MdSpan } from '@/state/chat';
 import { patchSettings, settings } from '@/state/store';
 import { Icon } from '@/ui/Icon';
+import { toast } from '@/ui/toast';
 
 import '../styles/coach.css';
 
@@ -346,9 +351,54 @@ function Bubble({
 
 /* ---------- tarjeta de estado ---------- */
 
+/** Resultado del último «Probar» (el `coach:test` de la v1), pintado en la tarjeta. */
+export interface TestResult {
+  ok: boolean;
+  ms: number;
+}
+
+/** `0,8 s` — los milisegundos del test, con el mismo formato que los avisos. */
+function secs(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+/**
+ * Etiqueta del badge de la tarjeta de estado: `listo` antes del primer test y
+ * `ok · 0,8 s` / `error · 2,1 s` después (el ms/ok que pide la v1).
+ */
+export function testBadge(result: TestResult | null): string {
+  if (!result) return 'listo';
+  return `${result.ok ? 'ok' : 'error'} · ${secs(result.ms)}`;
+}
+
 function StatusCard() {
   const ai = settings.value.ai;
   const hasKey = hasApiKey();
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<TestResult | null>(null);
+
+  /** «Probar» (v1 `coach:test`): un ping real y el ms/ok en la propia tarjeta. */
+  async function runTest(): Promise<void> {
+    if (testing) return;
+    setTesting(true);
+    const model = String(ai.model ?? '');
+    const spin = toast(`Probando ${model}…`, { loading: true, sticky: true });
+    let res;
+    try {
+      res = await testConnection(String(ai.apiKey ?? ''), model);
+    } catch (err) {
+      /* `testConnection` no debería lanzar, pero el aviso no puede perderse */
+      res = { ok: false, ms: 0, detail: err instanceof Error ? err.message : String(err) };
+    }
+    spin.close();
+    setTesting(false);
+    setResult({ ok: res.ok, ms: res.ms });
+    if (res.ok) {
+      toast(`Conexión correcta · ${model} en ${secs(res.ms)}`, { kind: 'ok', ms: 4000 });
+    } else {
+      toast(`Error: ${res.detail}`, { kind: 'err', ms: 8000 });
+    }
+  }
 
   if (!hasKey) {
     return (
@@ -399,7 +449,18 @@ function StatusCard() {
             <div class="tiny muted ellipsis">pensamiento {thinking}</div>
           </div>
         </div>
-        <span class="badge ok">listo</span>
+        <div class="row coach-test" style="gap:8px">
+          <span class={`badge ${result && !result.ok ? 'danger' : 'ok'}`}>{testBadge(result)}</span>
+          <button
+            type="button"
+            class="btn sm ghost"
+            disabled={testing}
+            onClick={() => void runTest()}
+          >
+            <Icon name="zap" />
+            {testing ? 'Probando…' : 'Probar'}
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -482,20 +543,32 @@ function MemoryPanel() {
 
 /* ---------- acciones rápidas ---------- */
 
-interface QuickAction {
+export interface QuickAction {
   task: CoachTask;
   label: string;
   icon: string;
   /** lo que se apila en el chat como pregunta del usuario (paridad con la v1) */
   ask: string;
+  /**
+   * pestaña a la que saltar cuando la tarea termina. La v1 solo lo hacía el
+   * chip «Sesión de hoy» (`coach:quick` → `App.router.go('hoy')`): la
+   * propuesta ya está lista y la pestaña Hoy tiene su tarjeta con «Empezar».
+   */
+  jump?: { tab: string; toast: string };
 }
 
-const QUICK_ACTIONS: readonly QuickAction[] = [
+/**
+ * Los 6 chips de `views-coach.js:30`, con sus mismos iconos y textos. Los tres
+ * últimos la v1 los mandaba al chat con `send(prompts[kind])`, así que aquí son
+ * una tarea `chat` con el MISMO `ask` (se apila como mensaje del usuario).
+ */
+export const QUICK_ACTIONS: readonly QuickAction[] = [
   {
     task: 'suggest',
     label: 'Sugerir entreno',
     icon: 'dumbbell',
     ask: 'Genera el entreno de hoy para mí.',
+    jump: { tab: 'hoy', toast: 'Sesión lista en la pestaña Hoy' },
   },
   {
     task: 'plan',
@@ -508,6 +581,24 @@ const QUICK_ACTIONS: readonly QuickAction[] = [
     label: 'Analizar progreso',
     icon: 'chart',
     ask: 'Analiza mi progreso de las últimas 6 semanas.',
+  },
+  {
+    task: 'chat',
+    label: 'Revisar volumen',
+    icon: 'bars',
+    ask: 'Revisa mi volumen semanal por grupo muscular y dime qué grupos están descompensados y cómo corregirlo.',
+  },
+  {
+    task: 'chat',
+    label: 'Romper un récord',
+    icon: 'target',
+    ask: 'Elige el ejercicio donde tengo más margen de mejora y dame un plan concreto de 4 semanas para subir mi récord.',
+  },
+  {
+    task: 'chat',
+    label: 'Consejo de recuperación',
+    icon: 'rest',
+    ask: '¿Qué ajustes de recuperación, sueño y alimentación me recomiendas según mi volumen actual de entrenamiento?',
   },
 ];
 
@@ -540,7 +631,7 @@ export function CoachView() {
     return () => clearTimeout(id);
   }, [confirmClear]);
 
-  async function run(task: CoachTask, userText: string): Promise<void> {
+  async function run(task: CoachTask, userText: string, jump?: QuickAction['jump']): Promise<void> {
     const text = userText.trim();
     if (busy || !text) return;
     if (!hasKey) {
@@ -558,13 +649,21 @@ export function CoachView() {
     const history = task === 'chat' ? promptHistory() : [];
     setBusy(true);
     addChat({ role: 'user', text, ts: nowTs() });
+    let ok = false;
     try {
       const out = await runCoachTask(task, task === 'chat' ? { history } : {});
       addChat(resultLine(task, out, String(settings.value.ai.model ?? '')));
+      ok = true;
     } catch (err) {
       addChat(errorLine(err));
     } finally {
       setBusy(false);
+    }
+    /* solo al terminar (y sin error): el salto es lo último, así la vista
+       desmontada no vuelve a tocar su estado */
+    if (ok && jump) {
+      toast(jump.toast, { kind: 'ok' });
+      go(jump.tab);
     }
   }
 
@@ -610,6 +709,10 @@ export function CoachView() {
       text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas creadas` : ''}`,
       ts: nowTs(),
     });
+    /* El plan YA está en el calendario: se salta a verlo, igual que acababa la
+       v1 (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). */
+    toast(`Semana agendada: ${out.days} días, ${out.routines} rutinas creadas`, { kind: 'ok' });
+    go('calendario');
   }
 
   return (
@@ -619,12 +722,12 @@ export function CoachView() {
       <div class="hr-scroll mt-s">
         {QUICK_ACTIONS.map((action) => (
           <button
-            key={action.task}
+            key={action.label}
             type="button"
             class="chip"
             disabled={busy}
             onClick={() => {
-              void run(action.task, action.ask);
+              void run(action.task, action.ask, action.jump);
             }}
           >
             <Icon name={action.icon} />

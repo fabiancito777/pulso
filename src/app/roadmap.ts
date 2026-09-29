@@ -89,14 +89,14 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v1: 'views-*.js + app.js',
     v2: 'src/app/router.ts + src/ui/*View.tsx',
     state: 'portado',
-    note: 'Las 7 pestañas son componentes con rutas por hash y el mismo esquema de enlaces de la v1: Rutinas, Calendario, Coach, Progreso y Ajustes montadas y con sus estilos propios. El contenido de Hoy vive en su bloque (HoyView).',
+    note: 'Las 7 pestañas son componentes con rutas por hash y el mismo esquema de enlaces de la v1, y las 7 están montadas (`ported: true` en `router.ts`): Rutinas, Calendario, Coach, Progreso y Ajustes con sus estilos propios; Hoy vive en su bloque (HoyView) y Entrenar en los suyos (SessionCard global + PlatesCard).',
   },
   {
     area: 'Vista Hoy y extras de sesión',
     v1: 'views-train.js',
-    v2: 'src/ui/HoyView.tsx + hoy-helpers.ts + SessionCard.tsx',
-    state: 'en curso',
-    note: 'La pestaña Hoy está montada: saludo y racha en la barra, plan del día con las tres caras del hero, franja semanal, KPIs de 7 días, sugerencia local/IA con aviso si no hay key, temporizador libre, Libre/Elegir rutina y últimas sesiones con repetición y detalle en línea. Falta el resto del bloque: extras de sesión (discos por serie y «Añadir rutina»).',
+    v2: 'src/ui/HoyView.tsx + hoy-helpers.ts + SessionCard.tsx + {Plates,RoutinePicker,ExercisePicker}Modal.tsx',
+    state: 'portado',
+    note: 'La pestaña Hoy está completa: saludo y racha en la barra, plan del día con las tres caras del hero, franja semanal, KPIs de 7 días, sugerencia local/IA con aviso si no hay key, temporizador libre, Libre/Elegir rutina y últimas sesiones con repetición y detalle en línea. Los extras de sesión están cableados en `SessionCard`: discos por serie («discos» → `PlatesModal` → `plateTarget`/`applyPlateWeight`), «Añadir rutina» (`RoutinePickerModal` → `entriesFromRoutine`, y `RoutinesView` ya no se niega con sesión en curso), picker multi de ejercicios (`ExercisePickerModal`, excluye los ya presentes y cuenta los seleccionados), descanso editable por ejercicio (el hint se convierte en input → `setEntryRest`) y scroll con marca de «nuevo» al añadir (`justAdded`).',
   },
   {
     area: 'Editor de ejercicios en Ajustes',

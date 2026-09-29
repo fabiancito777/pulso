@@ -151,9 +151,261 @@ export function writeStored(key: string, value: unknown): void {
   }
 }
 
+/* ---------- semilla personal (solo la primera carga) ---------- */
+
+/**
+ * Registro de «ya están sembradas las rutinas personales» (array de ids).
+ * MISMO nombre que en la v1 (`U.st` de `store.js` prefija `pulso.`), y vive
+ * FUERA del estado: si borras todo desde Ajustes no vuelven a aparecer.
+ */
+export const SEED_KEY = 'pulso.seeded-routines';
+
+/** Registro de «ya apliqué el inventario por defecto de la v1» (`store.js:210`). */
+export const SETUP_KEY = 'pulso.applied-setup';
+
+/** Id de esa migración (el `SETUP_ID` de `store.js:211`). */
+const SETUP_ID = 'inventario-v2';
+
+/** Claves que «Borrar todo» respeta (la v1 no borraba ninguna clave suelta). */
+const KEEP_ON_RESET: readonly string[] = [SEED_KEY, SETUP_KEY];
+
+/**
+ * Rutinas personales puntuales. NO son defaults ni plantillas de la app: son
+ * rutinas concretas que el usuario pidió dejar cargadas una sola vez. Es el
+ * `PERSONAL_ROUTINES` de `store.js:36` con los MISMOS ids y el mismo
+ * contenido, para que las dos ramas lean la misma rutina.
+ */
+const PERSONAL_ROUTINES: readonly Routine[] = [
+  {
+    id: 'rt-personal-kroc',
+    name: 'Espalda + Pecho + Brazos (superseries)',
+    focus: 'Espalda · Pecho · Hombros · Bíceps · Tríceps · Antebrazo',
+    source: 'manual',
+    notes:
+      'Cargada a mano para una sesión. El peso de cada ejercicio va en el plan. En las superseries el primer ejercicio lleva 15 s de transición y el segundo el descanso real (45-60 s).',
+    items: [
+      {
+        exId: 'remo-con-mancuerna-a-una-mano',
+        sets: 3,
+        repMin: 10,
+        repMax: 10,
+        rest: 60,
+        weight: 17,
+        notes:
+          'KROC ROW a una mano · 17 kg · 3x10 por lado · descanso 60 s al terminar los dos lados',
+      },
+      {
+        exId: 'press-de-banca-con-mancuernas',
+        sets: 3,
+        repMin: 10,
+        repMax: 10,
+        rest: 60,
+        weight: 18,
+        notes:
+          'PRESS DE PISO · 18 kg por mancuerna · pausa de 1 s con los codos tocando el suelo y subida explosiva',
+      },
+      {
+        exId: 'press-militar-con-mancuernas',
+        sets: 3,
+        repMin: 8,
+        repMax: 8,
+        rest: 15,
+        weight: 11,
+        notes:
+          'SUPERSERIE 1 (1/2) · 11 kg por mano x 8 · pasa sin descanso a las elevaciones laterales',
+      },
+      {
+        exId: 'elevaciones-laterales-con-mancuernas',
+        sets: 3,
+        repMin: 15,
+        repMax: 15,
+        rest: 45,
+        weight: 4,
+        notes: 'SUPERSERIE 1 (2/2) · 4 kg por mano x 15 · descanso 45 s al terminar la superserie',
+      },
+      {
+        exId: 'extension-sobre-la-cabeza-con-mancuerna',
+        sets: 3,
+        repMin: 10,
+        repMax: 12,
+        rest: 15,
+        weight: 14,
+        notes:
+          'SUPERSERIE 2 (1/2) · rompecráneos en suelo 14 kg · 10-12 reps con los codos cerrados',
+      },
+      {
+        exId: 'curl-con-barra',
+        sets: 3,
+        repMin: 8,
+        repMax: 10,
+        rest: 60,
+        weight: 18.5,
+        notes: 'SUPERSERIE 2 (2/2) · 18,5 kg x 8-10 · descanso 60 s al terminar la superserie',
+      },
+      {
+        exId: 'curl-martillo',
+        sets: 3,
+        repMin: 10,
+        repMax: 10,
+        rest: 15,
+        weight: 9,
+        notes: 'SUPERSERIE 3 (1/2) · 9 kg por mano x 10',
+      },
+      {
+        exId: 'encogimientos-con-barra',
+        sets: 3,
+        repMin: 12,
+        repMax: 12,
+        rest: 45,
+        weight: 36,
+        notes:
+          'SUPERSERIE 3 (2/2) · 36 kg x 12 · mantén 2 s arriba apretando el trapecio · descanso 45 s',
+      },
+      {
+        exId: 'pajaros-con-mancuernas',
+        sets: 3,
+        repMin: 15,
+        repMax: 15,
+        rest: 45,
+        weight: 4,
+        notes: 'Deltoides posterior · 4 kg por mano x 15 · bajada controlada en 2 s',
+      },
+      {
+        exId: 'curl-de-muneca',
+        sets: 2,
+        repMin: 10,
+        repMax: 10,
+        rest: 30,
+        weight: 11,
+        notes:
+          'ANTEBRAZOS (1/2) · unilateral 11 kg x 10 por brazo · sin descanso pasa al otro brazo',
+      },
+      {
+        exId: 'curl-inverso-con-barra',
+        sets: 2,
+        repMin: 15,
+        repMax: 15,
+        rest: 30,
+        weight: 5,
+        notes: 'ANTEBRAZOS (2/2) · unilateral 5 kg x 15 por brazo · descanso 30 s entre rondas',
+      },
+    ],
+  },
+];
+
+/** Lo que ha tocado `seedPersonalRoutines` (estado en memoria y clave de guardia). */
+interface SeedResult {
+  /** `state` ha cambiado: hay que persistirlo */
+  changed: boolean;
+  /** ha crecido la lista de «ya sembradas»: hay que persistir `done` */
+  marked: boolean;
+  done: string[];
+}
+
+/**
+ * Inserta las rutinas personales UNA vez por dispositivo y agenda la de hoy si
+ * el día está libre (así las tienes a un toque en la pestaña Hoy). Port de
+ * `seedPersonalRoutines` (`store.js:75`) con la MISMA clave y el MISMO formato:
+ *
+ * - el registro va en `pulso.seeded-routines`, fuera del estado;
+ * - si el id YA está en `state.routines` solo se marca como sembrada: no se
+ *   duplica y NO se toca el calendario (igual que la v1, que hacía `return`
+ *   antes de agendar);
+ * - `schedule[hoy]` solo se rellena si ese día está libre
+ *   (`sin routineId, sin plan y sin title`);
+ * - NO escribe en disco: eso lo decide `loadInitialState`, para no dejar la
+ *   clave de «sembrado» apuntando a un estado que no se llegó a guardar.
+ */
+function seedPersonalRoutines(state: AppState): SeedResult {
+  const stored = readStored<unknown>(SEED_KEY);
+  const done: string[] = Array.isArray(stored)
+    ? stored.filter((id): id is string => typeof id === 'string')
+    : [];
+  let marked = false;
+  let changed = false;
+
+  for (const routine of PERSONAL_ROUTINES) {
+    if (done.includes(routine.id)) continue;
+    done.push(routine.id);
+    marked = true;
+
+    const rawList: unknown = state.routines;
+    const list: unknown[] = Array.isArray(rawList) ? (rawList as unknown[]) : [];
+    if (asRoutines(list).some((r) => r.id === routine.id)) continue;
+
+    const copy: Routine = { ...structuredClone(routine), createdAt: new Date().toISOString() };
+    state.routines = [...list, copy];
+    changed = true;
+
+    const rawPlan: unknown = state.schedule;
+    const plan: Record<string, ScheduleDay> = isPlainObject(rawPlan)
+      ? { ...(rawPlan as Record<string, ScheduleDay>) }
+      : {};
+    const day = plan[today()];
+    if (!day || (!day.routineId && !day.plan && !day.title)) {
+      plan[today()] = {
+        routineId: copy.id,
+        type: 'entreno',
+        title: copy.name,
+        status: 'planned',
+        source: 'manual',
+      };
+      state.schedule = plan;
+    }
+  }
+
+  return { changed, marked, done };
+}
+
+/**
+ * Registra la migración de inventario de la v1 (`applyPersonalSetup`,
+ * `store.js:212`) con su MISMA clave y su MISMO id, para que no se vuelva a
+ * aplicar desde ninguna de las dos ramas.
+ *
+ * La v1 REESCRIBÍA aquí `settings.plates`, `settings.bars` y `equipment` con
+ * los valores nuevos por defecto. En v2 esos valores YA son los de
+ * `inventario-v2` (`DEFAULT_SETTINGS` y `defaultEquipment()` están portados de
+ * `data.js`), así que aplicarlos de nuevo solo pisaría el inventario que ya
+ * tienes —el que escriba el onboarding, incluido—: aquí se marca como hecha y
+ * no se toca ningún dato.
+ *
+ * Devuelve `true` si había que escribir la clave.
+ */
+function applyPersonalSetup(): boolean {
+  const stored = readStored<unknown>(SETUP_KEY);
+  const done: string[] = Array.isArray(stored)
+    ? stored.filter((id): id is string => typeof id === 'string')
+    : [];
+  if (done.includes(SETUP_ID)) return false;
+  writeStored(SETUP_KEY, [...done, SETUP_ID]);
+  return true;
+}
+
+/**
+ * Carga inicial del estado: lo que hacía `S.load()` de la v1 (`store.js:136`)
+ * al arrancar — leer `pulso.state`, aplicar el setup personal y sembrar las
+ * rutinas personales.
+ *
+ * Es el ÚNICO sitio donde se siembra y se ejecuta al importar el módulo (una
+ * vez por arranque de la app y de cada test): `readState` se llama en cada
+ * escritura (lectura-modificación-escritura) y sembrar ahí reescribiría el
+ * estado desde cada setter. NO toca las signals: en el arranque se usan para
+ * inicializarlas; en un test se lee con `readState()` o con el valor devuelto.
+ */
+export function loadInitialState(): AppState {
+  const state = readState();
+  applyPersonalSetup();
+  const seeded = seedPersonalRoutines(state);
+  /* primero el estado y después la clave de guardia: si la escritura falla,
+     la próxima carga vuelve a sembrar en vez de perder la rutina */
+  if (seeded.changed) writeState(state);
+  if (seeded.marked) writeStored(SEED_KEY, seeded.done);
+  return state;
+}
+
 /* El estado se lee una sola vez al arrancar; a partir de ahí manda el memory state
    y localStorage solo se toca al escribir (lectura-modificación-escritura). */
-const initial = readState();
+const initial = loadInitialState();
 
 /** Ajustes en memoria, reactivos: cualquier componente que lea `.value` se repinta solo. */
 export const settings = signal<Settings>(initial.settings);
@@ -598,7 +850,7 @@ export function resetAll(): void {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('pulso.') && key.indexOf('seeded') < 0 && key !== 'pulso.state') {
+      if (key && key.startsWith('pulso.') && !KEEP_ON_RESET.includes(key) && key !== STATE_KEY) {
         keys.push(key);
       }
     }

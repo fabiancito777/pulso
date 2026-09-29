@@ -1,10 +1,25 @@
 /**
  * Vista Calendario: la semana como vista por defecto, el mes como cuadrícula
- * con detalle lateral y el plan semanal con IA (`runCoachTask('plan')` →
+ * con detalle lateral y la propuesta semanal (`planFromJson`/`parsePlan` →
  * previsualizar → `applyWeek`).
  *
  * Decisiones que vienen de `legacy/js/views-calendar.js` y no se rompen:
  *
+ * - **DOS motores de plan, el local SIEMPRE visible**: «Auto-planificar» usa
+ *   `localWeek` en el dispositivo (sin red, sin key) y «Con IA» —la mejora
+ *   opcional, solo con key— usa `runCoachTask('plan')`, que ya resuelve en
+ *   local si no hay key o si la llamada se cae (auth/red/cuota). Es el par
+ *   `cal:autoplan` con `data-ai="0"` y `"1"` de la v1; sin key la opción IA se
+ *   oculta y deja el pie «sin API key: plan local» en vez de un bloqueo.
+ * - **Nunca se aplica solo**: las dos rutas acaban en la MISMA tarjeta de
+ *   propuesta (preview común) y el calendario solo se toca en «Aplicar». Tras
+ *   aplicar, la tarjeta se queda con «Aplicada (N días)» + «Regenerar», como
+ *   `plan.applied` de la v1: re-planificar propone ANTES de escribir.
+ * - **Local e IA se distinguen** en el `source` del plan: `localWeek` escribe
+ *   `'local'` y el modelo, `'ia'` (o nada, que `normalizePlan` cuenta como
+ *   IA). `applyWeek` lo copia tal cual al día —la rutina nacida del plan
+ *   guarda `'generador'`—, así que Hoy pinta badge «plan» o «IA» igual que la
+ *   v1 (`views-train.js:120`).
  * - **La semana son DOS capas**: la franja de 7 columnas de la v1
  *   (`week-strip`, para ver de un vistazo) y una tarjeta por día con el
  *   selector de rutina y las acciones rápidas. Siete columnas con un `<select>`
@@ -20,7 +35,7 @@
  * - Los componentes leen los signals (`schedule`, `sessions`, `routines`) ellos
  *   mismos: así el repintado es fino y no hay que pasarles el estado entero.
  */
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
@@ -38,8 +53,19 @@ import {
 } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import type { Session } from '@/domain/types';
+import { localWeek } from '@/features/coach/local';
 import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
-import { findExercise, findRoutine, routines, schedule, sessions, setDay } from '@/state/store';
+import {
+  equipment,
+  exercises,
+  findExercise,
+  findRoutine,
+  routines,
+  schedule,
+  sessions,
+  setDay,
+  settings,
+} from '@/state/store';
 import type { ScheduleDay } from '@/state/store';
 
 import '../styles/calendar.css';
@@ -47,6 +73,7 @@ import {
   DAY_STATUSES,
   DAY_STATE_LABEL,
   DAY_STATUS_LABEL,
+  autoPlanRequest,
   clearDayPatch,
   dayState,
   dayTitle,
@@ -54,10 +81,15 @@ import {
   dayTypeLabel,
   monthDays,
   parsePlan,
+  planControls,
+  planEngine,
+  planFromJson,
+  planOrigin,
   restDayPatch,
+  takeAutoPlanRequest,
   weekCounts,
 } from './calendar-helpers';
-import type { DayState, DayStatus, DayType, PlanResult } from './calendar-helpers';
+import type { DayState, DayStatus, DayType, PlanEngine, PlanResult } from './calendar-helpers';
 import { Icon } from './Icon';
 import { Kpi } from './kit';
 
@@ -354,8 +386,8 @@ function WeekView({
           <div class="tiny">Arrastra o asigna rutinas a los días</div>
           <div class="cal-empty-actions">
             <button type="button" class="btn sm primary" onClick={onGenerate} disabled={loading}>
-              <Icon name="sparkles" />
-              Generar con IA
+              <Icon name="wand" />
+              Auto-planificar
             </button>
           </div>
         </div>
@@ -537,28 +569,36 @@ function MonthView({
   );
 }
 
-/** Propuesta de la IA ya normalizada: 7 días con su porqué y los botones de aplicar. */
+/**
+ * Propuesta de semana ya normalizada (la MISMA tarjeta para el plan local y el
+ * de la IA) con sus tres salidas: aplicar, regenerar (v1 `cal:regen`, propone
+ * otra vez sin tocar el calendario) y descartar.
+ */
 function PlanCard({
   plan,
+  applied,
   onApply,
+  onRegen,
   onDiscard,
 }: {
   plan: PlanResult;
+  /** días que ya escribió ESTA propuesta; `null` = todavía sin aplicar */
+  applied: number | null;
   onApply: () => void;
+  onRegen: () => void;
   onDiscard: () => void;
 }) {
   const preview = plan.preview;
+  const origin = planOrigin(preview.source);
   const training = preview.days.filter((d) => d.exercises.length).length;
   return (
     <section class="card accent cal-plan">
       <div class="between">
         <div class="grow">
           <div class="h3">Propuesta de semana</div>
-          <div class="tiny muted">
-            {preview.source === 'ia' ? 'generada por el coach IA' : `fuente: ${preview.source}`}
-          </div>
+          <div class="tiny muted">{origin.subtitle}</div>
         </div>
-        <span class={`badge ${preview.source === 'ia' ? 'a' : ''}`}>{preview.source}</span>
+        <span class={origin.badge}>{preview.source}</span>
       </div>
 
       {preview.rationale ? <div class="tiny muted mt-s">{preview.rationale}</div> : null}
@@ -583,9 +623,20 @@ function PlanCard({
       </div>
 
       <div class="row wrap mt">
-        <button type="button" class="btn primary grow" onClick={onApply}>
-          <Icon name="check" />
-          Aplicar al calendario
+        {applied === null ? (
+          <button type="button" class="btn primary grow" onClick={onApply}>
+            <Icon name="check" />
+            Aplicar al calendario
+          </button>
+        ) : (
+          <button type="button" class="btn okline grow" disabled>
+            <Icon name="check" />
+            Aplicada ({applied} días)
+          </button>
+        )}
+        <button type="button" class="btn" onClick={onRegen}>
+          <Icon name="refresh" />
+          Regenerar
         </button>
         <button type="button" class="btn ghost" onClick={onDiscard}>
           <Icon name="x" />
@@ -604,8 +655,23 @@ export function CalendarView() {
   const [mode, setMode] = useState<ViewMode>('week');
   const [selected, setSelected] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [applied, setApplied] = useState<number | null>(null);
+  const [loading, setLoading] = useState<PlanEngine | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+
+  /* Botón «Con IA» y pie: la key se lee aquí para que el repintado la note
+     (es una signal) sin tener que consultarla dentro de cada handler. */
+  const controls = planControls(hasApiKey());
+
+  /* «Plan automático» de Hoy: la petición viaja en la signal del helper y se
+     consume UNA vez (el `coach:quick` de la v1 llamaba a `autoPlan` de la vista
+     del calendario). El efecto también corre al montar, que es como llega la
+     petición cuando se cambia de pestaña. */
+  const autoRequest = autoPlanRequest.value;
+  useEffect(() => {
+    const engine = takeAutoPlanRequest();
+    if (engine) void requestPlan(engine);
+  }, [autoRequest]);
 
   const weekStart = startOfWeek(cursor);
   const monthLabel = dateLabel(`${cursor.slice(0, 7)}-01`, 'month');
@@ -623,35 +689,73 @@ export function CalendarView() {
     document.getElementById(`cal-${iso}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
-  /** Envoltorio síncrono: los `onClick` no pueden recibir una promesa. */
-  function generatePlan(): void {
-    void requestPlan();
+  /**
+   * Plan del dispositivo sobre la semana que se está MIRANDO, igual que
+   * `V.autoPlan` de la v1 (`startOfWeek(cursor)`): sin red, sin key y sin
+   * promesa. La IA no puede elegir semana (`runCoachTask('plan')` trabaja
+   * siempre sobre la de hoy), por eso el salto de cursor es suyo y este no.
+   */
+  function localPlanJson(): unknown {
+    return localWeek({
+      settings: settings.value,
+      exercises: exercises.value,
+      equipment: equipment.value,
+      sessions: sessions.value,
+      todayIso: today(),
+      from: startOfWeek(cursor),
+    });
   }
 
-  async function requestPlan(): Promise<void> {
+  /** Envoltorio síncrono: los `onClick` no pueden recibir una promesa. */
+  function generateLocalPlan(): void {
+    void requestPlan('local');
+  }
+
+  /**
+   * Genera la propuesta y la deja en pantalla. NUNCA escribe el calendario:
+   * eso solo lo hace «Aplicar», así que ni «Auto-planificar» ni «Regenerar»
+   * pisan lo que ya tenías planificado sin pasar por la tarjeta (v1:
+   * `cal:autoplan`/`cal:regen` solo rellenaban `plan`).
+   *
+   * - `local` → `localWeek` en el dispositivo (cero llamadas).
+   * - `ia` → `runCoachTask('plan')`: sin key resuelve en local y con key cae
+   *   al plan local si la llamada se cae (auth/red/cuota), así que el botón
+   *   «Con IA» nunca puede fallar por falta de configuración.
+   */
+  async function requestPlan(engine: PlanEngine): Promise<void> {
     if (loading) return;
-    if (!hasApiKey()) {
-      setNotice({
-        kind: 'warn',
-        text: 'Falta la API key de Gemini: añádela en Ajustes → Coach AI.',
-      });
-      go('ajustes', 'coach');
-      return;
-    }
-    setLoading(true);
+    setLoading(engine);
     setNotice(null);
     try {
-      const outcome = await runCoachTask('plan');
-      const parsed = parsePlan(outcome.text);
+      let parsed: PlanResult | null;
+      if (engine === 'ia') {
+        const outcome = await runCoachTask('plan');
+        /* `payload` es el camino directo (en local ya viene del planificador);
+           el texto es la red de seguridad por si el JSON viene en una cercilla */
+        parsed = planFromJson(outcome.payload) ?? parsePlan(outcome.text);
+        if (parsed && planEngine(parsed.preview.source) === 'local') {
+          setNotice({
+            kind: 'warn',
+            text: hasApiKey()
+              ? 'IA no disponible: te dejo el plan local.'
+              : 'sin API key: plan local',
+          });
+        }
+      } else {
+        parsed = planFromJson(localPlanJson());
+      }
       if (!parsed) {
         setNotice({
           kind: 'err',
           text: 'El coach no devolvió un plan que se pueda leer. Prueba a generarlo otra vez.',
         });
-      } else {
-        setPlan(parsed);
+        return;
+      }
+      setPlan(parsed);
+      setApplied(null);
+      if (engine === 'ia') {
         const first = parsed.preview.days[0]?.iso;
-        /* el plan apunta a su propia semana: la vista salta ahí para verlo aplicado */
+        /* la IA planifica la semana de hoy: la vista salta ahí para verlo */
         if (first) setCursor(first);
       }
     } catch (err) {
@@ -660,18 +764,30 @@ export function CalendarView() {
         text: err instanceof Error ? err.message : 'No se pudo generar el plan.',
       });
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   }
 
+  /** `cal:apply-plan` de la v1: el ÚNICO sitio donde se escribe el calendario. */
   function applyPlan(): void {
     if (!plan) return;
     const result = applyWeek(plan.raw);
-    setPlan(null);
+    setApplied(result.days);
     setNotice({
       kind: 'ok',
       text: `Plan aplicado: ${result.days} días, ${result.routines} rutinas`,
     });
+  }
+
+  /** `cal:regen` de la v1: otra propuesta (MISMO motor) y vuelta a la tarjeta. */
+  function regenPlan(): void {
+    if (!plan) return;
+    void requestPlan(planEngine(plan.preview.source));
+  }
+
+  function discardPlan(): void {
+    setPlan(null);
+    setApplied(null);
   }
 
   return (
@@ -689,11 +805,19 @@ export function CalendarView() {
       {loading ? (
         <div class="cal-loading">
           <span class="dot-live accent" />
-          El coach IA planifica tu semana…
+          {loading === 'ia' ? 'El coach IA planifica tu semana…' : 'Preparando tu semana…'}
         </div>
       ) : null}
 
-      {plan ? <PlanCard plan={plan} onApply={applyPlan} onDiscard={() => setPlan(null)} /> : null}
+      {plan ? (
+        <PlanCard
+          plan={plan}
+          applied={applied}
+          onApply={applyPlan}
+          onRegen={regenPlan}
+          onDiscard={discardPlan}
+        />
+      ) : null}
 
       <div class="cal-toolbar">
         <div class="row" style="gap:6px">
@@ -733,22 +857,37 @@ export function CalendarView() {
         </div>
       </div>
 
-      <button type="button" class="btn primary block" onClick={generatePlan} disabled={loading}>
-        <Icon name="sparkles" />
-        {loading
-          ? 'Generando el plan…'
-          : plan
-            ? 'Regenerar semana con IA'
-            : 'Generar semana con IA'}
-      </button>
+      <div class="cal-plan-bar">
+        <button
+          type="button"
+          class="btn primary block"
+          onClick={generateLocalPlan}
+          disabled={loading !== null}
+        >
+          <Icon name="wand" />
+          {loading === 'local' ? 'Generando…' : 'Auto-planificar'}
+        </button>
+        {controls.ai ? (
+          <button
+            type="button"
+            class="btn block"
+            onClick={() => void requestPlan('ia')}
+            disabled={loading !== null}
+          >
+            <Icon name="sparkles" />
+            {loading === 'ia' ? 'Generando…' : 'Con IA'}
+          </button>
+        ) : null}
+      </div>
+      {controls.foot ? <div class="tiny muted cal-plan-foot">{controls.foot}</div> : null}
 
       {mode === 'week' ? (
         <WeekView
           cursor={cursor}
           selected={selected}
           onSelect={selectDay}
-          onGenerate={generatePlan}
-          loading={loading}
+          onGenerate={generateLocalPlan}
+          loading={loading !== null}
         />
       ) : (
         <MonthView cursor={cursor} selected={selected} onSelect={selectDay} />

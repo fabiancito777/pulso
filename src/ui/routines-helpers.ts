@@ -9,11 +9,30 @@
  *   no se cae; lo que no, se pinta marcado para que se vea antes de aplicar.
  * - **La búsqueda de ejercicios** tolera tildes, faltas de ortografía y búsquedas
  *   por grupo muscular, igual que la de la v1 (`U.similarity`).
+ * - **La generación local** («Generar auto», sin API key) monta la rutina desde una
+ *   plantilla del catálogo y resuelve el peso con `suggestWeight`: es `S.routineFromTemplate`
+ *   + `richItems` de la v1, con el ajuste por objetivo del modal `routines:generate`.
+ * - **Agendar** propone el próximo día libre del calendario y valida el ISO del input.
  */
-import { findExerciseByName, groupLabel } from '@/domain/data';
+import { addDays } from '@/domain/dates';
+import {
+  findExercise,
+  findExerciseByName,
+  GOAL_REPS,
+  GOAL_REST,
+  GOAL_SETS,
+  groupLabel,
+  isAvailable,
+} from '@/domain/data';
+import type { EquipmentMap } from '@/domain/data';
 import { clamp, int, num } from '@/domain/num';
+import { richItems, routineFromTemplate } from '@/domain/plan';
+import type { PlanInput } from '@/domain/plan';
 import { norm, similarity } from '@/domain/text';
-import type { Exercise, RoutineItem, Session } from '@/domain/types';
+import type { Exercise, RoutineItem, RoutineTemplate, Session } from '@/domain/types';
+import type { ScheduleDay } from '@/state/store';
+
+import { dayState } from './calendar-helpers';
 
 /** Cuántos ejercicios devuelve la búsqueda por defecto. */
 export const SEARCH_LIMIT = 8;
@@ -226,4 +245,245 @@ export function toSuggestion(raw: unknown, library: readonly Exercise[]): Routin
     rationale: toRationale(raw.rationale),
     exercises,
   };
+}
+
+/* ---------- generación local (plantillas, sin API key) ---------- */
+
+/** Rotación que ofrece el selector de «Generar auto» (la v1: 0/2/3/5). */
+export const ROTATE_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: '0', label: 'No rotar' },
+  { value: '2', label: '2 sesiones' },
+  { value: '3', label: '3 sesiones' },
+  { value: '5', label: '5 sesiones' },
+];
+
+/** Rotación por defecto: pesan las últimas 3 sesiones, como la v1. */
+export const DEFAULT_ROTATE = 3;
+
+/**
+ * Datos que se pintan de una plantilla del catálogo: cuántos ejercicios trae y a
+ * qué grupos toca (el «7 ejercicios · Pecho · Hombros · Tríceps» de la sección
+ * Plantillas de la v1). El recuento es la suma de la receta, no lo que acabe
+ * saliendo: con poco material pueden faltar ejercicios y eso se ve al generar.
+ */
+export function templateSummary(tpl: RoutineTemplate): { count: number; groups: string } {
+  let count = 0;
+  const groups: string[] = [];
+  for (const pair of tpl.recipe) {
+    count += int(pair[1], 0);
+    const label = groupLabel(String(pair[0] ?? ''));
+    if (label && !groups.includes(label)) groups.push(label);
+  }
+  return { count, groups: groups.join(' · ') };
+}
+
+/** Un ejercicio de la propuesta local, ya resuelto contra la biblioteca. */
+export interface AutoItem {
+  exId: string;
+  name: string;
+  /** grupo en castellano (`groupLabel`) */
+  group: string;
+  sets: number;
+  repMin: number;
+  repMax: number;
+  rest: number;
+  /** en `settings.units`; `null` = sin historial del que sugerir */
+  weight: number | null;
+  /** de dónde sale el peso («última vez 60 kg × 8», «sin historial») */
+  basis: string;
+  notes: string;
+}
+
+/** Rutina local propuesta, lista para pintar y para guardar con `addRoutine`. */
+export interface AutoProposal {
+  name: string;
+  focus: string;
+  notes: string;
+  source: string;
+  items: AutoItem[];
+}
+
+/**
+ * Rutina generada a partir de una plantilla del catálogo, SIN red y SIN API key
+ * (es la vía principal de generación de la pestaña Rutinas).
+ *
+ * Tres decisiones, todas de la v1 (`views-routines.js:115`, modal `routines:generate`):
+ *
+ * - **Material y prohibiciones**: los elige `routineFromTemplate` → `pickForGroup`,
+ *   que solo contempla ejercicios permitidos y disponibles con `input.equipment`.
+ * - **Series/reps/descanso por objetivo**: la receta trae los de la biblioteca y aquí
+ *   se ajustan a `GOAL_*` (los aislados pierden una serie), que es lo que prometía
+ *   el texto del modal.
+ * - **Peso**: `richItems` lo resuelve con `suggestWeight` (histórico del usuario) en
+ *   la unidad de los ajustes; sin historial queda `null` (la sesión sugerirá luego).
+ *
+ * Devuelve `null` si la plantilla no existe o si con ese material no sale NI UN
+ * ejercicio, igual que el toast «No hay ejercicios disponibles con tu equipo».
+ */
+export function generateAuto(
+  input: PlanInput,
+  templateId: string,
+  rotate: number | string = DEFAULT_ROTATE,
+): AutoProposal | null {
+  const draft = routineFromTemplate(input, templateId, {
+    rotate: int(rotate, DEFAULT_ROTATE),
+    source: 'generador',
+  });
+  if (!draft || !draft.items.length) return null;
+
+  const goal = input.settings.goal;
+  const goalSets = GOAL_SETS[goal] ?? 4;
+  const reps = GOAL_REPS[goal] ?? [8, 12];
+  const goalRest = GOAL_REST[goal] ?? 90;
+
+  const prescribed = draft.items.map((item) => {
+    const ex = findExercise(input.exercises, item.exId);
+    const compound = ex ? ex.type === 'compuesto' : true;
+    return {
+      exId: item.exId,
+      sets: compound ? goalSets : Math.max(3, goalSets - 1),
+      repMin: int(reps[0], 8),
+      repMax: int(reps[1], 12),
+      rest: goalRest,
+    };
+  });
+
+  const items: AutoItem[] = richItems(input, prescribed).map((row) => ({
+    exId: row.exId,
+    name: row.name,
+    group: groupLabel(row.group),
+    sets: row.sets,
+    repMin: row.repMin,
+    repMax: row.repMax,
+    rest: row.rest,
+    weight: row.weight > 0 ? row.weight : null,
+    basis: row.basis,
+    notes: row.notes,
+  }));
+  if (!items.length) return null;
+
+  return {
+    name: draft.name,
+    focus: draft.focus,
+    notes: draft.notes,
+    source: draft.source,
+    items,
+  };
+}
+
+/**
+ * Los items de la propuesta como `RoutineItem` para `addRoutine`: se quedan solo
+ * con los campos que guarda el estado (los de pantalla —nombre, grupo, `basis`—
+ * viven en la propuesta, no en el `localStorage` compartido con la v1).
+ */
+export function autoRoutineItems(items: readonly AutoItem[]): RoutineItem[] {
+  return items.map((item) => ({
+    exId: item.exId,
+    sets: item.sets,
+    repMin: item.repMin,
+    repMax: item.repMax,
+    rest: item.rest,
+    weight: item.weight,
+    notes: item.notes,
+  }));
+}
+
+/* ---------- agendar en el calendario ---------- */
+
+/**
+ * Primer día (desde `fromIso`, incluido) sin nada planificado ni sesión
+ * registrada: es con lo que se abre el picker de «Agendar» (`App.ui.dayPicker`
+ * de la v1 empezaba en hoy y listaba 14 jornadas).
+ *
+ * El criterio de "libre" es el del calendario (`dayState(...) === 'free'`), así
+ * que un día con sesión encima de un plan vacío NO se propone. Si las `horizon`
+ * jornadas siguientes están todas ocupadas se devuelve mañana: el input tiene
+ * que nacer con un valor editable.
+ */
+export function nextFreeDay(
+  schedule: Readonly<Record<string, ScheduleDay>>,
+  sessions: readonly Session[],
+  fromIso: string,
+  horizon = 14,
+): string {
+  const busy = new Map<string, number>();
+  for (const session of sessions) {
+    const day = session.date || (session.startedAt ?? '').slice(0, 10);
+    if (day) busy.set(day, (busy.get(day) ?? 0) + 1);
+  }
+  const days = clamp(int(horizon, 14), 1, 120);
+  for (let i = 0; i < days; i++) {
+    const isoDate = addDays(fromIso, i);
+    if (dayState(schedule[isoDate], busy.get(isoDate) ?? 0) === 'free') return isoDate;
+  }
+  return addDays(fromIso, 1);
+}
+
+/**
+ * Patch que escribe `setDay` al agendar una rutina: la misma semántica de
+ * `routines:schedule` + `App.ui.dayPicker` de la v1 (`app.js:454`) — rutina,
+ * tipo `entreno`, estado `planificado`, el nombre como título y origen manual.
+ *
+ * Va en helper (y no en línea en el componente) porque `setDay` hace merge: lo
+ * que NO se escriba aquí se hereda del día que hubiera.
+ */
+export function scheduleRoutinePatch(routine: { id: string; name?: string }): Partial<ScheduleDay> {
+  return {
+    routineId: routine.id,
+    type: 'entreno',
+    status: 'planned',
+    title: typeof routine.name === 'string' && routine.name.trim() ? routine.name : 'Entrenamiento',
+    source: 'manual',
+  };
+}
+
+/** ¿Es un `YYYY-MM-DD` válido que no sea anterior a `fromIso` (hoy)? */
+export function validScheduleIso(raw: string, fromIso: string): boolean {
+  const value = String(raw ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return value >= fromIso;
+}
+
+/* ---------- detalle de solo lectura ---------- */
+
+/** Fila del modal «Ver»: el ejercicio ya resuelto con sus números. */
+export interface DetailRow {
+  name: string;
+  /** grupo en castellano (`''` si el ejercicio ya no está en la biblioteca) */
+  group: string;
+  sets: number;
+  repMin: number;
+  repMax: number;
+  rest: number;
+  /** `null` = sin peso prescrito (no «0 kg») */
+  weight: number | null;
+  notes: string;
+  /** te falta material ahora mismo para hacerlo */
+  missing: boolean;
+}
+
+/**
+ * Items de una rutina para el modal de solo lectura: resuelve cada `exId` contra
+ * la biblioteca y aplica los mismos defaults que el editor (`sets` 3, y
+ * reps/descanso del ejercicio si el item no los trae).
+ */
+export function detailRows(
+  items: readonly RoutineItem[],
+  library: readonly Exercise[],
+  equipment: EquipmentMap,
+): DetailRow[] {
+  return items.map((item) => {
+    const ex = findExercise(library, item.exId);
+    return {
+      name: ex ? ex.name : item.exId,
+      group: ex ? groupLabel(ex.group) : '',
+      sets: int(item.sets, 3),
+      repMin: int(item.repMin, ex ? ex.repMin : 8),
+      repMax: int(item.repMax, ex ? ex.repMax : 12),
+      rest: int(item.rest, ex ? ex.rest : 90),
+      weight: typeof item.weight === 'number' ? item.weight : null,
+      notes: typeof item.notes === 'string' ? item.notes : '',
+      missing: ex ? !isAvailable(ex, equipment) : false,
+    };
+  });
 }

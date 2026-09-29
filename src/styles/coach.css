@@ -122,3 +122,10 @@
   bottom: calc(env(safe-area-inset-bottom) + 58px);
   z-index: 20;
 }
+
+/* Tarjeta de estado: badge de ms/ok + «Probar» sin apretar el modelo. */
+.coach-view .coach-test {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}

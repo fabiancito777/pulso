@@ -2,23 +2,36 @@
  * `ui/routines-helpers.ts`: lo que hace falta comprobar de la vista Rutinas sin
  * abrir un navegador.
  *
- * Aquí se cubren los tres sitios donde la vista podía fallar en silencio: la
- * búsqueda de ejercicios (tiene que entender tildes y búsquedas por grupo), la
- * propuesta del coach (llega como texto con alias que se inventa el modelo) y los
- * números que van a inputs (un vacío no puede acabar en 0).
+ * Aquí se cubren los sitios donde la vista podía fallar en silencio: la búsqueda
+ * de ejercicios (entiende tildes y búsquedas por grupo), la propuesta del coach
+ * (llega como texto con alias que se inventa el modelo), los números que van a
+ * inputs (un vacío no puede acabar en 0), la generación LOCAL a partir de las
+ * plantillas (sin API key) y el «Agendar» (día por defecto y validación).
  */
 import { describe, expect, it } from 'vitest';
 
-import { SEED_EXERCISES } from '@/domain/catalog';
-import type { Session } from '@/domain/types';
+import { SEED_EXERCISES, TEMPLATES } from '@/domain/catalog';
+import { equipPreset, findExercise, isAvailable } from '@/domain/data';
+import { DEFAULT_SETTINGS } from '@/domain/defaults';
+import { addDays } from '@/domain/dates';
+import type { PlanInput } from '@/domain/plan';
+import type { Exercise, RoutineItem, Session } from '@/domain/types';
+import type { ScheduleDay } from '@/state/store';
 
 import {
+  autoRoutineItems,
   bounded,
+  detailRows,
+  generateAuto,
   lastUsed,
   matchExercises,
+  nextFreeDay,
   routineSets,
+  scheduleRoutinePatch,
   sourceBadge,
+  templateSummary,
   toSuggestion,
+  validScheduleIso,
   weightOrNull,
 } from './routines-helpers';
 
@@ -32,6 +45,18 @@ const session = (patch: Partial<Session>): Session => ({
   entries: [],
   ...patch,
 });
+
+/** Entrada con una serie hecha, para que `suggestWeight` tenga algo que sugerir. */
+function trainedSession(entries: readonly string[]): Session {
+  return session({
+    id: 'hist',
+    date: '2026-09-20',
+    entries: entries.map((exId) => ({
+      exId,
+      sets: [{ weight: 50, reps: 8, done: true }],
+    })),
+  });
+}
 
 describe('matchExercises', () => {
   it('con la consulta vacía devuelve los primeros de la biblioteca', () => {
@@ -182,5 +207,247 @@ describe('toSuggestion', () => {
     expect(toSuggestion({ title: 'Sin lista' }, LIBRARY)).toBeNull();
     expect(toSuggestion({ exercises: [] }, LIBRARY)).toBeNull();
     expect(toSuggestion({ exercises: [{ notes: 'sin nombre' }] }, LIBRARY)).toBeNull();
+  });
+});
+
+/* ---------- generación local (plantillas, sin API key) ---------- */
+
+/** Entrada del planificador: material completo, sin historial, objetivo por defecto. */
+function planInput(patch: Partial<PlanInput> = {}): PlanInput {
+  return {
+    settings: { ...DEFAULT_SETTINGS },
+    exercises: LIBRARY,
+    equipment: equipPreset('todo'),
+    sessions: [],
+    ...patch,
+  };
+}
+
+/** Mini biblioteca determinista (lo justo para fijar la regla por objetivo). */
+function seedExercise(
+  partial: Partial<Exercise> & Pick<Exercise, 'id' | 'name' | 'group'>,
+): Exercise {
+  return {
+    equip: '',
+    type: 'compuesto',
+    sets: 3,
+    repMin: 8,
+    repMax: 12,
+    rest: 90,
+    allowed: true,
+    custom: false,
+    bw: false,
+    tags: [],
+    tips: '',
+    ...partial,
+  };
+}
+
+describe('templateSummary', () => {
+  it('resume las 9 plantillas del catálogo con ejercicios y grupos', () => {
+    expect(TEMPLATES).toHaveLength(9);
+    for (const tpl of TEMPLATES) {
+      const summary = templateSummary(tpl);
+      expect(summary.count).toBeGreaterThan(0);
+      expect(summary.groups).not.toBe('');
+    }
+  });
+
+  it('suma la receta y lista los grupos sin repetir', () => {
+    const push = TEMPLATES.find((tpl) => tpl.id === 'push');
+    expect(push).toBeTruthy();
+    const summary = templateSummary(push ?? { id: '', name: '', hint: '', recipe: [] });
+    expect(summary).toEqual({ count: 7, groups: 'Pecho · Hombros · Tríceps' });
+  });
+});
+
+describe('generateAuto', () => {
+  it('genera la plantilla completa con material y números del objetivo', () => {
+    const out = generateAuto(planInput(), 'push');
+    expect(out).not.toBeNull();
+    expect(out?.name).toBe('Empuje · Push');
+    expect(out?.source).toBe('generador');
+    expect(out?.focus).toContain('Pecho');
+    expect(out?.items).toHaveLength(7);
+
+    /* hipertrofia por defecto: 8-12 reps, 90 s y 3-4 series */
+    for (const item of out?.items ?? []) {
+      expect(item.repMin).toBe(8);
+      expect(item.repMax).toBe(12);
+      expect(item.rest).toBe(90);
+      expect(item.sets === 3 || item.sets === 4).toBe(true);
+      expect(item.name).not.toBe('');
+      expect(findExercise(LIBRARY, item.exId)).not.toBeNull();
+    }
+  });
+
+  it('sin historial no inventa peso: queda null y el motivo lo dice', () => {
+    const out = generateAuto(planInput(), 'push');
+    for (const item of out?.items ?? []) {
+      expect(item.weight).toBeNull();
+      expect(item.basis).toBe('sin historial');
+    }
+  });
+
+  it('con historial el peso sale de suggestWeight en la unidad de los ajustes', () => {
+    const trained = trainedSession(LIBRARY.map((ex) => ex.id));
+    const out = generateAuto(planInput({ sessions: [trained] }), 'push');
+    const items = out?.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(item.weight).not.toBeNull();
+      expect(item.weight).toBeGreaterThan(0);
+      expect(item.basis.startsWith('última vez')).toBe(true);
+    }
+  });
+
+  it('solo propone ejercicios que puedes hacer con tu material', () => {
+    const none: Record<string, boolean> = {};
+    const out = generateAuto(planInput({ equipment: none }), 'push');
+    expect(out).not.toBeNull();
+    const items = out?.items ?? [];
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      const ex = findExercise(LIBRARY, item.exId);
+      expect(ex && isAvailable(ex, none)).toBe(true);
+    }
+  });
+
+  it('ajusta series, reps y descanso al objetivo (los aislados pierden una serie)', () => {
+    const input = planInput({
+      settings: { ...DEFAULT_SETTINGS, goal: 'fuerza' },
+      exercises: [
+        seedExercise({ id: 'press', name: 'Press banca', group: 'pecho' }),
+        seedExercise({ id: 'apert', name: 'Aperturas', group: 'pecho', type: 'aislado' }),
+      ],
+    });
+    const out = generateAuto(input, 'push');
+    const items = out?.items ?? [];
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.sets).sort()).toEqual([4, 5]);
+    for (const item of items) {
+      expect(item.repMin).toBe(4);
+      expect(item.repMax).toBe(6);
+      expect(item.rest).toBe(180);
+    }
+  });
+
+  it('devuelve null si la plantilla no existe o no queda ningún ejercicio', () => {
+    expect(generateAuto(planInput(), 'no-existe')).toBeNull();
+    expect(generateAuto(planInput({ exercises: [] }), 'push')).toBeNull();
+  });
+
+  it('autoRoutineItems se queda solo con los campos que se guardan', () => {
+    const out = generateAuto(planInput(), 'push');
+    const items = autoRoutineItems(out?.items ?? []);
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(Object.keys(item).sort()).toEqual([
+        'exId',
+        'notes',
+        'repMax',
+        'repMin',
+        'rest',
+        'sets',
+        'weight',
+      ]);
+    }
+  });
+});
+
+/* ---------- agendar en el calendario ---------- */
+
+const HOY = '2026-09-29';
+
+describe('nextFreeDay', () => {
+  it('propone hoy si el día está libre', () => {
+    expect(nextFreeDay({}, [], HOY)).toBe(HOY);
+  });
+
+  it('salta los días planificados y los de descanso', () => {
+    const plan: Record<string, ScheduleDay> = {
+      [HOY]: { status: 'planned', type: 'entreno', routineId: 'rt1' },
+      [addDays(HOY, 1)]: { status: 'rest', type: 'descanso' },
+    };
+    expect(nextFreeDay(plan, [], HOY)).toBe(addDays(HOY, 2));
+  });
+
+  it('salta un día con sesión registrada aunque no tenga plan', () => {
+    expect(nextFreeDay({}, [session({ date: HOY })], HOY)).toBe(addDays(HOY, 1));
+  });
+
+  it('si no hay hueco en 14 días devuelve mañana (nunca un ISO vacío)', () => {
+    const plan: Record<string, ScheduleDay> = {};
+    for (let i = 0; i < 14; i++) plan[addDays(HOY, i)] = { status: 'planned' };
+    expect(nextFreeDay(plan, [], HOY)).toBe(addDays(HOY, 1));
+  });
+});
+
+describe('scheduleRoutinePatch', () => {
+  it('escribe rutina, tipo entreno, estado planificado, título y origen', () => {
+    expect(scheduleRoutinePatch({ id: 'rt1', name: 'Torso A' })).toEqual({
+      routineId: 'rt1',
+      type: 'entreno',
+      status: 'planned',
+      title: 'Torso A',
+      source: 'manual',
+    });
+  });
+
+  it('sin nombre usa el «Entrenamiento» de la v1', () => {
+    expect(scheduleRoutinePatch({ id: 'rt1' }).title).toBe('Entrenamiento');
+  });
+});
+
+describe('validScheduleIso', () => {
+  it('acepta hoy y lo que venga después; rechaza el pasado y la basura', () => {
+    expect(validScheduleIso(HOY, HOY)).toBe(true);
+    expect(validScheduleIso('2026-10-05', HOY)).toBe(true);
+    expect(validScheduleIso('2026-09-28', HOY)).toBe(false);
+    expect(validScheduleIso('', HOY)).toBe(false);
+    expect(validScheduleIso('mañana', HOY)).toBe(false);
+    expect(validScheduleIso('2026-9-5', HOY)).toBe(false);
+  });
+});
+
+/* ---------- detalle de solo lectura ---------- */
+
+describe('detailRows', () => {
+  it('resuelve nombres, aplica defaults y marca lo que falta material', () => {
+    const press = LIBRARY.find((ex) => ex.name === 'Press de banca con barra');
+    expect(press).toBeTruthy();
+    const pressId = press?.id ?? '';
+    const items: RoutineItem[] = [
+      { exId: pressId, sets: 4, weight: 60, notes: 'agarrar ancho' },
+      { exId: 'que-no-existe' },
+      { exId: pressId, repMin: 5, repMax: 6, rest: 120 },
+    ];
+
+    const rows = detailRows(items, LIBRARY, {});
+    expect(rows).toHaveLength(3);
+
+    expect(rows[0]?.name).toBe('Press de banca con barra');
+    expect(rows[0]?.group).toBe('Pecho');
+    expect(rows[0]?.sets).toBe(4);
+    expect(rows[0]?.weight).toBe(60);
+    expect(rows[0]?.notes).toBe('agarrar ancho');
+    expect(rows[0]?.missing).toBe(true);
+
+    /* item a medias: reps y descanso del ejercicio, `sets` 3 y peso null (no 0) */
+    expect(rows[2]?.sets).toBe(3);
+    expect(rows[2]?.repMin).toBe(5);
+    expect(rows[2]?.repMax).toBe(6);
+    expect(rows[2]?.rest).toBe(120);
+    expect(rows[2]?.weight).toBeNull();
+
+    /* fuera de la biblioteca: se pinta el id sin reventar */
+    expect(rows[1]?.name).toBe('que-no-existe');
+    expect(rows[1]?.group).toBe('');
+    expect(rows[1]?.sets).toBe(3);
+    expect(rows[1]?.missing).toBe(false);
+
+    /* con material disponible ya no falta nada */
+    const withKit = detailRows([items[0]], LIBRARY, equipPreset('todo'));
+    expect(withKit[0]?.missing).toBe(false);
   });
 });

@@ -1,15 +1,20 @@
 /**
  * Comprobaciones de los helpers del calendario: el estado de un día (lo que
- * decide si un día se ve hecho, descanso o libre), la cuadrícula mensual y la
- * normalización del plan del coach.
+ * decide si un día se ve hecho, descanso o libre), la cuadrícula mensual, la
+ * normalización del plan del coach y la distinción **local vs IA** (quién
+ * genera la propuesta, qué botones se ofrecen y qué `source` queda al
+ * aplicarla).
  *
  * Son las reglas que más se rompen sin querer: una sesión real tiene que mandar
- * sobre lo que diga el plan y las fechas del mes no pueden depender de la zona
- * horaria.
+ * sobre lo que diga el plan, las fechas del mes no pueden depender de la zona
+ * horaria y un plan generado en el dispositivo no puede confundirse con el de
+ * la IA ni al etiquetarlo ni al escribirlo en el calendario.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
+  autoPlanEngine,
+  autoPlanRequest,
   clearDayPatch,
   dayState,
   dayTitle,
@@ -18,9 +23,41 @@ import {
   monthDays,
   normalizePlan,
   parsePlan,
+  planControls,
+  planEngine,
+  planFromJson,
+  planOrigin,
+  requestAutoPlan,
   restDayPatch,
+  takeAutoPlanRequest,
   weekCounts,
 } from './calendar-helpers';
+
+/* `state/store` decide `storageAvailable` AL CARGARSE, así que el stub de
+   `localStorage` va antes del import dinámico (mismo patrón que
+   `state/coach.test.ts`). Hace falta para el último bloque: ahí se verifica qué
+   acepta `applyWeek`/`setDay` de verdad, no solo lo que la vista calcula. */
+const mem = new Map<string, string>();
+
+vi.stubGlobal('localStorage', {
+  getItem: (key: string): string | null => (mem.has(key) ? (mem.get(key) as string) : null),
+  setItem: (key: string, value: string): void => {
+    mem.set(key, String(value));
+  },
+  removeItem: (key: string): void => {
+    mem.delete(key);
+  },
+  clear: (): void => {
+    mem.clear();
+  },
+  key: (index: number): string | null => [...mem.keys()][index] ?? null,
+  get length(): number {
+    return mem.size;
+  },
+});
+
+const store = await import('@/state/store');
+const coach = await import('@/state/coach');
 
 describe('estado de un día', () => {
   it('una sesión real manda sobre el plan', () => {
@@ -177,5 +214,113 @@ describe('plan del coach', () => {
   it('devuelve null cuando el texto no se puede interpretar', () => {
     expect(parsePlan('no hay JSON aquí')).toBeNull();
     expect(parsePlan('{"days":[]}')).toBeNull();
+  });
+});
+
+describe('propuesta: local vs IA', () => {
+  it('solo "ia" cuenta como IA (el fallback de la v1 etiqueta el local)', () => {
+    expect(planEngine('ia')).toBe('ia');
+    expect(planEngine('local')).toBe('local');
+    expect(planEngine('local (IA no disponible)')).toBe('local');
+    expect(planEngine('generador')).toBe('local');
+    expect(planEngine('')).toBe('local');
+  });
+
+  it('el motor del auto-plan es la IA solo si hay key', () => {
+    expect(autoPlanEngine(true)).toBe('ia');
+    expect(autoPlanEngine(false)).toBe('local');
+  });
+
+  it('sin key la opción IA se oculta y deja el pie; con key se ofrece', () => {
+    expect(planControls(false)).toEqual({ ai: false, foot: 'sin API key: plan local' });
+    expect(planControls(true)).toEqual({ ai: true, foot: '' });
+  });
+
+  it('etiqueta la tarjeta según el motor que la generó', () => {
+    expect(planOrigin('ia')).toEqual({
+      engine: 'ia',
+      subtitle: 'generada por el coach IA',
+      badge: 'badge a',
+    });
+    expect(planOrigin('local')).toEqual({
+      engine: 'local',
+      subtitle: 'generada en el dispositivo',
+      badge: 'badge',
+    });
+  });
+
+  it('planFromJson envuelve el JSON local sin pasar por el texto', () => {
+    const raw = {
+      source: 'local',
+      from: '2026-09-28',
+      daysPerWeek: 1,
+      rationale: ['4 días con 48 h entre sesiones'],
+      days: [
+        {
+          date: '2026-09-28',
+          type: 'entreno',
+          title: 'Tren superior',
+          exercises: [{ name: 'Press banca' }],
+        },
+      ],
+    };
+    const result = planFromJson(raw);
+    /* el crudo es el MISMO objeto: es lo que recibe `applyWeek` al aplicar */
+    expect(result?.raw).toBe(raw);
+    expect(result?.preview.source).toBe('local');
+    expect(result?.preview.rationale).toBe('4 días con 48 h entre sesiones');
+    expect(result?.preview.days[0]).toMatchObject({
+      iso: '2026-09-28',
+      type: 'entreno',
+      exercises: ['Press banca'],
+    });
+    expect(planFromJson({ days: [] })).toBeNull();
+    expect(planFromJson(undefined)).toBeNull();
+  });
+
+  it('la petición de auto-plan se consume UNA sola vez', () => {
+    expect(takeAutoPlanRequest()).toBeNull();
+    requestAutoPlan('ia');
+    expect(autoPlanRequest.value).toBe('ia');
+    expect(takeAutoPlanRequest()).toBe('ia');
+    expect(takeAutoPlanRequest()).toBeNull();
+    requestAutoPlan('local');
+    expect(takeAutoPlanRequest()).toBe('local');
+    expect(autoPlanRequest.value).toBeNull();
+  });
+});
+
+/* La distinción no acaba en la UI: así queda en el ESTADO al aplicar el plan.
+   Misma regla que `C.applyWeek` de la v1 (`legacy/js/coach.js:579`): el día
+   guarda el `source` del plan tal cual y la rutina que nace de él se guarda
+   como 'generador' si no vino de la IA. */
+describe('applyWeek: la fuente del plan distingue local de IA', () => {
+  it('escribe source "local" en los días y "generador" en la rutina creada', () => {
+    const iso = '2026-10-05';
+    const antes = store.routines.value.length;
+    const name = store.exercises.value[0]?.name ?? '';
+
+    const result = coach.applyWeek({
+      source: 'local',
+      from: iso,
+      daysPerWeek: 1,
+      rationale: ['semana de prueba'],
+      days: [
+        { date: iso, type: 'entreno', title: 'Tren superior', exercises: [{ name }] },
+        { date: '2026-10-06', type: 'descanso', title: 'Descanso', exercises: [] },
+      ],
+    });
+
+    expect(result).toEqual({ days: 2, routines: 1 });
+    expect(store.schedule.value[iso]).toMatchObject({ source: 'local', status: 'planned' });
+    expect(store.schedule.value['2026-10-06']).toMatchObject({ source: 'local', status: 'rest' });
+    expect(store.routines.value[antes]?.source).toBe('generador');
+    expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
+  });
+
+  it('un plan de la IA (sin source en el JSON) se escribe como ia', () => {
+    const iso = '2026-10-12';
+    coach.applyWeek({ days: [{ date: iso, type: 'descanso', title: 'Descanso', exercises: [] }] });
+    expect(store.schedule.value[iso]).toMatchObject({ source: 'ia', status: 'rest' });
   });
 });

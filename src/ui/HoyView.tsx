@@ -20,7 +20,10 @@
  *   paneles en línea; el de ejercicios reutiliza el modal que ya usa
  *   `SessionCard` (`ExercisePickerModal`).
  * - **Sin API key nada falla en silencio**: «Mejorar con IA» avisa y te lleva a
- *   Ajustes (spec `hoy.md`, decisión 9).
+ *   Ajustes (spec `hoy.md`, decisión 9). El caso contrario — «Plan
+ *   automático» — NUNCA exige key: pide el plan al Calendario y, si no la hay,
+ *   ese plan sale del dispositivo (v1 `coach:quick` → `autoPlan`, que sin key
+ *   resolvía en local).
  */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
@@ -54,7 +57,7 @@ import {
   setDay,
   settings,
 } from '@/state/store';
-import { restDayPatch } from './calendar-helpers';
+import { autoPlanEngine, requestAutoPlan, restDayPatch } from './calendar-helpers';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import {
   greeting,
@@ -116,11 +119,14 @@ function Hero({
   onStart,
   onSkip,
   onExtra,
+  onAutoPlan,
 }: {
   plan: TodayPlan;
   onStart: () => void;
   onSkip: () => void;
   onExtra: () => void;
+  /** «Plan automático»: pide la semana al Calendario (v1 `coach:quick`) */
+  onAutoPlan: () => void;
 }) {
   const now = today();
 
@@ -199,7 +205,7 @@ function Hero({
           <Icon name="calendar" />
           Planificar semana
         </button>
-        <button type="button" class="btn" onClick={() => go('coach')}>
+        <button type="button" class="btn" onClick={onAutoPlan}>
           <Icon name="sparkles" />
           Plan automático
         </button>
@@ -711,6 +717,18 @@ export function HoyView() {
     toast('Día marcado como descanso', { kind: 'ok', ms: 1600 });
   }
 
+  /**
+   * «Plan automático» (`coach:quick` con `kind="week"` de la v1): va al
+   * Calendario y le pide la propuesta — IA si hay key, dispositivo si no, que
+   * es lo que hacía `autoPlan(C.hasKey())`—. La petición viaja en
+   * `autoPlanRequest` y la consume la propia vista, que pinta el preview y deja
+   * que decidas con «Aplicar»: aquí no se escribe ningún día.
+   */
+  function planAutomatically(): void {
+    requestAutoPlan(autoPlanEngine(hasApiKey()));
+    go('calendario');
+  }
+
   function repeat(session: Session): void {
     startFromPlan(repeatItems(session), {
       name: session.name || 'Entrenamiento',
@@ -801,7 +819,13 @@ export function HoyView() {
   return (
     <>
       <Greeting name={s.name} />
-      <Hero plan={plan} onStart={startToday} onSkip={skipToday} onExtra={() => setPickOpen(true)} />
+      <Hero
+        plan={plan}
+        onStart={startToday}
+        onSkip={skipToday}
+        onExtra={() => setPickOpen(true)}
+        onAutoPlan={planAutomatically}
+      />
 
       <WeekStrip cells={cells} />
 
