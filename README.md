@@ -135,9 +135,9 @@ pantalla completa y funciona offline).
 - **Entreno**: descanso automático (tiempo definido por ejercicio/plantilla o por el coach IA), incremento de progresión, RPE, etc.
 - **Equipo**: 49 piezas en 6 categorías (barras, mancuernas, estructuras, máquinas, bancos, accesorios,
   cardio) con presets: casa básica, gimnasio completo, todo, solo peso corporal.
-- **Discos**: inventario editable (medida × **pares** × disponible; un par = 2 discos, y se reparten entre
-  los huecos), peso de barra/barra EZ/mango (**0 kg si es de plástico**), máximo cargable en barra y por
-  mancuerna, y gráfico del inventario.
+- **Discos**: inventario editable (medida × **discos** × disponible; se cuenta en unidades sueltas y se
+  reparten entre los huecos, así que **con un número impar sobra uno**), peso de barra/barra EZ/mango
+  (**0 kg si es de plástico**), máximo cargable en barra y por mancuerna, y gráfico del inventario.
 - **Ejercicios**: biblioteca de **136 ejercicios** con buscador y filtros (grupo, permitidos, prohibidos,
   sin material, propios). Permite **permitir/prohibir** individualmente o en bloque todo lo filtrado,
   y crear/editar/borrar ejercicios propios.

@@ -92,6 +92,7 @@ import {
   weekSubtitle,
 } from './calendar-helpers';
 import type { DayState, DayStatus, DayType, PlanEngine, PlanResult } from './calendar-helpers';
+import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { Kpi } from './kit';
 
@@ -256,7 +257,10 @@ function WeekDayCard({ iso, selected }: { iso: string; selected: boolean }) {
           <b>{dow(iso)}</b> <span class="num">{parse(iso).getDate()}</span>
           {isToday ? <span class="badge a">hoy</span> : null}
         </span>
-        <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
+        <div class="row" style="gap:6px">
+          <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
+          <HelpBtn id="cal.states" title="Estados de un día" />
+        </div>
       </div>
 
       <span class="chip cal-type">
@@ -356,6 +360,7 @@ function WeekView({
           value={fmtVol(volume)}
           unit="kg"
           delta={`${weekSessions.length} sesiones`}
+          help="cal.kpis"
         />
         <Kpi
           label="Planificados"
@@ -610,7 +615,10 @@ function PlanCard({
           <div class="h3">Propuesta de semana</div>
           <div class="tiny muted">{origin.subtitle}</div>
         </div>
-        <span class={origin.badge}>{preview.source}</span>
+        <div class="row" style="gap:4px">
+          <span class={origin.badge}>{preview.source}</span>
+          <HelpBtn id="cal.planProposal" title="Propuesta de semana" />
+        </div>
       </div>
 
       {preview.rationale ? <div class="tiny muted mt-s">{preview.rationale}</div> : null}
@@ -812,8 +820,12 @@ export function CalendarView() {
 
   return (
     <section class="cal-view">
-      {/* Subtítulo de la pestaña (el `#appbar-sub` de la v1): `weekSubtitle`. */}
-      <div class="v2-sub">{subtitle}</div>
+      {/* Subtítulo de la pestaña (el `#appbar-sub` de la v1): `weekSubtitle`.
+          En su fila con el ? de la pestaña, que el `.v2-sub` solo no admite. */}
+      <div class="help-row">
+        <div class="v2-sub">{subtitle}</div>
+        <HelpBtn id="tab.calendario" title="Calendario" />
+      </div>
 
       {notice ? (
         <div class={`cal-notice ${notice.kind}`}>
@@ -901,8 +913,14 @@ export function CalendarView() {
             {loading === 'ia' ? 'Generando…' : 'Con IA'}
           </button>
         ) : null}
+        <HelpBtn id="cal.autoplan" title="Auto-planificar" />
       </div>
-      {controls.foot ? <div class="tiny muted cal-plan-foot">{controls.foot}</div> : null}
+      {controls.foot ? (
+        <div class="row cal-plan-foot" style="gap:6px">
+          <span class="tiny muted grow">{controls.foot}</span>
+          <HelpBtn id="cal.noKey" title="Sin API key: plan local" />
+        </div>
+      ) : null}
 
       {mode === 'week' ? (
         <WeekView

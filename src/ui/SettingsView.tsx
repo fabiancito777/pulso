@@ -72,6 +72,7 @@ import {
 } from '@/state/store';
 import { TEST_NOTICE_SEC, testRestNotice } from '@/state/session';
 import { Icon } from '@/ui/Icon';
+import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
 import {
   InfoCard,
   Kpi,
@@ -93,6 +94,7 @@ const SUBS = [
   { key: 'ejercicios', label: 'Ejercicios', icon: 'database' },
   { key: 'coach', label: 'Coach AI', icon: 'sparkles' },
   { key: 'datos', label: 'Datos', icon: 'download' },
+  { key: 'ayuda', label: 'Ayuda', icon: 'info' },
 ] as const;
 
 type SubKey = (typeof SUBS)[number]['key'];
@@ -166,6 +168,7 @@ function SecPerfil() {
         <SelectRow
           label="Nivel"
           hint="Ajusta volumen y complejidad de las sugerencias"
+          help="opt.level"
           value={st.level}
           options={LEVELS.map((l) => ({ value: l, label: l }))}
           onChange={(level) => setSettingsPath('level', level)}
@@ -173,6 +176,7 @@ function SecPerfil() {
         <SelectRow
           label="Objetivo principal"
           hint="Define repeticiones, series y descansos por defecto"
+          help="opt.goal"
           value={goal}
           options={GOALS.map((g) => ({ value: g.key, label: g.label }))}
           onChange={(g) => setSettingsPath('goal', g)}
@@ -180,6 +184,7 @@ function SecPerfil() {
         <SelectRow
           label="Días de entreno por semana"
           hint="Se usa para el plan semanal"
+          help="opt.days"
           value={String(st.daysPerWeek)}
           options={['2', '3', '4', '5', '6'].map((d) => ({ value: d, label: d }))}
           onChange={(d) => setSettingsPath('daysPerWeek', Number(d))}
@@ -187,6 +192,7 @@ function SecPerfil() {
         <SelectRow
           label="Unidades"
           hint="Cambia la visualización de pesos"
+          help="opt.units"
           value={st.units}
           options={[
             { value: 'kg', label: 'Kilogramos (kg)' },
@@ -275,6 +281,7 @@ function SecApariencia() {
         <SwitchRow
           label="Aviso de los últimos 3 s"
           hint="Tres ticks suaves antes de que termine el descanso"
+          help="opt.lastTicks"
           value={st.countdownTick}
           onChange={(v) => setSettingsPath('countdownTick', v)}
         />
@@ -287,6 +294,7 @@ function SecApariencia() {
         <SwitchRow
           label="Notificaciones del sistema"
           hint="Aviso al terminar el descanso (llega con el bloque PWA)"
+          help="opt.notify"
           value={st.notify}
           onChange={(v) => {
             setSettingsPath('notify', v);
@@ -305,6 +313,7 @@ function SecApariencia() {
         <SwitchRow
           label="Mantener la sesión despierta"
           hint="Pantalla encendida durante el entreno"
+          help="opt.keepAwake"
           value={st.keepAwake}
           onChange={(v) => setSettingsPath('keepAwake', v)}
         />
@@ -356,12 +365,14 @@ function SecEntreno() {
         <SwitchRow
           label="Descanso automático al marcar serie"
           hint="Usa el tiempo sugerido de cada ejercicio o el que proponga el coach"
+          help="opt.autoRest"
           value={st.autoRest}
           onChange={(v) => setSettingsPath('autoRest', v)}
         />
         <NumRow
           label="Incremento de progresión"
           hint="Cuánto subir cuando puedes con el rango alto"
+          help="opt.increment"
           value={st.increment}
           step={0.5}
           min={0.5}
@@ -372,18 +383,21 @@ function SecEntreno() {
         <SwitchRow
           label="Mostrar RPE"
           hint="Registrar esfuerzo percibido (1-10) por serie"
+          help="opt.showRpe"
           value={st.showRpe}
           onChange={(v) => setSettingsPath('showRpe', v)}
         />
         <SwitchRow
           label="Finalizar rápido"
           hint="No avisar cuando completes todas las series"
+          help="opt.quickFinish"
           value={st.quickFinish}
           onChange={(v) => setSettingsPath('quickFinish', v)}
         />
         <SwitchRow
           label="Contar aproximaciones"
           hint="Incluir series de calentamiento en el volumen"
+          help="opt.countWarmups"
           value={st.countWarmups}
           onChange={(v) => setSettingsPath('countWarmups', v)}
         />
@@ -406,8 +420,9 @@ function SecEquipo() {
     <>
       <div class="card tight">
         <div class="between mb-s">
-          <div class="h3">
+          <div class="h3 help-h3">
             Tu material ({active}/{Object.keys(eq).length})
+            <HelpBtn id="opt.material" title="Tu material" />
           </div>
           <span class="tiny muted">filtra qué ejercicios se pueden sugerir</span>
         </div>
@@ -471,7 +486,9 @@ function SecEquipo() {
 
 function PlateRow({ plate, index }: { plate: PlateStock; index: number }) {
   const kg = plate.unit === 'lb' ? plate.w * 0.45359237 : plate.w;
-  const pairs = plate.pairs || 0;
+  const discs = plate.discs || 0;
+  /* el reparto es simétrico: con un número impar sobra un disco por hueco */
+  const perSide = Math.floor(discs / 2);
   return (
     <div class="list-item">
       <input
@@ -501,14 +518,14 @@ function PlateRow({ plate, index }: { plate: PlateStock; index: number }) {
         type="number"
         step={1}
         min={0}
-        value={String(plate.pairs)}
-        aria-label="pares disponibles"
-        onChange={(e) => updatePlate(index, { pairs: Number(e.currentTarget.value) })}
+        value={String(plate.discs)}
+        aria-label="discos disponibles"
+        onChange={(e) => updatePlate(index, { discs: Number(e.currentTarget.value) })}
       />
       <span class="tiny muted grow num">
-        = {fmtN(kg, 2)} kg{plate.unit === 'lb' ? ` · ${fmtN(plate.w)} lb` : ''} · {pairs}{' '}
-        {pairs === 1 ? 'par' : 'pares'} ({pairs * 2} discos) · {fmtN(kg * pairs, 2)} kg por lado de
-        barra
+        = {fmtN(kg, 2)} kg{plate.unit === 'lb' ? ` · ${fmtN(plate.w)} lb` : ''} · {discs}{' '}
+        {discs === 1 ? 'disco' : 'discos'} · {fmtN(kg * perSide, 2)} kg por lado
+        {discs % 2 ? ' · sobra 1 disco' : ''}
       </span>
       <button
         type="button"
@@ -529,11 +546,11 @@ function SecDiscos() {
   const plates = st.plates ?? [];
   const bars = st.bars;
   const active = plates.filter((p) => p.on !== false);
-  const kgOf = (p: PlateStock) => (p.unit === 'lb' ? p.w * 0.45359237 : p.w);
   const bar = maxLoadable({ plates, bars, mode: 'bar' });
   const dbs = maxLoadable({ plates, bars, mode: 'db2' });
-  const perSide = active.reduce((sum, p) => sum + kgOf(p) * (p.pairs || 0), 0);
-  const discs = active.reduce((sum, p) => sum + (p.pairs || 0) * 2, 0);
+  /* discos por lado = lo que reparte la barra de verdad (floor(discos/2) por
+     medida), así que con un inventario impar nunca se anuncia un peso inflado */
+  const discs = active.reduce((sum, p) => sum + (p.discs || 0), 0);
   const barHint = (kg: number) =>
     `Peso sin discos · 0 kg si es de plástico · ${fmtN(fromKg(kg, 'lb'), 1)} lb`;
   return (
@@ -541,6 +558,7 @@ function SecDiscos() {
       <div class="grid c2">
         <Kpi
           label="Máximo en barra"
+          help="opt.plates"
           value={fmtN(bar.totalKg, 1)}
           unit="kg"
           delta={`= ${fmtN(fromKg(bar.totalKg, st.units), 1)} ${st.units} · ${fmtN(bar.sideKg, 1)} kg por lado`}
@@ -552,17 +570,19 @@ function SecDiscos() {
           delta="cargando 2 mancuernas a la vez"
         />
         <Kpi
-          label="Discos activos"
+          label="Medidas activas"
           value={active.length}
-          delta={`${discs} discos · ${fmtN(perSide, 1)} kg por lado`}
+          delta={`${discs} discos · ${fmtN(bar.sideKg, 1)} kg por lado`}
         />
       </div>
       <InfoCard>
-        Un <b>par</b> son 2 discos: uno para cada lado de la barra o cada extremo de la mancuerna.
-        Con los mismos discos la barra admite <b>{fmtN(bar.sideKg, 1)} kg por lado</b>, una
-        mancuerna suelta <b>{fmtN(bar.sideKg, 1)} kg por extremo</b> y, cargando dos mancuernas a la
-        vez, <b>{fmtN(dbs.sideKg, 1)} kg por extremo en cada una</b>. Se pueden mezclar discos en kg
-        y en lb (todo se calcula en kilogramos).
+        El inventario se cuenta en <b>discos</b> individuales: es cuántos discos de cada medida
+        tienes. Como la carga es simétrica, la barra reparte lo mismo en los dos lados y la
+        mancuerna en sus dos extremos, así que <b>con un número impar sobra un disco</b>. Con los
+        discos actuales la barra admite <b>{fmtN(bar.sideKg, 1)} kg por lado</b>, una mancuerna
+        suelta <b>{fmtN(bar.sideKg, 1)} kg por extremo</b> y, cargando dos mancuernas a la vez,{' '}
+        <b>{fmtN(dbs.sideKg, 1)} kg por extremo en cada una</b>. Se pueden mezclar discos en kg y en
+        lb (todo se calcula en kilogramos).
       </InfoCard>
       <div class="card flush mt">
         <div class="list">
@@ -582,6 +602,7 @@ function SecDiscos() {
           <NumRow
             label="Peso de la barra"
             hint={barHint(bars.olimpica)}
+            help="opt.bars"
             value={bars.olimpica}
             step={0.5}
             min={0}
@@ -591,6 +612,7 @@ function SecDiscos() {
           <NumRow
             label="Peso de la barra EZ"
             hint={barHint(bars.ez)}
+            help="opt.bars"
             value={bars.ez}
             step={0.5}
             min={0}
@@ -600,6 +622,7 @@ function SecDiscos() {
           <NumRow
             label="Peso del mango de mancuerna"
             hint={barHint(bars.mancuerna)}
+            help="opt.bars"
             value={bars.mancuerna}
             step={0.5}
             min={0}
@@ -672,7 +695,7 @@ function SecEjercicios() {
   return (
     <>
       <div class="grid c3">
-        <Kpi label="Biblioteca" value={list.length} delta="ejercicios" />
+        <Kpi label="Biblioteca" value={list.length} delta="ejercicios" help="opt.exercises" />
         <Kpi label="Permitidos" value={list.length - blocked} delta={`${blocked} prohibidos`} />
         <Kpi label="Con tu equipo" value={usable.length} delta="listos para sugerir" />
       </div>
@@ -1084,8 +1107,9 @@ function SecCoach() {
     <>
       <div class="card">
         <div class="between mb-s">
-          <div class="h3">
+          <div class="h3 help-h3">
             <Icon name="key" /> API key de Gemini
+            <HelpBtn id="coach.apiKey" title="API key de Gemini" />
           </div>
           <span class={`badge ${key ? 'ok' : 'warn'}`}>{key ? 'configurada' : 'falta'}</span>
         </div>
@@ -1145,6 +1169,7 @@ function SecCoach() {
         <SelectRow
           inline
           label="Modelo"
+          help="opt.model"
           value={ai.model}
           options={models.map((m) => ({
             value: m.id,
@@ -1155,6 +1180,7 @@ function SecCoach() {
         <SelectRow
           inline
           label="Nivel de pensamiento (thinkingLevel)"
+          help="opt.thinkingLevel"
           value={ai.thinkingLevel}
           options={THINKING_LEVELS.map((t) => ({
             value: t.key,
@@ -1165,6 +1191,7 @@ function SecCoach() {
         <NumRow
           label="Presupuesto de pensamiento (thinkingBudget)"
           hint="Solo modelos 2.5 · 0 lo desactiva, -1 es dinámico. Se ignora si eliges un nivel"
+          help="opt.thinkingBudget"
           value={Number(ai.thinkingBudget) || 0}
           step={1}
           min={-1}
@@ -1174,12 +1201,14 @@ function SecCoach() {
         <SwitchRow
           label="Mostrar razonamiento del modelo"
           hint="includeThoughts: muestra el resumen interno de Gemini"
+          help="opt.includeThoughts"
           value={ai.includeThoughts}
           onChange={(v) => setSettingsPath('ai.includeThoughts', v)}
         />
         <NumRow
           label="Temperature"
           hint="0 = determinista, 1 = creativo"
+          help="opt.temperature"
           value={ai.temperature}
           step={0.1}
           min={0}
@@ -1189,6 +1218,7 @@ function SecCoach() {
         <NumRow
           label="Máximo de tokens de salida"
           hint="Súbelo si las rutinas se cortan"
+          help="opt.maxTokens"
           value={ai.maxTokens}
           step={512}
           min={512}
@@ -1197,16 +1227,19 @@ function SecCoach() {
         />
       </div>
       <div class="card mt">
-        <label class="field">
-          <span class="label">Instrucciones del sistema (systemInstruction)</span>
-          <textarea
-            class="input"
-            style="min-height:150px"
-            placeholder="Vacío = usa el prompt por defecto de Pulso"
-            value={ai.systemPrompt ?? ''}
-            onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
-          />
-        </label>
+        <div class="help-field">
+          <label class="field">
+            <span class="label">Instrucciones del sistema (systemInstruction)</span>
+            <textarea
+              class="input"
+              style="min-height:150px"
+              placeholder="Vacío = usa el prompt por defecto de Pulso"
+              value={ai.systemPrompt ?? ''}
+              onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
+            />
+          </label>
+          <HelpBtn id="opt.systemPrompt" title="Instrucciones del sistema" />
+        </div>
         <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn sm" onClick={() => setShowPrompt(true)}>
             <Icon name="eye" />
@@ -1405,6 +1438,7 @@ function SecDatos() {
           icon="download"
           title="Exportar copia de seguridad"
           sub="JSON con ajustes, equipo, rutinas, sesiones y calendario"
+          help="opt.export"
           onClick={() => {
             /* mismo prefijo que la v1 (`pulso-backup-<fecha>.json`) */
             downloadJSON(exportState(), 'pulso-backup');
@@ -1415,6 +1449,7 @@ function SecDatos() {
           icon="upload"
           title="Importar copia"
           sub="Reemplaza los datos actuales"
+          help="opt.export"
           onClick={() => {
             void pickTextFile().then((text) => {
               if (text === null) return;
@@ -1443,6 +1478,7 @@ function SecDatos() {
         <ListButton
           icon="zap"
           title="Cargar 8 semanas de ejemplo"
+          help="opt.demo"
           sub={
             demo
               ? `Ahora mismo hay ${demo} sesiones de ejemplo`
@@ -1461,6 +1497,7 @@ function SecDatos() {
           icon="trash"
           title="Quitar datos de ejemplo"
           sub="Deja solo tus sesiones reales"
+          help="opt.demo"
           onClick={() => {
             if (!window.confirm('Se quitan solo las sesiones de ejemplo. ¿Seguro?')) return;
             const n = clearDemo();
@@ -1472,6 +1509,7 @@ function SecDatos() {
           title="Borrar todo"
           danger
           sub="Deja la app como recién instalada"
+          help="opt.wipe"
           onClick={() => {
             if (
               !window.confirm(
@@ -1540,23 +1578,50 @@ function SecDatos() {
 
 /* ========================================================================== */
 
+/* ---------- ayuda ---------- */
+
+/**
+ * Subsección Ayuda (`#/ajustes/ayuda`, spec `help-ux.md` §3.4.2): el MISMO
+ * índice que el modal de la guía, aquí siempre visible y sin abrir nada.
+ * `GuideIndex` es el que exporta `HelpModal.tsx`, así que buscador, secciones y
+ * filas son idénticos en los dos sitios (una sola fuente, cero duplicación).
+ */
+function SecAyuda() {
+  return (
+    <>
+      <InfoCard>
+        La guía entera de Pulso, aquí a mano: busca un término (1RM, descanso, racha…) o despliega
+        una sección y toca cualquier tema. Es el mismo índice que abre el ⓘ de la barra superior, y
+        los ⓘ de cada opción de Ajustes llegan a estos mismos temas.
+      </InfoCard>
+      <div class="card mt">
+        <GuideIndex />
+      </div>
+    </>
+  );
+}
+
 export function SettingsView({ sub }: { sub: string | null }) {
   const key: SubKey = SUBS.find((s) => s.key === sub)?.key ?? 'perfil';
   return (
     <>
       {/* `.seg` de la v1 estiliza `button`, así que la subnavegación va con botones
-          que cambian el hash (el router es la única fuente de la subsección) */}
-      <div class="seg mb">
-        {SUBS.map((s) => (
-          <button
-            key={s.key}
-            type="button"
-            class={key === s.key ? 'on' : ''}
-            onClick={() => go('ajustes', s.key)}
-          >
-            {s.label}
-          </button>
-        ))}
+          que cambian el hash (el router es la única fuente de la subsección). El ?
+          de la pestaña va fuera del `.seg` (que es scrollable) en su fila. */}
+      <div class="help-row mb">
+        <div class="seg">
+          {SUBS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              class={key === s.key ? 'on' : ''}
+              onClick={() => go('ajustes', s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <HelpBtn id="tab.ajustes" title="Ajustes" />
       </div>
       {key === 'perfil' ? <SecPerfil /> : null}
       {key === 'apariencia' ? <SecApariencia /> : null}
@@ -1566,6 +1631,7 @@ export function SettingsView({ sub }: { sub: string | null }) {
       {key === 'ejercicios' ? <SecEjercicios /> : null}
       {key === 'coach' ? <SecCoach /> : null}
       {key === 'datos' ? <SecDatos /> : null}
+      {key === 'ayuda' ? <SecAyuda /> : null}
     </>
   );
 }

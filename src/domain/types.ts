@@ -11,9 +11,16 @@ export type Unit = 'kg' | 'lb';
 export interface PlateStock {
   w: number;
   unit: Unit;
-  /** pares: 1 par = 2 discos */
-  pairs: number;
+  /** discos individuales de esa medida (entero ≥ 0); es lo que cuenta la UI */
+  discs: number;
   on: boolean;
+  /**
+   * Espejo de compatibilidad con la v1: `floor(discs / 2)`. El dominio NO lo lee
+   * (la migración a unidades vive en `normalizePlates`); solo se rellena al
+   * persistir para que una copia siga abriéndose en `v1-final`, que este campo
+   * lo interpreta como pares.
+   */
+  pairs?: number;
 }
 
 /** Peso de cada mango/barra sin discos. */
@@ -308,6 +315,10 @@ export interface PlanItem {
  * Estado persistido en `localStorage['pulso.state']`. v2 lee y escribe el MISMO
  * formato que la v1, así que los datos existentes siguen valiendo durante la
  * migración (y volver a la rama main no rompe nada).
+ *
+ * Única excepción: `settings.plates` se guarda en **unidades** (`discs`) con el
+ * espejo `pairs` (compatibilidad con la v1). Las filas antiguas, que solo traían
+ * `pairs`, se migran al leer (`normalizePlates`) sin reescribir localStorage.
  */
 export interface AppState {
   version: number;

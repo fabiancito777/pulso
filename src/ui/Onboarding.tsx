@@ -126,6 +126,11 @@ export function Onboarding() {
           Todo se guarda en tu dispositivo. El coach AI es opcional: puedes activarlo después con tu
           propia API key de Gemini.
         </div>
+        {/* spec `help-ux.md` §3.4.3: una sola línea, sin reestructurar el modal */}
+        <div class="tiny muted mt-s">
+          Pulsa el ⓘ de la barra superior para abrir la guía de la app; también está en Ajustes →
+          Ayuda.
+        </div>
       </div>
     </Modal>
   );

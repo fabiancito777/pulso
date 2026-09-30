@@ -45,6 +45,7 @@ import {
   updateRoutine,
 } from '@/state/store';
 import type { Routine } from '@/state/store';
+import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { InfoCard, SectionHead, TextRow } from './kit';
 import { Modal } from './Modal';
@@ -273,36 +274,42 @@ function GenerateModal({
         </>
       }
     >
-      <label class="field">
-        <span class="label">Plantilla</span>
-        <select
-          class="select"
-          value={templateId}
-          onChange={(e) => setTemplateId(e.currentTarget.value)}
-        >
-          {TEMPLATES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name} — {t.hint}
-            </option>
-          ))}
-        </select>
-        {summary ? (
-          <span class="sub">
-            {summary.count} ejercicios · {summary.groups}
-          </span>
-        ) : null}
-      </label>
+      <div class="help-field">
+        <label class="field">
+          <span class="label">Plantilla</span>
+          <select
+            class="select"
+            value={templateId}
+            onChange={(e) => setTemplateId(e.currentTarget.value)}
+          >
+            {TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} — {t.hint}
+              </option>
+            ))}
+          </select>
+          {summary ? (
+            <span class="sub">
+              {summary.count} ejercicios · {summary.groups}
+            </span>
+          ) : null}
+        </label>
+        <HelpBtn id="rutinas.generate" title="Generar rutina automática" />
+      </div>
 
-      <label class="field mt-s">
-        <span class="label">Evitar ejercicios de las últimas N sesiones</span>
-        <select class="select" value={rotate} onChange={(e) => setRotate(e.currentTarget.value)}>
-          {ROTATE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div class="help-field mt-s">
+        <label class="field">
+          <span class="label">Evitar ejercicios de las últimas N sesiones</span>
+          <select class="select" value={rotate} onChange={(e) => setRotate(e.currentTarget.value)}>
+            {ROTATE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <HelpBtn id="rutinas.rotate" title="Evitar ejercicios de las últimas sesiones" />
+      </div>
 
       <p class="tiny muted mt-s">
         Los compuestos van primero y series, repeticiones y descanso se ajustan a tu objetivo actual
@@ -357,7 +364,10 @@ function ScheduleModal({
         </>
       }
     >
-      <div class="tiny muted">{routine.name}</div>
+      <div class="between">
+        <div class="tiny muted grow ellipsis">{routine.name}</div>
+        <HelpBtn id="rutinas.schedule" title="Agendar rutina" />
+      </div>
       <label class="field mt-s">
         <span class="label">Día</span>
         <input
@@ -722,6 +732,7 @@ function RoutineEditor({
           hint="Grupos o intención de la rutina"
           placeholder="Pecho · hombro"
           value={focus}
+          help="rutinas.focus"
           onChange={setFocus}
         />
         <div class="divider" />
@@ -1032,6 +1043,7 @@ export function RoutinesView() {
             <div class="tiny muted">{routine.focus || `${names.length} ejercicios`}</div>
           </div>
           <div class="row" style="gap:5px">
+            <HelpBtn id="rutinas.source" title="El sello de origen" />
             <span class={badge.cls}>{badge.label}</span>
             {missing ? <span class="badge warn">{missing} sin equipo</span> : null}
             {blocked ? <span class="badge danger">{blocked} off</span> : null}
@@ -1122,15 +1134,18 @@ export function RoutinesView() {
             Generar auto
           </button>
         </div>
-        <button
-          type="button"
-          class="btn lg block rt-btn"
-          disabled={aiLoading}
-          onClick={() => void suggest()}
-        >
-          <Icon name="sparkles" />
-          {aiLoading ? 'El coach está pensando…' : 'Sugerir rutina con IA'}
-        </button>
+        <div class="row" style="gap:6px">
+          <button
+            type="button"
+            class="btn lg block rt-btn"
+            disabled={aiLoading}
+            onClick={() => void suggest()}
+          >
+            <Icon name="sparkles" />
+            {aiLoading ? 'El coach está pensando…' : 'Sugerir rutina con IA'}
+          </button>
+          <HelpBtn id="rutinas.autoVsIa" title="Generar auto y sugerir con IA" />
+        </div>
       </div>
 
       {notice ? <NoticeBox notice={notice} onClose={() => setNotice(null)} /> : null}
@@ -1164,7 +1179,11 @@ export function RoutinesView() {
       ) : null}
 
       <section class="mt">
-        <SectionHead title="Mis rutinas" right={list.length ? String(list.length) : undefined} />
+        <SectionHead
+          title="Mis rutinas"
+          help="tab.rutinas"
+          right={list.length ? String(list.length) : undefined}
+        />
         {list.length ? (
           <div class="col" style="gap:10px">
             {list.map(renderCard)}

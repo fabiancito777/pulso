@@ -640,6 +640,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
           value={fmtVol(t.volume)}
           unit="kg"
           delta={`${fmtN(t.sets, 0)} series en ${fmtN(t.sessions, 0)} sesiones`}
+          help="prog.kpis"
         />
         <Kpi
           label="Esta semana"
@@ -714,6 +715,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
         <section class="mt">
           <SectionHead
             title={`Progresión · ${active ? active.name : activeId}`}
+            help="prog.e1rm"
             right={
               first ? (
                 <span class={deltaPct >= 0 ? 'ok' : 'danger'}>
@@ -805,7 +807,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
       ) : null}
 
       <section class="mt">
-        <SectionHead title="Récords personales" right="1RM estimado (Epley)" />
+        <SectionHead title="Récords personales" right="1RM estimado (Epley)" help="prog.prs" />
         {prList.length ? (
           <div class="card flush">
             <div class="list">
@@ -856,7 +858,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
       </section>
 
       <section class="mt">
-        <SectionHead title="Consistencia" right="días con entrenamiento" />
+        <SectionHead title="Consistencia" right="días con entrenamiento" help="prog.consistency" />
         <HeatChart cells={heatCells} weeks={heatWeeks} />
       </section>
     </div>

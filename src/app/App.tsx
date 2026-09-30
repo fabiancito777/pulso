@@ -16,6 +16,7 @@ import { meta, routines, sessions, settings, storageAvailable } from '@/state/st
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
+import { openHelp } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { MigrationCards } from '@/ui/MigrationCards';
 import { Onboarding } from '@/ui/Onboarding';
@@ -190,6 +191,16 @@ export function App() {
             <span>{streak}</span>
           </button>
           <SessionClock />
+          <button
+            type="button"
+            class="chip"
+            title="Guía de la app"
+            aria-label="Guía de la app"
+            aria-haspopup="dialog"
+            onClick={() => openHelp('guide')}
+          >
+            <Icon name="info" />
+          </button>
         </div>
         <div class="tiny muted">Vite · TypeScript · Preact — migración en curso</div>
       </header>

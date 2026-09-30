@@ -11,23 +11,26 @@ import {
   capsFor,
   inventory,
   maxLoadable,
+  normalizePlate,
+  normalizePlates,
   PLATE_MODE_KEYS,
   plateSummary,
   solvePlates,
   suggestPlateMode,
 } from './plates';
+import type { PlateStock } from './types';
 
 const plates = PLATES_DEFAULT;
 
 describe('inventario', () => {
-  it('cuenta pares y se queda con lo que está disponible', () => {
+  it('cuenta discos sueltos y se queda con lo que está disponible', () => {
     const items = inventory([
-      { w: 3, unit: 'kg', pairs: 8, on: true },
-      { w: 10, unit: 'kg', pairs: 2, on: false },
-      { w: 0, unit: 'kg', pairs: 4, on: true },
+      { w: 3, unit: 'kg', discs: 16, on: true },
+      { w: 10, unit: 'kg', discs: 4, on: false },
+      { w: 0, unit: 'kg', discs: 8, on: true },
     ]);
     expect(items).toHaveLength(1);
-    expect(items[0]?.pairs).toBe(8);
+    expect(items[0]?.discs).toBe(16);
   });
 
   it('ordena de más pesado a más ligero y convierte lb a kg', () => {
@@ -39,12 +42,101 @@ describe('inventario', () => {
     expect(KG_PER_LB).toBeCloseTo(0.45359237, 8);
   });
 
-  it('cada hueco admite 2·pares/huecos discos', () => {
+  it('cada hueco admite floor(discos/huecos) discos', () => {
     const caps = (mode: string) => capsFor(inventory(plates), mode)[0]?.cap;
     expect(caps('bar')).toBe(8);
     expect(caps('db1')).toBe(8);
     /* dos mancuernas necesitan el doble de discos para el mismo peso: es real */
     expect(caps('db2')).toBe(4);
+  });
+
+  it('con discos impares sobra uno en el reparto simétrico', () => {
+    const sueltos: PlateStock[] = [{ w: 3, unit: 'kg', discs: 5, on: true }];
+    const caps = (mode: string) => capsFor(inventory(sueltos), mode)[0]?.cap;
+    expect(caps('bar')).toBe(2);
+    expect(caps('db1')).toBe(2);
+    expect(caps('db2')).toBe(1);
+
+    const res = solvePlates(12, { plates: sueltos, handleKg: 0 });
+    expect(res.exact).toBe(true);
+    expect(res.usage[0]).toMatchObject({ used: 4, have: 5 });
+    /* el quinto disco no se usa: el reparto nunca es asimétrico */
+    expect(maxLoadable({ plates: sueltos, mode: 'db2' }).sideKg).toBe(3);
+  });
+});
+
+describe('normalizePlates (migración pares → unidades)', () => {
+  const v1 = { w: 3, unit: 'kg', pairs: 8, on: true };
+
+  it('migra una fila de la v1 a unidades y rellena el espejo pairs', () => {
+    expect(normalizePlates([v1])).toEqual([{ w: 3, unit: 'kg', discs: 16, pairs: 8, on: true }]);
+  });
+
+  it('una fila ya en unidades se queda como está', () => {
+    const nueva = { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true };
+    expect(normalizePlates([nueva])).toEqual([nueva]);
+  });
+
+  it('un `discs` presente manda sobre un `pairs` viejo (no se migra dos veces)', () => {
+    expect(normalizePlate({ ...v1, discs: 5 })).toEqual({
+      w: 3,
+      unit: 'kg',
+      discs: 5,
+      pairs: 2,
+      on: true,
+    });
+  });
+
+  it('es idempotente: migrar dos veces no cuadruplica el inventario', () => {
+    const una = normalizePlates([v1]);
+    const dos = normalizePlates(una);
+    expect(dos).toEqual(una);
+    expect(normalizePlates(dos)).toEqual(una);
+    expect(una[0]?.discs).toBe(16);
+  });
+
+  it('descarta las filas sin contador y las que no traen peso numérico', () => {
+    expect(normalizePlates([{ w: 3, unit: 'kg', on: true }])).toEqual([]);
+    expect(normalizePlates([{ unit: 'kg', pairs: 8, on: true }])).toEqual([]);
+    expect(normalizePlates([{ w: '3', unit: 'kg', pairs: 8 }])).toEqual([]);
+    expect(
+      normalizePlates([
+        { w: 3, unit: 'kg', pairs: 8 },
+        { w: 2, unit: 'kg', discs: 4 },
+      ]),
+    ).toEqual([
+      { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true },
+      { w: 2, unit: 'kg', discs: 4, pairs: 2, on: true },
+    ]);
+  });
+
+  it('`pairs: 0` sigue siendo una fila válida (inventario vacío, no ilegible)', () => {
+    expect(normalizePlates([{ w: 20, unit: 'kg', pairs: 0, on: true }])).toEqual([
+      { w: 20, unit: 'kg', discs: 0, pairs: 0, on: true },
+    ]);
+  });
+
+  it('enteros sin signo: trunca decimales, acota negativos y normaliza unit/on', () => {
+    expect(normalizePlates([{ w: -3, unit: 'kg', discs: -2.7, on: false }])).toEqual([
+      { w: 0, unit: 'kg', discs: 0, pairs: 0, on: false },
+    ]);
+    expect(normalizePlates([{ w: 1.25, unit: 'g', discs: 3.7 }])).toEqual([
+      { w: 1.25, unit: 'kg', discs: 3, pairs: 1, on: true },
+    ]);
+  });
+
+  it('el espejo es floor(discos/2): 15 discos → 7 pares', () => {
+    expect(normalizePlates([{ w: 5, unit: 'kg', discs: 15 }])[0]?.pairs).toBe(7);
+  });
+
+  it('lo que no sea array devuelve vacío y la entrada no se muta', () => {
+    expect(normalizePlates(undefined)).toEqual([]);
+    expect(normalizePlates('no soy un array')).toEqual([]);
+    expect(normalizePlates({ w: 3, pairs: 8 })).toEqual([]);
+
+    const crudo = [{ w: 3, unit: 'kg', pairs: 8, on: true }];
+    normalizePlates(crudo);
+    expect(crudo).toEqual([{ w: 3, unit: 'kg', pairs: 8, on: true }]);
   });
 });
 
@@ -76,9 +168,9 @@ describe('solvePlates', () => {
   });
 
   it('resuelve inventario mixto kg + lb', () => {
-    const mixed = [
-      { w: 45, unit: 'lb' as const, pairs: 2, on: true },
-      { w: 10, unit: 'kg' as const, pairs: 1, on: true },
+    const mixed: PlateStock[] = [
+      { w: 45, unit: 'lb', discs: 4, on: true },
+      { w: 10, unit: 'kg', discs: 2, on: true },
     ];
     const objetivo = 20 + 2 * (toKg(45, 'lb') + 10);
     const res = solvePlates(objetivo, { plates: mixed, handleKg: 20 });
@@ -187,7 +279,9 @@ describe('suggestPlateMode', () => {
   });
 
   it('sin pistas usa lo que haya en el equipo', () => {
-    expect(suggestPlateMode({ name: 'Máquina rara' }, { hasAdjustableDumbbells: true })).toBe('db2');
+    expect(suggestPlateMode({ name: 'Máquina rara' }, { hasAdjustableDumbbells: true })).toBe(
+      'db2',
+    );
     expect(suggestPlateMode({ name: 'Máquina rara' }, { hasBarbell: true })).toBe('bar');
     expect(suggestPlateMode({ name: 'Máquina rara' })).toBe('none');
   });

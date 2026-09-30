@@ -59,6 +59,7 @@ import {
 } from '@/state/store';
 import { autoPlanEngine, requestAutoPlan, restDayPatch } from './calendar-helpers';
 import { ExercisePickerModal } from './ExercisePickerModal';
+import { HelpBtn } from './HelpModal';
 import {
   greeting,
   lastSessions,
@@ -108,6 +109,10 @@ function Greeting({ name }: { name: string }) {
     <div class="hy-greet">
       <span class="h2">{greeting(new Date().getHours(), name)}</span>
       <span class="tiny muted">· {dateLabel(today())}</span>
+      {/* `.hy-greet` alinea por línea base: el ? se centra en su hueco */}
+      <span style="align-self:center">
+        <HelpBtn id="tab.hoy" title="Hoy" />
+      </span>
     </div>
   );
 }
@@ -138,7 +143,10 @@ function Hero({
             <div class="h2">Sesión de hoy completada</div>
             <div class="sub">{dateLabel(now)} · sigue así</div>
           </div>
-          <Icon name="check-circle" />
+          <div class="row" style="gap:4px">
+            <Icon name="check-circle" />
+            <HelpBtn id="hoy.plan" title="Plan de hoy" />
+          </div>
         </div>
         <div class="row mt" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn" onClick={onExtra}>
@@ -164,7 +172,10 @@ function Hero({
               {plan.items.length} ejercicios · {plan.type || 'entreno'}
             </div>
           </div>
-          <span class="badge a">{plan.source === 'ia' ? 'IA' : 'plan'}</span>
+          <div class="row" style="gap:4px">
+            <span class="badge a">{plan.source === 'ia' ? 'IA' : 'plan'}</span>
+            <HelpBtn id="hoy.plan" title="Plan de hoy" />
+          </div>
         </div>
         <div class="col mt" style="gap:5px">
           {planRows(plan.items, exercises.value).map((row, i) => (
@@ -185,6 +196,7 @@ function Hero({
           <button type="button" class="btn" onClick={onSkip}>
             Saltar
           </button>
+          <HelpBtn id="flow.start" title="Empezar a entrenar" />
         </div>
       </section>
     );
@@ -198,7 +210,10 @@ function Hero({
           <div class="h2">Sin plan para hoy</div>
           <div class="sub">Programa la semana o entrena libremente</div>
         </div>
-        <Icon name="calendar" />
+        <div class="row" style="gap:4px">
+          <Icon name="calendar" />
+          <HelpBtn id="hoy.plan" title="Plan de hoy" />
+        </div>
       </div>
       <div class="row mt" style="gap:8px;flex-wrap:wrap">
         <button type="button" class="btn primary" onClick={() => go('calendario')}>
@@ -209,6 +224,7 @@ function Hero({
           <Icon name="sparkles" />
           Plan automático
         </button>
+        <HelpBtn id="flow.plan" title="Auto-planificar la semana" />
       </div>
     </section>
   );
@@ -275,7 +291,7 @@ function SuggestCard({
   if (!suggestion) {
     return (
       <section class="mt">
-        <SectionHead title="Recomendado ahora" />
+        <SectionHead title="Recomendado ahora" help="hoy.suggest" />
         <div class="empty">
           <Icon name="sparkles" />
           <div>No hay ninguna sugerencia disponible todavía</div>
@@ -293,6 +309,7 @@ function SuggestCard({
     <section class="mt">
       <SectionHead
         title="Recomendado ahora"
+        help="hoy.suggest"
         right={
           <button type="button" class="btn quiet sm" onClick={onRefresh} disabled={loading}>
             <Icon name="refresh" />
@@ -377,7 +394,7 @@ function Kpis({
   return (
     <section class="mt">
       <div class="grid c3">
-        <Kpi label="Sesiones 7d" value={count} delta={`objetivo ${objective}`} />
+        <Kpi label="Sesiones 7d" value={count} delta={`objetivo ${objective}`} help="hoy.kpis" />
         <Kpi
           label="Volumen 7d"
           value={fmtVol(volume)}
@@ -546,6 +563,7 @@ function LastSessions({
     <section class="mt">
       <SectionHead
         title="Últimas sesiones"
+        help="hoy.lastSessions"
         right={stats.sessions ? `${stats.sessions} en total · racha ${stats.streak} d` : undefined}
       />
       {!list.length ? (
@@ -847,7 +865,7 @@ export function HoyView() {
       <Kpis {...kpis} />
 
       <section class="mt">
-        <SectionHead title="Herramientas" />
+        <SectionHead title="Herramientas" help="hoy.tools" />
         <div class="grid c2">
           <button
             type="button"

@@ -5,6 +5,10 @@
  * que los datos que ya tienes siguen valiendo mientras se termina la migración:
  * se hace lectura-modificación-escritura y nunca se pisan las claves que aún
  * gestiona la v1.
+ *
+ * Única salvedad: `settings.plates` se guarda en unidades (`discs`) con el espejo
+ * `pairs` para la v1. Las filas viejas se migran al leer y se recalculan al
+ * escribir (`normalizePlates`), así que ninguna ruta puede dejarlos desincronizados.
  */
 import { signal } from '@preact/signals';
 
@@ -16,6 +20,7 @@ import { demoSessions } from '@/domain/demo';
 import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
+import { normalizePlates } from '@/domain/plates';
 import type {
   ActiveSession,
   AppState,
@@ -29,7 +34,12 @@ import type {
 import { toast } from '@/ui/toast';
 
 export const STATE_KEY = 'pulso.state';
-export const STATE_VERSION = 1;
+/**
+ * Versión documental del formato. La migración de placas NO depende de aquí
+ * (v1 y v2 inicial exportan `1`): el marcador es por fila, un `discs` presente
+ * significa «ya en unidades» (`normalizePlates`).
+ */
+export const STATE_VERSION = 2;
 
 /**
  * Claves sueltas de `localStorage` (fuera del estado), con el mismo nombre que les
@@ -87,11 +97,15 @@ export function readState(): AppState {
     if (!raw) return defaultState();
     const parsed: unknown = JSON.parse(raw);
     if (!isPlainObject(parsed)) return defaultState();
+    const settings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
     return {
       ...(parsed as AppState),
       version: typeof parsed.version === 'number' ? parsed.version : STATE_VERSION,
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
-      settings: withDefaults(parsed.settings, DEFAULT_SETTINGS),
+      /* migración de placas EN MEMORIA (pares → unidades): aquí NO se escribe, así
+         que un arranque no reescribe localStorage; el formato nuevo persiste en la
+         primera escritura (lectura-modificación-escritura) o en un export */
+      settings: { ...settings, plates: normalizePlates(settings.plates) },
       equipment: isPlainObject(parsed.equipment) ? { ...parsed.equipment } : defaultEquipment(),
     };
   } catch (err) {
@@ -112,10 +126,21 @@ export function readState(): AppState {
  */
 let writeWarned = false;
 
+/**
+ * Copia del estado lista para persistir, con el inventario normalizado: así
+ * `discs` y su espejo `pairs` (compatibilidad con la v1) nunca quedan
+ * desincronizados, por mucho que se escriba el estado fuera de los setters.
+ */
+function forStorage(state: AppState): AppState {
+  const settings = state.settings as Settings | undefined;
+  if (!settings) return state;
+  return { ...state, settings: { ...settings, plates: normalizePlates(settings.plates) } };
+}
+
 export function writeState(state: AppState): void {
   if (!storageAvailable) return;
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    localStorage.setItem(STATE_KEY, JSON.stringify(forStorage(state)));
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
     if (!writeWarned) {
@@ -413,6 +438,9 @@ export const settings = signal<Settings>(initial.settings);
 export function patchSettings(patch: Partial<Settings>): Settings {
   const state = readState();
   const next = withDefaults({ ...state.settings, ...patch }, DEFAULT_SETTINGS);
+  /* el inventario se normaliza AQUÍ también (no solo al persistir): un patch que
+     traiga solo `discs` dejaría en memoria un `pairs` viejo y la v1 leería mal */
+  next.plates = normalizePlates(next.plates);
   state.settings = next;
   writeState(state);
   settings.value = next;
@@ -490,32 +518,26 @@ export function setSettingsPath(path: string, value: unknown): void {
   patchSettings({ [head]: next });
 }
 
-function asPlates(value: unknown): PlateStock[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(
-    (p): p is PlateStock =>
-      isPlainObject(p) && typeof p.w === 'number' && typeof p.pairs === 'number',
-  );
-}
-
-/** Cambia un campo del inventario de discos (`w`, `unit`, `pairs`). */
+/** Cambia un campo del inventario de discos (`w`, `unit`, `discs`). */
 export function updatePlate(index: number, patch: Partial<PlateStock>): void {
-  const plates = asPlates(settings.value.plates).map((p, i) =>
+  const plates = normalizePlates(settings.value.plates).map((p, i) =>
     i === index ? { ...p, ...patch } : p,
   );
   patchSettings({ plates });
 }
 
-export function addPlate(plate: PlateStock = { w: 1.25, unit: 'kg', pairs: 1, on: true }): void {
-  patchSettings({ plates: [...asPlates(settings.value.plates), plate] });
+export function addPlate(
+  plate: PlateStock = { w: 1.25, unit: 'kg', discs: 2, pairs: 1, on: true },
+): void {
+  patchSettings({ plates: normalizePlates([...normalizePlates(settings.value.plates), plate]) });
 }
 
 export function removePlate(index: number): void {
-  patchSettings({ plates: asPlates(settings.value.plates).filter((_, i) => i !== index) });
+  patchSettings({ plates: normalizePlates(settings.value.plates).filter((_, i) => i !== index) });
 }
 
 export function togglePlate(index: number): void {
-  const plates = asPlates(settings.value.plates);
+  const plates = normalizePlates(settings.value.plates);
   const current = plates[index];
   if (!current) return;
   updatePlate(index, { on: current.on === false });
@@ -816,13 +838,19 @@ export function looksLikeState(value: unknown): boolean {
  * Reemplaza el estado entero (importación). Se conserva tal cual lo que traiga el
  * archivo, porque el formato es el mismo de la v1: importar una copia hecha en
  * `main` tiene que dejar los datos igual que allí. Única excepción:
- * `meta.onboarded = true` (lo que hacía la v1, `store.js:197`).
+ * `meta.onboarded = true` (lo que hacía la v1, `store.js:197`) y el inventario
+ * de discos, que se migra a unidades (`discs`) antes de persistirlo.
  */
 export function importState(raw: unknown): AppState {
   if (!looksLikeState(raw)) throw new Error('El archivo no parece una copia de Pulso');
   const incoming = raw as AppState;
+  /* el inventario de la copia se migra ANTES de persistir: una copia de la v1
+     (solo `pairs`) entra en unidades y el espejo `pairs` sale ya recalculado */
+  const settings: Settings = { ...incoming.settings };
+  if (Array.isArray(settings.plates)) settings.plates = normalizePlates(settings.plates);
   const next: AppState = {
     ...incoming,
+    settings,
     version: STATE_VERSION,
     createdAt:
       typeof incoming.createdAt === 'string' ? incoming.createdAt : new Date().toISOString(),

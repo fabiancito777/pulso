@@ -48,6 +48,7 @@ import {
 } from '@/state/chat';
 import type { ChatLine, MdSpan } from '@/state/chat';
 import { patchSettings, settings } from '@/state/store';
+import { HelpBtn } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { toast } from '@/ui/toast';
 
@@ -382,7 +383,12 @@ function Bubble({
       {line.consulted && line.consulted.length ? (
         <div class="coach-meta tiny muted">consultó: {line.consulted.join(' · ')}</div>
       ) : null}
-      {line.notes ? <div class="coach-meta tiny muted">{line.notes}</div> : null}
+      {line.notes ? (
+        <div class="row coach-meta tiny muted" style="gap:6px">
+          <span class="grow">{line.notes}</span>
+          <HelpBtn id="coach.footer" title="Pie de cada respuesta" />
+        </div>
+      ) : null}
     </>
   );
 }
@@ -452,6 +458,7 @@ function StatusCard() {
               solo en este dispositivo.
             </div>
           </div>
+          <HelpBtn id="coach.apiKey" title="API key del coach" />
         </div>
         <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn primary" onClick={() => go('ajustes', 'coach')}>
@@ -488,6 +495,7 @@ function StatusCard() {
           </div>
         </div>
         <div class="row coach-test" style="gap:8px">
+          <HelpBtn id="coach.apiKey" title="API key del coach" />
           <span class={`badge ${result && !result.ok ? 'danger' : 'ok'}`}>{testBadge(result)}</span>
           <button
             type="button"
@@ -536,7 +544,10 @@ function MemoryPanel() {
           <Icon name="cpu" />
           <span class="h3">Memoria del coach</span>
         </span>
-        <span class="tiny muted">{memory.length} car.</span>
+        <span class="row" style="gap:6px">
+          <span class="tiny muted">{memory.length} car.</span>
+          <HelpBtn id="coach.memory" title="Memoria del coach" />
+        </span>
       </summary>
       <div class="mt-s">
         <textarea
@@ -772,27 +783,33 @@ export function CoachView() {
     <section class="coach-view">
       <StatusCard />
 
-      <div class="hr-scroll mt-s">
-        {QUICK_ACTIONS.map((action) => (
-          <button
-            key={action.label}
-            type="button"
-            class="chip"
-            disabled={busy}
-            onClick={() => {
-              void run(action.task, action.ask, action.jump);
-            }}
-          >
-            <Icon name={action.icon} />
-            {action.label}
-          </button>
-        ))}
+      <div class="between mt-s">
+        <div class="hr-scroll grow">
+          {QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              class="chip"
+              disabled={busy}
+              onClick={() => {
+                void run(action.task, action.ask, action.jump);
+              }}
+            >
+              <Icon name={action.icon} />
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <HelpBtn id="coach.quick" title="Acciones rápidas" />
       </div>
 
       <MemoryPanel />
 
       <div class="between mt">
-        <span class="label">Conversación</span>
+        <span class="label help-h3">
+          Conversación
+          <HelpBtn id="tab.coach" title="Coach" />
+        </span>
         {msgs.length ? (
           <button
             type="button"

@@ -139,11 +139,11 @@ export function buildContext(params: BuildContextParams): string {
     .map(
       (plate) =>
         `${fmtN(toKg(plate.w, plate.unit), 2)} kg` +
-        `${plate.unit === 'lb' ? ` (${fmtN(plate.w)} lb)` : ''} × ${plate.pairs}`,
+        `${plate.unit === 'lb' ? ` (${fmtN(plate.w)} lb)` : ''} · ${plate.discs} discos`,
     )
     .join(', ');
   out.push(
-    `Inventario de discos (en kg, con original entre paréntesis si es lb): ${plates || 'sin discos'}`,
+    `Inventario de discos (unidades = discos sueltos; en kg, con original entre paréntesis si es lb): ${plates || 'sin discos'}`,
   );
   const load = maxLoadable({ plates: settings.plates, bars: settings.bars, mode: 'bar' });
   out.push(

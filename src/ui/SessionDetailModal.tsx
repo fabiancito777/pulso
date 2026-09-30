@@ -22,6 +22,7 @@ import type { Session } from '@/domain/types';
 import { startFromPlan } from '@/state/session';
 import { active, exercises, removeSession, sessions } from '@/state/store';
 
+import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { repeatItems } from './hoy-helpers';
 import { Kpi } from './kit';
@@ -91,6 +92,7 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
           <button type="button" class="btn primary" onClick={repeat}>
             Repetir sesión
           </button>
+          <HelpBtn id="flow.repeat" title="Repetir una sesión" />
         </>
       }
     >

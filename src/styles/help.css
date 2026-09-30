@@ -1,0 +1,139 @@
+/**
+ * Ayuda (`HelpModal.tsx`): el ⓘ de cada fila, los wrappers que lo colocan y el
+ * contenido del modal (párrafos, «ver también» e índice de la guía).
+ *
+ * Solo clases `help-*`: todo lo demás (`.icon-btn`, `.chip`, `.list-item`,
+ * `.search`, `.modal-*`…) es CSS heredado de `base.css` que aquí NO se toca.
+ * Importado desde `HelpModal.tsx`, igual que `onboarding.css` desde su
+ * componente: solo pesa en la app cuando se importa ese módulo.
+ */
+.help-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* El contenido de la fila ocupa todo el hueco; el ⓘ, solo su botón. */
+.help-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Campo (texto/select) con el ⓘ pegado arriba-derecha, junto a su etiqueta. */
+.help-field {
+  position: relative;
+}
+
+.help-field > .field {
+  padding-right: 26px;
+}
+
+.help-field .help-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+/* Táctil: el objetivo no baja de 28 px (los `icon-btn` de base.css son 34). */
+.help-btn {
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+
+/* `ListButton` con ayuda: el botón deja de ser el `:last-child` real de la
+   tarjeta (lo es del `.help-row`), así que `base.css:189` le quitaría el
+   separador a TODAS las filas. Se devuelve y solo se quita en la última. */
+div.help-row > button.list-item {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+div.help-row:last-child > button.list-item {
+  border-bottom: 0;
+}
+
+/* KPI: el botón conserva los 28 px táctiles pero no ensancha la tarjeta. */
+.kpi .kpi-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.kpi .help-btn {
+  margin: -7px -7px -7px 0;
+}
+
+/* Encabezado de sección con su ⓘ al lado del título. */
+.help-h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---------- modal ---------- */
+
+.help-sec {
+  margin-bottom: 6px;
+}
+
+.help-body p {
+  margin: 0 0 8px;
+}
+
+.help-see {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* ---------- índice de la guía (solo dentro del tema `guide`) ---------- */
+
+.help-index {
+  margin-top: 14px;
+}
+
+/* En Ajustes → Ayuda el índice va el PRIMERO de su tarjeta: ya no separa nada. */
+.card > .help-index:first-child {
+  margin-top: 0;
+}
+
+.help-index .search {
+  margin-bottom: 8px;
+}
+
+.help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.help-list .list-item {
+  padding-left: 11px;
+  padding-right: 11px;
+}
+
+.help-empty {
+  padding: 11px 13px;
+}
+
+.help-gloss summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 650;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.help-gloss .help-list {
+  border-top: 0;
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+}

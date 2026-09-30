@@ -13,22 +13,82 @@
  *   2 mancuernas  4 huecos (2 c/u)       total = mango + 2·Σ(por extremo en cada una)
  *   sin discos    0 huecos               máquina o mancuerna fija
  *
- * Un "par" son 2 discos, así que cada medida reparte `2·pares` discos entre los
- * huecos: `cap = floor(2·pares / huecos)`. Con los 8 pares de 3 kg (16 discos) la
+ * El inventario se cuenta en **discos sueltos** (`PlateStock.discs`, enteros ≥ 0;
+ * un número impar sobra uno en el reparto simétrico) y cada medida reparte sus
+ * discos entre los huecos: `cap = floor(discos / huecos)`. Con 16 discos de 3 kg la
  * barra admite 8 por lado, una mancuerna 8 por extremo y con dos mancuernas 4 por
  * extremo en cada una. El reparto es siempre SIMÉTRICO y se enumeran todas las
  * sumas alcanzables para quedarse con la más cercana al peso pedido: nunca
  * propone discos que no tengas ni un peso inalcanzable.
+ *
+ * El formato en unidades convive con el de la v1 (pares) gracias a
+ * `normalizePlates`, que es quien migra `pairs` → `discs` al leer y quien
+ * rellena el espejo `pairs = floor(discs/2)` al escribir.
  */
 import { int, num, round, sum } from './num';
 import { toKg } from './units';
 import type { BarWeights, PlateModeKey, PlateStock, Unit } from './types';
 
+/* ---------- normalización del formato (entrada única) ---------- */
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Normaliza una fila del inventario al formato en unidades y rellena su espejo.
+ *
+ * Reglas, en este orden:
+ *
+ * 1. `discs` numérico ⇒ manda (formato nuevo) y `pairs` se recalcula.
+ * 2. Solo `pairs` numérico ⇒ dato de la v1 ⇒ `discs = 2·pairs` (migración por fila).
+ * 3. Sin `w` numérico o sin ninguno de los dos contadores ⇒ la fila se descarta
+ *    (misma filosofía que `asPlates` de la v1: una fila ilegible no llena el
+ *    editor a medias ni le inventa un inventario).
+ *
+ * Es **idempotente** y no muta la entrada: `discs` presente es el marcador de
+ * formato, así que migrar dos veces no cuadruplica nada.
+ */
+export function normalizePlate(raw: unknown): PlateStock | null {
+  const p = asRecord(raw);
+  if (!p) return null;
+  if (typeof p.w !== 'number' || !Number.isFinite(p.w)) return null;
+  let discos: number;
+  if (typeof p.discs === 'number' && Number.isFinite(p.discs)) discos = p.discs;
+  else if (typeof p.pairs === 'number' && Number.isFinite(p.pairs)) discos = p.pairs * 2;
+  else return null;
+  const discs = Math.max(0, Math.trunc(discos));
+  return {
+    w: Math.max(0, p.w),
+    unit: p.unit === 'lb' ? 'lb' : 'kg',
+    discs,
+    pairs: Math.floor(discs / 2),
+    on: p.on !== false,
+  };
+}
+
+/**
+ * Lista entera de placas en formato nuevo. Lo que no sea array (o lo que quede
+ * vacío tras descartar filas ilegibles) devuelve `[]`, que es lo mismo que hoy
+ * hacía `asPlates` con un array corrupto.
+ */
+export function normalizePlates(value: unknown): PlateStock[] {
+  if (!Array.isArray(value)) return [];
+  const out: PlateStock[] = [];
+  for (const raw of value) {
+    const row = normalizePlate(raw);
+    if (row) out.push(row);
+  }
+  return out;
+}
+
 export interface PlateItem {
   /** peso real en kg (los discos en lb se convierten) */
   kg: number;
-  /** pares de esa medida (1 par = 2 discos) */
-  pairs: number;
+  /** discos de esa medida disponibles (enteros, pueden ser impares) */
+  discs: number;
   /** medida original, tal como la escribió el usuario */
   srcW: number;
   srcUnit: Unit;
@@ -141,10 +201,10 @@ export interface PlateSolution {
 /** Inventario utilizable, ya en kg y ordenado de más pesado a más ligero. */
 export function inventory(plates?: readonly PlateStock[] | null): PlateItem[] {
   return (plates ?? [])
-    .filter((p) => p && p.on !== false && int(p.pairs) > 0)
+    .filter((p) => p && p.on !== false && int(p.discs) > 0)
     .map((p) => ({
       kg: toKg(p.w, p.unit ?? 'kg'),
-      pairs: int(p.pairs, 1),
+      discs: int(p.discs, 1),
       srcW: num(p.w),
       srcUnit: p.unit ?? 'kg',
     }))
@@ -152,10 +212,10 @@ export function inventory(plates?: readonly PlateStock[] | null): PlateItem[] {
     .sort((a, b) => b.kg - a.kg);
 }
 
-/** Discos de cada medida que caben en UN hueco: `floor(2·pares / huecos)`. */
+/** Discos de cada medida que caben en UN hueco: `floor(discos / huecos)`. */
 export function capsFor(items: readonly PlateItem[], mode?: string | null): PlateCap[] {
   const places = Math.max(1, modeSpec(mode).places);
-  return items.map((item) => ({ item, cap: Math.max(0, Math.floor((item.pairs * 2) / places)) }));
+  return items.map((item) => ({ item, cap: Math.max(0, Math.floor(item.discs / places)) }));
 }
 
 export interface SolveOpts {
@@ -282,7 +342,7 @@ export function solvePlates(target: unknown, opts: SolveOpts = {}): PlateSolutio
       srcW: cap.item.srcW,
       srcUnit: cap.item.srcUnit,
       used: (counts[i] ?? 0) * spec.places,
-      have: cap.item.pairs * 2,
+      have: cap.item.discs,
     }))
     .filter((u) => u.used > 0);
 

@@ -614,7 +614,7 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
     const state = store.defaultState();
     state.settings = {
       ...state.settings,
-      plates: [{ w: 20, unit: 'kg', pairs: 1, on: true }],
+      plates: [{ w: 20, unit: 'kg', discs: 2, pairs: 1, on: true }],
       bars: { olimpica: 15, ez: 0, mancuerna: 0 },
     };
     state.equipment = { mancuernas_ajustables: false };
@@ -623,9 +623,107 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
     store.loadInitialState();
 
     const tras = store.readState();
-    expect(tras.settings.plates).toEqual([{ w: 20, unit: 'kg', pairs: 1, on: true }]);
+    expect(tras.settings.plates).toEqual([{ w: 20, unit: 'kg', discs: 2, pairs: 1, on: true }]);
     expect(tras.settings.bars).toEqual({ olimpica: 15, ez: 0, mancuerna: 0 });
     expect(tras.equipment).toEqual({ mancuernas_ajustables: false });
     expect(store.readStored<string[]>(store.SETUP_KEY)).toEqual(['inventario-v2']);
+  });
+});
+
+/* ---------- inventario en unidades (migración pares → discos) ---------- */
+
+/**
+ * Siembra `pulso.state` tal y como lo dejó la v1 en `localStorage` (JSON crudo,
+ * filas con `pairs` y sin `discs`). Se manipula el JSON a mano a propósito:
+ * el formato viejo ya no compila, que es justo lo que hay que seguir leyendo.
+ */
+function seedLegacyPlates(rows: unknown[]): string {
+  const crudo = JSON.parse(JSON.stringify(store.defaultState())) as Record<string, unknown>;
+  (crudo.settings as Record<string, unknown>).plates = rows;
+  const raw = JSON.stringify(crudo);
+  mem.set(store.STATE_KEY, raw);
+  return raw;
+}
+
+describe('inventario en unidades (pares → discos)', () => {
+  it('migra al leer y NO reescribe localStorage al arrancar', () => {
+    const antes = seedLegacyPlates([
+      { w: 3, unit: 'kg', pairs: 8, on: true },
+      { w: 1.25, unit: 'kg', pairs: 4, on: true },
+    ]);
+
+    const leido = store.readState();
+    store.refresh();
+
+    expect(leido.settings.plates).toEqual([
+      { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true },
+      { w: 1.25, unit: 'kg', discs: 8, pairs: 4, on: true },
+    ]);
+    expect(mem.get(store.STATE_KEY)).toBe(antes);
+  });
+
+  it('las filas viejas siguen siendo editables (el editor no se vacía)', () => {
+    seedLegacyPlates([{ w: 3, unit: 'kg', pairs: 8, on: true }]);
+    store.refresh();
+
+    expect(store.settings.value.plates).toHaveLength(1);
+    store.updatePlate(0, { discs: 10 });
+
+    expect(store.settings.value.plates[0]).toMatchObject({ w: 3, discs: 10, pairs: 5 });
+    expect(store.readState().settings.plates[0]).toMatchObject({ w: 3, discs: 10, pairs: 5 });
+  });
+
+  it('leer dos veces no duplica y escribir recalcula el espejo pairs', () => {
+    seedLegacyPlates([{ w: 3, unit: 'kg', pairs: 8, on: true }]);
+
+    const una = store.readState().settings.plates;
+    const otra = store.readState().settings.plates;
+    expect(otra).toEqual(una);
+    expect(otra[0]?.discs).toBe(16);
+
+    store.refresh();
+    store.updatePlate(0, { discs: 5 });
+
+    const enDisco = JSON.parse(mem.get(store.STATE_KEY) as string) as {
+      settings: { plates: { discs: number; pairs: number }[] };
+    };
+    expect(enDisco.settings.plates[0]).toMatchObject({ discs: 5, pairs: 2 });
+    expect(store.readState().settings.plates[0]).toMatchObject({ discs: 5, pairs: 2 });
+  });
+
+  it('exportar un estado viejo ya sale en formato nuevo, con su espejo', () => {
+    seedLegacyPlates([{ w: 3, unit: 'kg', pairs: 8, on: true }]);
+
+    const copia = store.exportState();
+
+    expect(copia.settings.plates[0]).toEqual({ w: 3, unit: 'kg', discs: 16, pairs: 8, on: true });
+    expect(copia.settings.plates[0]?.pairs).toBe(8);
+  });
+
+  it('importar una copia de la v1 normaliza el inventario antes de persistir', () => {
+    const copia = JSON.parse(JSON.stringify(store.exportState())) as Record<string, unknown>;
+    (copia.settings as Record<string, unknown>).plates = [
+      { w: 3, unit: 'kg', pairs: 8, on: true },
+      { w: 2.5, unit: 'kg', pairs: 4 },
+    ];
+
+    const importado = store.importState(copia);
+
+    expect(importado.settings.plates).toEqual([
+      { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true },
+      { w: 2.5, unit: 'kg', discs: 8, pairs: 4, on: true },
+    ]);
+    expect(store.settings.value.plates).toEqual(importado.settings.plates);
+    expect(store.readState().settings.plates).toEqual(importado.settings.plates);
+  });
+
+  it('un roundtrip nuevo → nuevo conserva discos y espejo', () => {
+    store.updatePlate(0, { discs: 7 });
+
+    const copia = store.exportState();
+    const importado = store.importState(JSON.parse(JSON.stringify(copia)) as unknown);
+
+    expect(importado.settings.plates).toEqual(copia.settings.plates);
+    expect(importado.settings.plates[0]).toMatchObject({ discs: 7, pairs: 3 });
   });
 });

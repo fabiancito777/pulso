@@ -124,7 +124,9 @@ describe('secciones de la v1', () => {
     expect(text).toContain('Barra cargable');
     expect(text).toContain('Mancuernas ajustables');
     expect(text).toContain('Inventario de discos');
+    expect(text).toContain('unidades = discos sueltos');
     expect(text).toContain('con original entre paréntesis');
+    expect(text).toContain('3 kg · 16 discos');
     expect(text).toContain('Máximo cargable total');
   });
 

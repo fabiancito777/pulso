@@ -9,6 +9,7 @@
 import { useState } from 'preact/hooks';
 
 import type { PlateModeKey } from '@/domain/types';
+import { HelpBtn } from '@/ui/HelpModal';
 import { Plates } from '@/ui/Plates';
 import { rememberPlateMode, settings, TOOL_MODE_KEY } from '@/state/store';
 
@@ -19,7 +20,10 @@ export function PlatesCard() {
   return (
     <section class="card">
       <div class="row between mb-s">
-        <b>Calculadora de discos</b>
+        <div class="row" style="gap:4px">
+          <b>Calculadora de discos</b>
+          <HelpBtn id="opt.plates" title="Discos disponibles" />
+        </div>
         <span class="tiny muted">usa tus ajustes reales de la v1</span>
       </div>
       <Plates

@@ -52,6 +52,7 @@ import {
 } from '@/state/session';
 import { exercises, settings as settingsSignal } from '@/state/store';
 import { ExercisePickerModal } from './ExercisePickerModal';
+import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { PlatesModal } from './PlatesModal';
 import { Ring } from './Ring';
@@ -266,8 +267,12 @@ function EntryCard(props: {
             {doneSets}/{en.sets.length} series{volume ? ` · ${fmtVol(volume)} kg` : ''}
           </div>
           {en.basis ? (
-            <div class="ex-meta">
-              <Icon name="target" /> {en.basis}
+            <div class="ex-meta" style="display:flex;gap:4px;align-items:center">
+              <Icon name="target" />
+              <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">
+                {en.basis}
+              </span>
+              <HelpBtn id="entreno.suggested" title="Peso sugerido" />
             </div>
           ) : null}
         </div>
@@ -333,39 +338,43 @@ function EntryCard(props: {
             <Icon name="plate" />
             discos
           </button>
+          <HelpBtn id="entreno.platesBtn" title="Qué discos cargan este peso" />
           <button class="btn sm quiet" onClick={() => setNotesOpen((open) => !open)}>
             <Icon name="pencil" />
             {notesOpen ? 'cerrar nota' : 'nota'}
           </button>
         </div>
-        {restOpen ? (
-          <input
-            class="input num sm mt-s"
-            type="number"
-            inputmode="numeric"
-            min="0"
-            step="5"
-            value={inputNum(en.restSec)}
-            aria-label="descanso de este ejercicio, en segundos"
-            title="Descanso que arranca al marcar serie (0 = el ajuste general)"
-            onChange={(event: Event) => {
-              const raw = (event.currentTarget as HTMLInputElement).value.trim();
-              /* vacío = sin cambios (el valor se escribe al confirmar, no en cada tecla) */
-              if (raw === '') return;
-              setEntryRest(i, Math.max(0, num(raw)));
-            }}
-            onBlur={() => setRestOpen(false)}
-          />
-        ) : (
-          <button
-            type="button"
-            class="set-hint"
-            title="Pulsa para cambiar el descanso de este ejercicio"
-            onClick={() => setRestOpen(true)}
-          >
-            <Icon name="rest" /> descanso: {en.restSec}s · pulsa para cambiarlo
-          </button>
-        )}
+        <div class="row" style="gap:6px">
+          {restOpen ? (
+            <input
+              class="input num sm mt-s"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              step="5"
+              value={inputNum(en.restSec)}
+              aria-label="descanso de este ejercicio, en segundos"
+              title="Descanso que arranca al marcar serie (0 = el ajuste general)"
+              onChange={(event: Event) => {
+                const raw = (event.currentTarget as HTMLInputElement).value.trim();
+                /* vacío = sin cambios (el valor se escribe al confirmar, no en cada tecla) */
+                if (raw === '') return;
+                setEntryRest(i, Math.max(0, num(raw)));
+              }}
+              onBlur={() => setRestOpen(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              class="set-hint"
+              title="Pulsa para cambiar el descanso de este ejercicio"
+              onClick={() => setRestOpen(true)}
+            >
+              <Icon name="rest" /> descanso: {en.restSec}s · pulsa para cambiarlo
+            </button>
+          )}
+          <HelpBtn id="entreno.entryRest" title="Descanso de cada ejercicio" />
+        </div>
       </div>
     </div>
   );
@@ -400,12 +409,18 @@ export function SessionCard() {
     return (
       <section class="card">
         <div class="row between mb-s">
-          <b>Entrenar</b>
+          <div class="row" style="gap:4px">
+            <b>Entrenar</b>
+            <HelpBtn id="tab.entrenar" title="Entrenar" />
+          </div>
           <span class="tiny muted">sesión en curso</span>
         </div>
-        <div class="tiny muted mb-s">
-          Marca tus series y el descanso arranca solo con el tiempo del ejercicio; el peso viene
-          sugerido de tu última vez.
+        <div class="between mb-s">
+          <div class="tiny muted grow">
+            Marca tus series y el descanso arranca solo con el tiempo del ejercicio; el peso viene
+            sugerido de tu última vez.
+          </div>
+          <HelpBtn id="entreno.suggested" title="Peso sugerido" />
         </div>
         <div class="row" style="gap:8px">
           <button type="button" class="btn grow" onClick={() => setPickerOpen(true)}>
@@ -451,8 +466,17 @@ export function SessionCard() {
           <>
             <div class="between">
               <div style="min-width:0">
-                <div class="tiny muted" style="text-transform:uppercase;letter-spacing:.5px">
-                  En curso · {fmtN(prog.done)} de {fmtN(prog.total)} series
+                <div
+                  class="between tiny muted"
+                  style="text-transform:uppercase;letter-spacing:.5px"
+                >
+                  <span class="row" style="gap:2px">
+                    <span>
+                      En curso · {fmtN(prog.done)} de {fmtN(prog.total)} series
+                    </span>
+                    <HelpBtn id="tab.entrenar" title="Entrenar" />
+                  </span>
+                  <HelpBtn id="entreno.drag" title="El peso se arrastra hacia abajo" />
                 </div>
                 {renaming ? (
                   <input
@@ -487,10 +511,13 @@ export function SessionCard() {
             {resting ? (
               <>
                 <RestStrip />
-                <button class="btn sm quiet mt-s" onClick={() => setView('rest')}>
-                  <Icon name="timer" />
-                  Descanso
-                </button>
+                <div class="row mt-s" style="gap:6px">
+                  <button class="btn sm quiet" onClick={() => setView('rest')}>
+                    <Icon name="timer" />
+                    Descanso
+                  </button>
+                  <HelpBtn id="entreno.rest" title="El descanso lo define cada ejercicio" />
+                </div>
               </>
             ) : null}
           </>

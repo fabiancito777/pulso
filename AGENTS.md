@@ -26,7 +26,10 @@ dudas, mira ahí primero.
 - `legacy/` es la **v1 congelada** (fuente de la migración). No se toca, no se formatea y no
   entra en el lint (`eslint.config.js` la ignora). Es el patrón de referencia.
 - El estado sigue en `localStorage['pulso.state']` con el **mismo formato que la v1**: v2 lee y
-  escribe lectura-modificación-escritura, así que los datos que ya tienes valen.
+  escribe lectura-modificación-escritura, así que los datos que ya tienes valen. Única salvedad:
+  `settings.plates` se guarda en **unidades** (`discs`, con espejo `pairs` para que la v1 siga
+  abriendo la copia) y las filas viejas se migran al leer (`normalizePlates`), sin reescribir
+  `localStorage` al arrancar.
 
 ### Decisiones de stack y por qué
 
@@ -144,7 +147,7 @@ domain  ←  features  ←  state  ←  ui
 ### Flujo de datos
 
 ```
-localStorage['pulso.state']  (mismo formato que la v1)
+localStorage['pulso.state']  (mismo formato que la v1; placas en unidades, con espejo `pairs`)
         ↕  readState() / writeState()  (tolerantes: JSON roto → valores por defecto)
    state (objeto completo en memoria)
         ↕  patchSettings(patch)
@@ -205,12 +208,15 @@ en la documentación.
 Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delicado:
 
 - **Calculadora de discos**: el mismo inventario no rinde igual en todo, de ahí los **huecos**
-  (`bar` 2 lados, `db1` 2 extremos, `db2` 4 huecos = 2 por mancuerna, `none` 0). `cap =
-floor(2·pares/huecos)` y reparto **simétrico**, eligiendo la suma más cercana al peso pedido por
+  (`bar` 2 lados, `db1` 2 extremos, `db2` 4 huecos = 2 por mancuerna, `none` 0). El inventario se
+  cuenta en **discos sueltos** (`PlateStock.discs`, enteros: un impar sobra uno en el reparto) y
+  `cap =
+floor(discos/huecos)` con reparto **simétrico**, eligiendo la suma más cercana al peso pedido por
   enumeración completa (nunca propone discos que no tengas). El margen `exact` es 0,1 kg y en `db2`
   el peso devuelto es el de **cada** mancuerna. El dibujo se agrupa en pilas con "×N" cuando el
   hueco lleva más de 6 discos, porque si no la fila mide 984 px dentro de un contenedor de 579 y se
-  ve cortada (parecía que un lado iba vacío).
+  ve cortada (parecía que un lado iba vacío). El espejo `pairs = floor(discs/2)` solo lo rellena
+  `normalizePlates` al persistir (compatibilidad con `v1-final`); el dominio NO lo lee.
 - **Reglas de la sesión**: el valor se arrastra hacia ABAJO (nunca hacia arriba ni a las series ya
   marcadas), el RPE no se arrastra, el peso puede estar vacío (`''` ≠ `0`), desmarcar cancela el
   descanso, y el descanso arranca en la última serie del ejercicio **solo** si quedan series de otro

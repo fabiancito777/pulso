@@ -12,12 +12,19 @@
 import { relative } from '@/domain/dates';
 import { exercises, sessions } from '@/state/store';
 
+import { HelpBtn } from './HelpModal';
 import { lastStimulusRows } from './progress-helpers';
 
 export function LastStimulus() {
   const rows = lastStimulusRows(sessions.value, exercises.value);
   return (
     <div class="card flush mt">
+      <div class="between" style="padding:10px 13px 6px">
+        <span class="tiny muted" style="font-weight:650">
+          Último estímulo
+        </span>
+        <HelpBtn id="prog.stimulus" title="Último estímulo" />
+      </div>
       <div class="list">
         {rows.map((row) => (
           <div key={row.key} class="list-item">

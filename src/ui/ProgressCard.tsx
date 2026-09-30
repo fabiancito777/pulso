@@ -16,6 +16,8 @@ import { label as dateLabel } from '@/domain/dates';
 import { fmtN, fmtVol } from '@/domain/format';
 import { sessions } from '@/state/store';
 
+import { HelpBtn } from './HelpModal';
+
 /** El `V.sub` de la v1 (`views-stats.js:13-17`), en componentes. */
 function subtitle(count: number, volume: number, streak: number): string {
   if (!count) return 'Aún sin datos · empieza a entrenar';
@@ -28,10 +30,16 @@ export function ProgressCard() {
   return (
     <section class="card">
       <div class="row between mb-s">
-        <b>Progreso</b>
-        <span class="tiny muted">
-          {t.firstDate ? `Desde ${dateLabel(t.firstDate, 'medium')}` : ''}
-        </span>
+        <div class="row" style="gap:4px">
+          <b>Progreso</b>
+          <HelpBtn id="tab.progreso" title="Progreso" />
+        </div>
+        <div class="row" style="gap:6px">
+          <span class="tiny muted">
+            {t.firstDate ? `Desde ${dateLabel(t.firstDate, 'medium')}` : ''}
+          </span>
+          <HelpBtn id="prog.subtitle" title="Resumen de Progreso" />
+        </div>
       </div>
       <div class="tiny muted">{subtitle(t.sessions, t.volume, t.streak)}</div>
     </section>
