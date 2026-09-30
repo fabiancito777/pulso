@@ -8,11 +8,17 @@
  * ~3,5 s, con el volumen pedido y acotado), no el sonido — eso solo se oye en el
  * navegador y ya lo cubre la comprobación manual.
  *
+ * Y el auto-suspend del fix `e2c49b9`: el contexto NO se queda abierto (un
+ * AudioContext en idle retiene la salida y dejaba la música de fondo atenuada),
+ * así que aquí se fija con relojes falsos cuándo se suelta.
+ *
  * El stub de `window` va antes del import dinámico por el mismo motivo que en
  * `state/*.test.ts`: el contexto se cachea al módulo y el primero que pita es el
  * que abre el AudioContext.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type * as AudioModule from './audio';
 
 interface Tone {
   start: number;
@@ -21,15 +27,33 @@ interface Tone {
   volume: number;
 }
 
-/** AudioContext mínimo: solo anota cuándo suena cada oscilador y a qué volumen. */
+/** AudioContext mínimo: anota cuándo suena cada oscilador y cuándo se suspende. */
 class FakeAudioContext {
   readonly tones: Tone[] = [];
-  readonly state = 'running';
+  state = 'running';
+  suspends = 0;
+  resumes = 0;
   readonly currentTime = 4;
   readonly destination = {};
 
   resume(): Promise<void> {
+    this.resumes += 1;
+    this.state = 'running';
     return Promise.resolve();
+  }
+
+  suspend(): Promise<void> {
+    this.suspends += 1;
+    this.state = 'suspended';
+    return Promise.resolve();
+  }
+
+  /** Entre tests: contexto en marcha y sin pitidos ni suspensiones contados. */
+  reset(): void {
+    this.tones.length = 0;
+    this.state = 'running';
+    this.suspends = 0;
+    this.resumes = 0;
   }
 
   createGain() {
@@ -84,8 +108,16 @@ vi.stubGlobal('window', {
 
 const { beep } = await import('./audio');
 
+/* Relojes falsos (timers + Date) en TODOS los tests: así `beep()` no deja
+   temporizadores reales sueltos y los de auto-suspend se pueden adelantar. */
 beforeEach(() => {
-  ctx.tones.length = 0;
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  ctx.reset();
+});
+
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });
 
 describe('beep', () => {
@@ -138,5 +170,96 @@ describe('beep', () => {
     ctx.tones.length = 0;
     beep('tap');
     expect(ctx.tones).toHaveLength(1);
+  });
+});
+
+/* ---------- auto-suspend: el contexto no se queda reteniendo la salida (e2c49b9) ---------- */
+
+describe('auto-suspend del AudioContext', () => {
+  /* El módulo cachea el AudioContext y `busyUntil` (la ventana hasta la que hay
+     pitidos sonando), medida sobre el reloj DEL test que la fijó. Cada test
+     importa una copia NUEVA: si no, la ventana de un test anterior —que ya no
+     coincide con este reloj— impediría suspender. */
+  let audio: typeof AudioModule;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    audio = await import('./audio');
+    ctx.reset();
+  });
+
+  it('un pitido suelta el foco: el contexto se suspende a los 600 ms', () => {
+    audio.beep('tick');
+
+    vi.advanceTimersByTime(599);
+    expect(ctx.suspends).toBe(0);
+    expect(ctx.state).toBe('running');
+
+    vi.advanceTimersByTime(1);
+    expect(ctx.suspends).toBe(1);
+    expect(ctx.state).toBe('suspended');
+  });
+
+  it('el fin de descanso deja sonar los 5 pitidos y SOLO DESPUÉS se suspende (4,2 s)', () => {
+    audio.beep('end');
+
+    vi.advanceTimersByTime(4199);
+    expect(ctx.suspends).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    expect(ctx.suspends).toBe(1);
+  });
+
+  it('un gesto sin pitidos lo deja suspendido a los 1,5 s', () => {
+    audio.ensureAudio();
+
+    vi.advanceTimersByTime(1499);
+    expect(ctx.suspends).toBe(0);
+
+    vi.advanceTimersByTime(1);
+    expect(ctx.suspends).toBe(1);
+  });
+
+  it('cada gesto reinicia el temporizador: no se suspende a mitad de un descanso', () => {
+    audio.ensureAudio();
+    vi.advanceTimersByTime(1000);
+    audio.ensureAudio();
+
+    /* 2 s desde el primer gesto, 1 s desde el segundo */
+    vi.advanceTimersByTime(1000);
+    expect(ctx.suspends).toBe(0);
+
+    vi.advanceTimersByTime(500);
+    expect(ctx.suspends).toBe(1);
+  });
+
+  it('un pitido nuevo manda él: la ventana del anterior queda cancelada', () => {
+    audio.beep('tick');
+    vi.advanceTimersByTime(500);
+    audio.beep('tick');
+
+    vi.advanceTimersByTime(200); /* ya habrían pasado los 600 del primero */
+    expect(ctx.suspends).toBe(0);
+
+    vi.advanceTimersByTime(400);
+    expect(ctx.suspends).toBe(1);
+  });
+
+  it('un contexto suspendido se desbloquea con el siguiente gesto', () => {
+    audio.ensureAudio();
+    vi.advanceTimersByTime(1500);
+    expect(ctx.state).toBe('suspended');
+
+    audio.ensureAudio();
+
+    expect(ctx.resumes).toBe(1);
+    expect(ctx.state).toBe('running');
+  });
+
+  it('con el sonido apagado no se programa ningún auto-suspend', () => {
+    audio.beep('end', { sound: false });
+
+    vi.advanceTimersByTime(10_000);
+    expect(ctx.suspends).toBe(0);
   });
 });

@@ -70,6 +70,7 @@ import {
   togglePlate,
   updatePlate,
 } from '@/state/store';
+import { TEST_NOTICE_SEC, testRestNotice } from '@/state/session';
 import { Icon } from '@/ui/Icon';
 import {
   InfoCard,
@@ -303,9 +304,42 @@ function SecApariencia() {
         />
         <SwitchRow
           label="Mantener la sesión despierta"
-          hint="Pantalla encendida y aviso de descanso con el móvil bloqueado"
+          hint="Pantalla encendida durante el entreno"
           value={st.keepAwake}
           onChange={(v) => setSettingsPath('keepAwake', v)}
+        />
+      </div>
+      {/* Botón de prueba (v1 `6361477`, `T.testRestNotice`): comprueba la capa
+          del service worker en el móvil real. Está en Apariencia, junto a los
+          avisos, igual que en la v1. */}
+      <div class="card flush mt">
+        <ListButton
+          icon="timer"
+          title="Probar aviso con el móvil bloqueado"
+          sub={`Programa un aviso de prueba en ${TEST_NOTICE_SEC} segundos para comprobar que te llega`}
+          onClick={() => {
+            /* `testRestNotice` decide y programa; los toasts son de la UI
+               (`state/` no importa de `ui/`), igual que los de la v1 */
+            const result = testRestNotice(TEST_NOTICE_SEC);
+            if (result === 'rest-running') {
+              toast('Hay un descanso en curso: primero termínalo o sáltalo', {
+                kind: 'warn',
+                ms: 5000,
+              });
+              return;
+            }
+            if (result === 'notify-off') {
+              toast('Activa «Notificaciones del sistema» para probar el aviso', {
+                kind: 'warn',
+                ms: 5000,
+              });
+              return;
+            }
+            toast(`Bloquea el móvil: el aviso llega en ${TEST_NOTICE_SEC} s`, {
+              kind: 'ok',
+              ms: 4000,
+            });
+          }}
         />
       </div>
     </>

@@ -38,19 +38,43 @@ export function registerSW(): void {
 }
 
 /**
- * Manda un mensaje al service worker controlando la página (`swPost()` de la
- * v1). Es el canal de los avisos de descanso (`notify` / `schedule-rest` /
- * `cancel-rest`); de momento queda disponible para cuando `state/session.ts`
- * conecte el timer con las notificaciones del sistema.
+ * Manda un mensaje al service worker (`swPost()` de la v1). Es el canal de los
+ * avisos de descanso (`notify` / `schedule-rest` / `cancel-rest`).
  *
- * @returns `false` si aún no hay un worker controlando la página
+ * Dos vías, igual que en la v1 (`e2c49b9`):
+ *
+ * 1. la página está controlada por el SW → `controller.postMessage`;
+ * 2. **sin controlador** (p. ej. tras actualizar la PWA sin recargar) el mensaje
+ *    se perdía en silencio y el descanso quedaba sin programar: se entrega en
+ *    cuanto `serviceWorker.ready` resuelva. No se duplica con la vía rápida
+ *    porque solo se usa cuando no hay controlador.
+ *
+ * La vía 2 solo se intenta donde `canRegisterSW()`: en dev no registramos SW, y
+ * `ready` no se cumpliría nunca → devolver `true` se comería el respaldo en la
+ * propia página (`pageNotify`) que usan `notifyEnd` y `finishSession`.
+ *
+ * @returns `false` si no hay nadie a quien entregarle el mensaje todavía
  */
 export function postToSW(message: SWMessage): boolean {
   try {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return false;
-    const controller = navigator.serviceWorker.controller;
-    if (!controller) return false;
-    controller.postMessage(message);
+    const sw = navigator.serviceWorker;
+    if (sw.controller) {
+      sw.controller.postMessage(message);
+      return true;
+    }
+    if (!canRegisterSW()) return false;
+    sw.ready
+      .then((reg) => {
+        try {
+          reg.active?.postMessage(message);
+        } catch {
+          /* noop */
+        }
+      })
+      .catch(() => {
+        /* noop */
+      });
     return true;
   } catch {
     return false;

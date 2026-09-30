@@ -22,6 +22,12 @@
  * (`platform/sw.ts` → `public/sw.js`). Cada una cubre un fallo de la anterior:
  * sin la tercera no hay aviso con el móvil bloqueado de verdad. Todas se respetan
  * con `settings.notify` / `settings.keepAwake`, y ninguna lanza excepciones.
+ *
+ * OJO con la música de fondo (Spotify…): el keep-alive de audio **solo se
+ * enciende mientras corre un descanso** y se apaga en cuanto termina, se cancela
+ * o se cierra la sesión (`ff21864`); y en navegadores con service worker ni se
+ * enciende, porque el aviso lo programa el SW sin pedir foco de audio (`6361477`).
+ * Un `<audio>` encendido toda la sesión atenúa la música de forma permanente.
  */
 import { signal } from '@preact/signals';
 
@@ -61,7 +67,13 @@ import {
 } from '@/domain/session';
 import type { ActiveEntry, ActiveSession, PlanItem, RestState, Session } from '@/domain/types';
 import { beep, ensureAudio, vibrate } from '@/platform/audio';
-import { keepAliveOff, keepAliveOn, wakeLockOff, wakeLockOn } from '@/platform/keepAlive';
+import {
+  keepAliveNeeded,
+  keepAliveOff,
+  keepAliveOn,
+  wakeLockOff,
+  wakeLockOn,
+} from '@/platform/keepAlive';
 import { notifyEnd, pageNotify, requestNotifyPermission } from '@/platform/notify';
 import { postToSW } from '@/platform/sw';
 import {
@@ -108,8 +120,13 @@ function update(fn: (session: ActiveSession) => ActiveSession): void {
 
 /**
  * Al arrancar una sesión (v1 `T.start` + `app.js:1254`): se pide el permiso de
- * notificaciones y se encienden las capas de "móvil bloqueado" si el ajuste las
- * deja encendidas. Apagar el ajuste lo apaga TODO (keep-alive y wake lock).
+ * notificaciones y se enciende el wake lock si el ajuste lo deja encendido.
+ * Apagar `keepAwake` lo apaga TODO (keep-alive y wake lock).
+ *
+ * OJO: aquí NO se enciende el keep-alive (v1 `ff21864`). El `<audio>` de
+ * silencio pide el foco de audio y el sistema atenúa la música de fondo
+ * (Spotify…) durante TODA la sesión: solo se enciende mientras corre un
+ * descanso (ver `keepAliveWith`).
  */
 function startSessionEffects(): void {
   requestNotifyPermission();
@@ -119,7 +136,6 @@ function startSessionEffects(): void {
     return;
   }
   void wakeLockOn();
-  keepAliveOn('Entrenamiento');
 }
 
 /**
@@ -427,41 +443,90 @@ function cancelRestNotice(): void {
   postToSW({ type: 'cancel-rest' });
 }
 
-/** Etiqueta del keep-alive (v1 `trainer.js:303`): apagado si el ajuste lo dice. */
-function keepAliveWith(label: string): void {
-  if (settings.value.keepAwake === false) {
+/**
+ * Enciende el keep-alive SOLO mientras dura un descanso (v1 `trainer.js`, con
+ * los fixes `ff21864` + `6361477`). Tres guardas, en el mismo orden que la v1:
+ *
+ * 1. `keepAwake: false` lo apaga del todo;
+ * 2. `keepAliveNeeded()` es la guarda de Android con SW: ahí el aviso lo
+ *    programa el service worker sin pedir foco de audio, así que el `<audio>` de
+ *    silencio solo daba ducking con Spotify. Queda como último recurso en
+ *    navegadores sin SW y en iOS (que no ejecuta el SW en segundo plano);
+ * 3. sin ninguna de esas condiciones se enciende (y se apaga al terminar el
+ *    descanso, en `stopRestTimer` y en el `loop()` de fin/cierre).
+ */
+function keepAliveWith(): void {
+  if (settings.value.keepAwake === false || !keepAliveNeeded()) {
     keepAliveOff();
     return;
   }
-  keepAliveOn(label);
+  keepAliveOn();
+}
+
+/** Segundos del aviso de prueba de Ajustes (la v1 usaba 5, con mínimo 3). */
+export const TEST_NOTICE_SEC = 5;
+
+/** Qué devuelve `testRestNotice`: la UI traduce cada caso a su toast. */
+export type TestNoticeResult = 'rest-running' | 'notify-off' | 'ok';
+
+/** Tag propio: no puede ser el del descanso, o sustituiría el aviso real. */
+const TEST_NOTICE_TAG = 'pulso-test';
+
+/**
+ * Aviso de prueba (v1 `6361477`, `T.testRestNotice`): programa un aviso en el
+ * SW para comprobar en el móvil que llega con la pantalla bloqueada. Devuelve el
+ * motivo si no se puede lanzar, y aquí NO se avisa — los toasts los pinta la UI
+ * (`state/` no importa de `ui/`).
+ *
+ * No pisa un descanso en curso: el SW guarda un único aviso pendiente y se
+ * perdería el real.
+ */
+export function testRestNotice(sec: number = TEST_NOTICE_SEC): TestNoticeResult {
+  const secs = Math.max(3, Math.trunc(num(sec, 5)));
+  if (rest.value.running) return 'rest-running';
+  if (settings.value.notify === false) return 'notify-off';
+  requestNotifyPermission();
+  postToSW({
+    type: 'schedule-rest',
+    at: NOW() + secs * 1000,
+    title: 'Aviso de prueba',
+    body: 'Si ves esto con el móvil bloqueado, el aviso del descanso funciona',
+    tag: TEST_NOTICE_TAG,
+  });
+  return 'ok';
 }
 
 /* Al abrir la app con un descanso en marcha se vuelve a programar en el SW: si no,
-   el aviso se habría perdido con la pestaña cerrada (v1 `T.rest.restore()`). */
+   el aviso se habría perdido con la pestaña cerrada (v1 `T.rest.restore()`). El
+   keep-alive también se recupera, pero SOLO si sigue corriendo un descanso. */
 scheduleRestNotice();
+if (rest.value.running) keepAliveWith();
 
 /**
- * Arranca el descanso: lo manda al SW (`schedule-rest`) y cambia la etiqueta del
- * keep-alive a «Descanso · …». El tiempo sigue saliendo de `endsAt - Date.now()`,
- * como siempre: esto solo son avisos.
+ * Arranca el descanso: lo manda al SW (`schedule-rest`) y enciende el keep-alive
+ * de audio. El tiempo sigue saliendo de `endsAt - Date.now()`, como siempre:
+ * esto solo son avisos.
  */
 export function startRestTimer(sec: number, label: string): void {
   ensureAudio();
   setRest(startRest(sec, label, NOW()));
   scheduleRestNotice();
-  keepAliveWith(label ? `Descanso · ${label}` : 'Descanso');
+  keepAliveWith();
 }
 
 export function stopRestTimer(): void {
   setRest(stopRest());
   cancelRestNotice();
+  /* el silencio ya cumplió: se suelta el foco de audio para que la música de
+     fondo (Spotify…) recupere su volumen cuanto antes (v1 `ff21864`) */
+  keepAliveOff();
 }
 
 /** `+15 s`: con el descanso ya terminado arranca una cuenta nueva (ver `domain/rest.ts`). */
 export function addRestSeconds(sec = 15): void {
   setRest(addRest(rest.value, sec, NOW()));
   scheduleRestNotice();
-  keepAliveWith(rest.value.label ? `Descanso · ${rest.value.label}` : 'Descanso');
+  keepAliveWith();
   beep('tick', settings.value);
 }
 
@@ -495,8 +560,14 @@ export function loop(): void {
       notifyEnd(restNoticeTitle, restNoticeBody(state.label), { tag: REST_NOTICE_TAG });
     }
     cancelRestNotice();
+    /* el pitido ya está programado: se suelta el foco de audio para que la
+       música de fondo (Spotify…) recupere su volumen cuanto antes */
+    keepAliveOff();
   }
-  if (closed) cancelRestNotice();
+  if (closed) {
+    cancelRestNotice();
+    keepAliveOff();
+  }
   if (active.value) sessionSeconds.value = elapsed(active.value);
 }
 

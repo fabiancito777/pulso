@@ -10,6 +10,21 @@
  *   móvil, el timer sigue corriendo y el pitido final suena. Es best-effort:
  *   donde el sistema no lo permita, el aviso fiable es el programado por el
  *   service worker (`schedule-rest`, en `state/session.ts`).
+ *
+ * Dos reglas que vienen de los fixes del ducking de Spotify (v1 `ff21864` y
+ * `6361477`) y que DELEN juntas, porque las dos apuntan a lo mismo — el `<audio>`
+ * pide el foco de audio y el sistema atenúa la música de fondo:
+ *
+ * 1. **solo se enciende mientras corre un descanso** (lo decide
+ *    `state/session.ts`, no este módulo), nunca durante toda la sesión;
+ * 2. **NO se publica `mediaSession.metadata`**: antes anunciaba «Pulso» como
+ *    reproductor y le robaba los controles/AVRCP del bluetooth a Spotify. Al
+ *    apagar se devuelve `playbackState = 'none'` para que el sistema sepa que
+ *    ya no hay nada reproduciéndose.
+ *
+ * Y `keepAliveNeeded()` es la guarda de `6361477`: donde hay service worker que
+ * programe el aviso (cualquier navegador moderno que no sea iOS) el `<audio>` no
+ * hace falta, así que no se enciende ni ducking ni controles robados.
  * - **wake lock**: `navigator.wakeLock.request('screen')` evita que la pantalla
  *   se apague mientras entrenas. El sistema lo suelta al ocultar la página, así
  *   que al volver a primer plano se vuelve a pedir.
@@ -69,14 +84,34 @@ let wired = false;
 let sentinel: WakeLockSentinelLike | null = null;
 let wantWake = false;
 
-/** Lo que enseja el control de medios (nombre de la app en el lockscreen). */
-function meta(title: string): void {
+/** ¿Es iOS o iPadOS (que se hace pasar por macOS con ratón táctil)? */
+function isIOS(): boolean {
   try {
-    if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
-    if (typeof MediaMetadata === 'undefined') return;
-    navigator.mediaSession.metadata = new MediaMetadata({ title, artist: 'Pulso' });
+    const ua = navigator.userAgent || '';
+    return (
+      /iphone|ipad|ipod/i.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
   } catch {
-    /* noop */
+    return false;
+  }
+}
+
+/**
+ * ¿Hace falta el `<audio>` de silencio? (v1 `6361477`, `trainer.js:keepAlive`).
+ *
+ * Solo donde NO hay un service worker que programe el aviso: en Android moderno
+ * la notificación la lanza el SW **sin pedir foco de audio**, así que encender el
+ * `<audio>` ahí solo daba ducking. Queda como último recurso en navegadores sin
+ * SW y en iOS, que no ejecuta el SW en segundo plano.
+ */
+export function keepAliveNeeded(): boolean {
+  try {
+    if (typeof navigator === 'undefined') return true;
+    if (!('serviceWorker' in navigator)) return true;
+    return isIOS();
+  } catch {
+    return true;
   }
 }
 
@@ -111,16 +146,16 @@ function wire(): void {
   });
 }
 
-/** Enciende el keep-alive (y actualiza la etiqueta si ya estaba encendido). */
-export function keepAliveOn(label?: string): void {
+/**
+ * Enciende el keep-alive. Sin etiqueta ni `mediaSession`: no hay nada que
+ * anunciar (ver la cabecera del módulo) — la v1 dejó `label()` vacío por el
+ * mismo motivo.
+ */
+export function keepAliveOn(): void {
   try {
     if (typeof document === 'undefined') return;
-    const title = label || 'Entrenamiento';
     wire();
-    if (el) {
-      meta(title);
-      return;
-    }
+    if (el) return;
     url ??= silentWav();
     if (!url) return;
     const audio = document.createElement('audio');
@@ -133,7 +168,6 @@ export function keepAliveOn(label?: string): void {
     void audio.play().catch(() => {
       /* sin gesto previo: lo reintenta `keepAliveRetry` */
     });
-    meta(title);
   } catch {
     /* noop: sin keep-alive sigue el SW */
   }
@@ -146,8 +180,13 @@ export function keepAliveOff(): void {
       el.remove();
     }
     el = null;
+    /* Devolvemos los controles multimedia a quien los tuviera (Spotify…): sin
+       pista no hay nada que anunciar, y `playbackState = 'none'` le dice al
+       sistema que esta página ya no reproduce nada (la v1 solo dejaba el
+       metadata en null y el sistema seguía creyendo que éramos el reproductor). */
     if (typeof navigator !== 'undefined' && navigator.mediaSession) {
       navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
     }
   } catch {
     /* noop */
