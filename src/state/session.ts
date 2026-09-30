@@ -34,6 +34,7 @@ import { signal } from '@preact/signals';
 import { type Suggestion, suggestWeight } from '@/domain/analytics';
 import { today } from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
+import type { UnresolvedName } from '@/domain/match';
 import { num, round } from '@/domain/num';
 import {
   addRest,
@@ -213,10 +214,18 @@ export function startFromRoutine(routineId: string): ActiveSession | null {
  *
  * Si ya hay una sesión en curso devuelve ESA, igual que `startFreeSession`: tocar
  * «Empezar» dos veces no pisa un entrenamiento a medias.
+ *
+ * Los nombres del plan que NO estén en la biblioteca no se descartan en silencio:
+ * salen por `opts.onUnresolved` (matcher de `domain/match`) para que la vista
+ * avise, y la sesión arranca con lo que sí resolvió.
  */
 export function startFromPlan(
   items: readonly PlanItem[],
-  opts: { name?: string; dayIso?: string } = {},
+  opts: {
+    name?: string;
+    dayIso?: string;
+    onUnresolved?: (items: UnresolvedName[]) => void;
+  } = {},
 ): ActiveSession {
   const current = active.value;
   if (current) return current;
@@ -229,6 +238,7 @@ export function startFromPlan(
     dayIso: opts.dayIso,
     source: 'plan',
     unit: settings.value.units,
+    ...(opts.onUnresolved ? { onUnresolved: opts.onUnresolved } : {}),
   });
   setActive(created);
   startSessionEffects();

@@ -313,3 +313,34 @@ describe('estado vacío', () => {
     expect(text).not.toContain('[objetivo plantilla');
   });
 });
+
+describe('favoritos (★) en el contexto', () => {
+  const marcar = (...ids: string[]): Exercise[] =>
+    BIBLIOTECA.map((ex) => (ids.includes(ex.id) ? { ...ex, fav: true } : ex));
+
+  it('saca una línea FAVORITOS y marca el ★ dentro de su grupo', () => {
+    const text = context({ exercises: marcar('ex-press') });
+    expect(text).toContain('FAVORITOS (prefiere estos): Press de banca');
+    expect(text).toContain('Pecho (1): ★ Press de banca');
+    /* prohibidos y no disponibles siguen sin entrar (no se les quita nada) */
+    expect(text).toContain('PROHIBIDOS (no los propongas): Extensiones de cuádriceps');
+    expect(text).toContain('NO DISPONIBLES por falta de material: Curl de bíceps en máquina');
+  });
+
+  it('lista los ★ en el orden de la biblioteca y solo los disponibles', () => {
+    const text = context({ exercises: marcar('ex-press', 'ex-dominadas') });
+    expect(text).toContain('FAVORITOS (prefiere estos): Press de banca, Dominadas');
+    expect(text).toContain('★ Dominadas');
+  });
+
+  it('sin ★ no aparece la sección: el prompt no crece por nada', () => {
+    expect(context()).not.toContain('FAVORITOS');
+  });
+
+  it('un ★ sin material no se cuela en la lista de preferidos', () => {
+    /* `ex-maquina` tiene `maquina` desactivado en el fixture de material */
+    const text = context({ exercises: marcar('ex-maquina') });
+    expect(text).not.toContain('FAVORITOS');
+    expect(text).not.toContain('★ Curl de bíceps en máquina');
+  });
+});

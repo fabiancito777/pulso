@@ -12,7 +12,7 @@
  */
 import { useState } from 'preact/hooks';
 
-import { GOALS } from '@/domain/data';
+import { GOALS, equipPresetList } from '@/domain/data';
 import { applyOnboarding, type OnboardingValues } from '@/state/onboarding';
 import { Modal } from '@/ui/Modal';
 import { TextRow } from '@/ui/kit';
@@ -20,13 +20,15 @@ import { toast } from '@/ui/toast';
 
 import '../styles/onboarding.css';
 
-/** Material: los mismos 4 presets de la v1 (`app.js:217`). */
-const EQUIP_OPTIONS = [
-  { key: 'basico', label: 'Mancuernas + banco' },
-  { key: 'gym', label: 'Gimnasio completo' },
-  { key: 'todo', label: 'Todo el catálogo' },
-  { key: 'ninguno', label: 'Solo peso corporal' },
-] as const;
+/**
+ * Material: los presets que ofrece `domain/data.ts` (los 4 de la v1 más «Mi
+ * kit»), con su etiqueta larga. Ajustes y Onboarding comparten la MISMA lista,
+ * así que añadir un preset sigue costando un solo sitio.
+ */
+const EQUIP_OPTIONS = equipPresetList().map((preset) => ({
+  key: preset.key,
+  label: preset.fullLabel,
+}));
 
 const DAYS = ['2', '3', '4', '5', '6'];
 

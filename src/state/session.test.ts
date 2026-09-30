@@ -16,6 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { today } from '@/domain/dates';
+import type { UnresolvedName } from '@/domain/match';
 import type { PlanItem } from '@/domain/types';
 
 const mem = new Map<string, string>();
@@ -99,6 +100,24 @@ describe('startFromPlan', () => {
     const inventado = session.startFromPlan([{ name: 'Ejercicio que no existe' }]);
     expect(inventado.entries).toEqual([]);
     expect(inventado.source).toBe('plan');
+  });
+
+  it('los nombres del plan que no resuelven salen por onUnresolved (sin silencio)', () => {
+    const avisos: UnresolvedName[] = [];
+    const creada = session.startFromPlan(
+      [{ exId: firstId(), sets: 2 }, { name: 'Ejercicio que no existe' }],
+      {
+        name: 'Empuje A',
+        dayIso: '2026-09-28',
+        onUnresolved: (items) => avisos.push(...items),
+      },
+    );
+    expect(creada.entries).toHaveLength(1);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toMatchObject({
+      name: 'Ejercicio que no existe',
+      reason: 'no está en tu biblioteca',
+    });
   });
 
   it('el día por defecto es hoy (v1 `startFromItems`)', () => {

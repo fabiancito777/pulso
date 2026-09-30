@@ -11,9 +11,11 @@ import {
   GROUPS,
   SEED_EXERCISES,
   TEMPLATES,
+  USER_SEED_EXERCISES,
   equipCats,
   equipLabel,
   equipPreset,
+  equipPresetList,
   equipTags,
   equipmentKeys,
   findExerciseByName,
@@ -21,6 +23,7 @@ import {
   goalLabel,
   isAvailable,
   missingEquipment,
+  seedExercises,
 } from './data';
 import { slug } from './text';
 import type { Exercise } from './types';
@@ -105,6 +108,77 @@ describe('presets de equipamiento', () => {
     expect(raro).toEqual(equipPreset('basico'));
     expect(raro.mancuernas_ajustables).toBe(true);
     expect(raro.trap_bar).toBe(false);
+  });
+
+  it('«Mi kit» es el material de quien entrena en casa, SIN banco', () => {
+    const kit = equipPreset('kit');
+    const activos = Object.keys(kit).filter((key) => kit[key]);
+    expect(activos.sort()).toEqual([
+      'banco_dominadas',
+      'barra_olimpica',
+      'colchoneta',
+      'discos',
+      'mancuernas_ajustables',
+      'mancuernas_fijas',
+    ]);
+    /* se resuelve ANTES del fallback: si no, caería en `basico` y no valdría */
+    expect(kit).not.toEqual(equipPreset('basico'));
+    expect(kit.banco_plano).toBe(false);
+    expect(kit.banco_inclinable).toBe(false);
+  });
+
+  it('los presets ofrecidos son 5 y todos resuelven', () => {
+    const list = equipPresetList();
+    expect(list).toHaveLength(5);
+    expect(list.map((p) => p.key)).toEqual(['basico', 'kit', 'gym', 'todo', 'ninguno']);
+    for (const preset of list) {
+      expect(preset.label.length, preset.key).toBeGreaterThan(0);
+      expect(preset.fullLabel.length, preset.key).toBeGreaterThan(0);
+      expect(Object.values(equipPreset(preset.key)).some(Boolean), preset.key).toBe(true);
+    }
+  });
+});
+
+describe('ejercicios declarados a mano (fuera del catálogo generado)', () => {
+  it('son exactamente los 3 que faltan y están en la semilla completa', () => {
+    expect(USER_SEED_EXERCISES.map((e) => e.name)).toEqual([
+      'Press de Piso con Mancuernas',
+      'Floor Press',
+      'Rompecráneos en Suelo',
+    ]);
+    const semilla = seedExercises();
+    expect(semilla).toHaveLength(SEED_EXERCISES.length + 3);
+    for (const ex of USER_SEED_EXERCISES) {
+      expect(
+        semilla.some((e) => e.id === ex.id),
+        ex.id,
+      ).toBe(true);
+    }
+    /* ni ids repetidos ni datos imposibles, igual que el catálogo */
+    const ids = semilla.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const ex of USER_SEED_EXERCISES) {
+      expect(ex.id).toBe(slug(ex.name));
+      expect(ex.custom).toBe(false);
+      expect(ex.allowed).toBe(true);
+      expect(ex.repMin).toBeLessThanOrEqual(ex.repMax);
+      expect(
+        GROUPS.some((g) => g.key === ex.group),
+        ex.group,
+      ).toBe(true);
+      for (const key of ex.equip.split('|')) expect(equipmentKeys).toContain(key);
+    }
+  });
+
+  it('están disponibles con «Mi kit» (solo mancuerna, sin banco)', () => {
+    const kit = equipPreset('kit');
+    for (const ex of USER_SEED_EXERCISES) {
+      expect(isAvailable(ex, kit), ex.name).toBe(true);
+      expect(missingEquipment(ex, kit), ex.name).toEqual([]);
+      expect(ex.equip.includes('banco'), ex.name).toBe(false);
+    }
+    /* …y no se caen sin material de golpe: sin mancuernas no hay nada que hacer */
+    expect(isAvailable(USER_SEED_EXERCISES[0], {})).toBe(false);
   });
 });
 

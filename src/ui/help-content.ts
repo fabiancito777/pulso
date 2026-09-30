@@ -748,8 +748,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Biblioteca de ejercicios',
     paras: [
-      'De todo el catálogo, cuántos tienes activados (permitidos) y cuántos puedes hacer con tu material. «Prohibidos» son los que has apagado a mano, «Sin material» los que necesitan algo que no tienes y «Propios» los que has creado tú.',
-      'Prohibir quita el ejercicio de las propuestas y los buscadores sin borrar tu historial; «Añadir propio» crea uno nuevo.',
+      'La lista se parte en 4 segmentos: ★ Favoritos (lo que entrenas de verdad, que los buscadores y los generadores sacan primero), Catálogo, Propios y Ocultos. El atajo «★ Los de mis récords» marca de golpe los que ya tienen un récord tuyo, y cada fila enseña cuándo lo entrenaste, tu mejor 1RM y cuántas veces lo has hecho.',
+      '★ es prioridad, no exclusión; «Oculto» solo lo saca de la vista (el coach y el generador siguen mirando lo que permites y tu material); «Prohibido» es el que lo aparta de las propuestas, sin borrar tu historial. Las acciones en bloque aplican a lo que tengas filtrado, y «Añadir propio» crea uno nuevo.',
     ],
     see: ['opt.material', 'glossary.equipment'],
   },

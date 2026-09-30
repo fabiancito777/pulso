@@ -32,6 +32,8 @@ import { durationOf, sessionDate, setsOf, totals, volumeOf } from '@/domain/anal
 import { groupColor, groupLabel } from '@/domain/data';
 import { label as dateLabel, dowLong, today } from '@/domain/dates';
 import { fmtDur, fmtMmss, fmtN, fmtVol, fmtW } from '@/domain/format';
+import { matchExercise, unresolvedNames } from '@/domain/match';
+import type { UnresolvedName } from '@/domain/match';
 import { maxLoadable } from '@/domain/plates';
 import { clamp, int } from '@/domain/num';
 import { unitLabel } from '@/domain/units';
@@ -328,6 +330,14 @@ function SuggestCard({
         <div class="col" style="gap:6px">
           {rows.slice(0, 6).map((row, i) => {
             const color = row.group ? groupColor(row.group) : '';
+            /* El motivo se recalcula con el matcher que usará «Empezar»/«Guardar» */
+            const match = row.matched ? null : matchExercise(row.name, exercises.value);
+            const badge = match
+              ? {
+                  label: match.conflict ? 'no encaja en tu biblioteca' : 'no está en tu biblioteca',
+                  title: match.conflict ?? 'no está en tu biblioteca',
+                }
+              : null;
             return (
               <div key={`${row.name}-${i}`} class="row" style="gap:8px">
                 {row.group ? (
@@ -338,6 +348,11 @@ function SuggestCard({
                 <span class="grow ellipsis" style="font-size:13.5px">
                   {row.name}
                 </span>
+                {badge ? (
+                  <span class="badge danger" title={badge.title}>
+                    {badge.label}
+                  </span>
+                ) : null}
                 <span class="tiny muted num">
                   {row.sets}×{row.reps}
                   {row.weight ? ` @ ${fmtN(row.weight)}` : ''}
@@ -758,25 +773,49 @@ export function HoyView() {
   function startSuggestion(): void {
     if (!suggestion) return;
     const items = suggestionPlan(suggestion);
+    /* Los que NO resolvieron (umbral 0,85 + veto de `domain/match`) no entran en
+       la sesión — `suggestionPlan` los filtra— pero tampoco desaparecen: se avisa
+       con el MISMO matcher para que el motivo sea el que daría al aplicar. */
+    const missing: UnresolvedName[] = suggestion.exercises
+      .filter((item) => !item.matched)
+      .map((item) => {
+        const match = matchExercise(item.name, exercises.value);
+        return { name: item.name, reason: match.conflict ?? 'no está en tu biblioteca' };
+      });
     if (!items.length) {
-      toast('La sugerencia no tiene ejercicios reconocibles', { kind: 'warn' });
+      toast(
+        missing.length
+          ? `Ningún ejercicio de la sugerencia está en tu biblioteca: ${unresolvedNames(missing)}`
+          : 'La sugerencia no tiene ejercicios reconocibles',
+        { kind: 'warn' },
+      );
       return;
     }
     startFromPlan(items, { name: suggestion.title, dayIso: now });
+    if (missing.length) {
+      toast(`Empezado sin: ${unresolvedNames(missing)}`, { kind: 'warn' });
+    }
   }
 
   function saveSuggestion(): void {
     if (!suggestion) return;
-    const created = applySuggestionAsRoutine(raw);
+    const { routine: created, unresolved } = applySuggestionAsRoutine(raw);
     if (!created) {
       setNotice({
         kind: 'err',
-        text: 'No se pudo guardar: ningún ejercicio de la lista está en tu biblioteca.',
+        text: unresolved.length
+          ? `No se pudo guardar: ${unresolvedNames(unresolved)} no ${
+              unresolved.length === 1 ? 'está' : 'están'
+            } en tu biblioteca.`
+          : 'No se pudo guardar: ningún ejercicio de la lista está en tu biblioteca.',
       });
       return;
     }
-    setNotice({ kind: 'ok', text: `Rutina creada: ${created.name}` });
-    toast(`Rutina creada: ${created.name}`, { kind: 'ok' });
+    const savedText = unresolved.length
+      ? `Rutina creada: ${created.name} · sin usar: ${unresolvedNames(unresolved)}`
+      : `Rutina creada: ${created.name}`;
+    setNotice({ kind: unresolved.length ? 'warn' : 'ok', text: savedText });
+    toast(savedText, { kind: unresolved.length ? 'warn' : 'ok' });
   }
 
   /** `Mejorar con IA`: sin key ni se intenta (nunca un throw silencioso). */

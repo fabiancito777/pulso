@@ -91,6 +91,40 @@ describe('matchExercises', () => {
     expect(matchExercises('press', LIBRARY, [], 2)).toHaveLength(2);
     expect(matchExercises('zzzqqq sin sentido', LIBRARY)).toEqual([]);
   });
+
+  it('con la consulta vacía los ★ salen primero sin mover el resto', () => {
+    const tercero = LIBRARY[3];
+    const conFav = LIBRARY.map((ex, i) => (i === 3 ? { ...ex, fav: true } : ex));
+    const found = matchExercises('', conFav, [], 6);
+    expect(found[0]?.id).toBe(tercero.id);
+    expect(found[0]?.fav).toBe(true);
+    /* sin ★ el orden de la semilla se conserva tal cual (sort estable) */
+    expect(matchExercises('', LIBRARY, [], 6).map((ex) => ex.id)).toEqual(
+      LIBRARY.slice(0, 6).map((ex) => ex.id),
+    );
+  });
+
+  it('con la puntuación igual desempata el ★ y después el nombre', () => {
+    const base: Exercise[] = [
+      { ...LIBRARY[0], id: 'a', name: 'Curl con barra' },
+      { ...LIBRARY[1], id: 'b', name: 'Curl con barra' },
+    ];
+    /* sin ★ y con el mismo nombre: mantiene el orden de entrada */
+    expect(matchExercises('curl con barra', base).map((ex) => ex.id)).toEqual(['a', 'b']);
+    const favEnB: Exercise[] = [base[0], { ...base[1], fav: true }];
+    expect(matchExercises('curl con barra', favEnB).map((ex) => ex.id)).toEqual(['b', 'a']);
+    const favEnA: Exercise[] = [{ ...base[0], fav: true }, base[1]];
+    expect(matchExercises('curl con barra', favEnA).map((ex) => ex.id)).toEqual(['a', 'b']);
+  });
+
+  it('la puntuación manda sobre el ★ (un ★ flojo no se cuela arriba)', () => {
+    const conFav = LIBRARY.map((ex) =>
+      ex.name === 'Press de banca con mancuernas' ? { ...ex, fav: true } : ex,
+    );
+    const found = matchExercises('press de banca con barra', conFav, [], 5);
+    expect(found[0]?.name).toBe('Press de banca con barra');
+    expect(found.findIndex((ex) => ex.fav === true)).toBeGreaterThan(0);
+  });
 });
 
 describe('inputs numéricos', () => {

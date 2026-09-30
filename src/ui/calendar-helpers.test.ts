@@ -329,7 +329,7 @@ describe('applyWeek: la fuente del plan distingue local de IA', () => {
       ],
     });
 
-    expect(result).toEqual({ days: 2, routines: 1 });
+    expect(result).toEqual({ days: 2, routines: 1, unresolved: [] });
     expect(store.schedule.value[iso]).toMatchObject({ source: 'local', status: 'planned' });
     expect(store.schedule.value['2026-10-06']).toMatchObject({ source: 'local', status: 'rest' });
     expect(store.routines.value[antes]?.source).toBe('generador');

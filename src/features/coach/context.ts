@@ -154,10 +154,17 @@ export function buildContext(params: BuildContextParams): string {
   /* ---------- ejercicios ---------- */
   out.push('=== EJERCICIOS PERMITIDOS (usa estos nombres exactos) ===');
   const usable = exercises.filter((ex) => ex.allowed && isAvailable(ex, equipment));
+  /* los ★ primero dentro de cada grupo (estables: el resto sigue el orden del
+     catálogo) y marcados con «★ », que es como los pide la petición */
+  const byFav = (a: Exercise, b: Exercise): number =>
+    (b.fav === true ? 1 : 0) - (a.fav === true ? 1 : 0);
+  const favs = usable.filter((ex) => ex.fav === true);
+  if (favs.length) out.push(`FAVORITOS (prefiere estos): ${favs.map((ex) => ex.name).join(', ')}`);
   for (const group of GROUPS) {
-    const list = usable.filter((ex) => ex.group === group.key);
+    const list = usable.filter((ex) => ex.group === group.key).sort(byFav);
     if (!list.length) continue;
-    out.push(`${group.label} (${list.length}): ${list.map((ex) => ex.name).join(', ')}`);
+    const names = list.map((ex) => (ex.fav === true ? `★ ${ex.name}` : ex.name));
+    out.push(`${group.label} (${list.length}): ${names.join(', ')}`);
   }
   const banned = exercises.filter((ex) => !ex.allowed);
   if (banned.length) {

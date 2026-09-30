@@ -34,6 +34,7 @@ import {
   startSession,
   toggleSet,
 } from './session';
+import type { UnresolvedName } from './match';
 import type { ActiveEntry, ActiveSession, Exercise, PlanItem, RoutineItem } from './types';
 
 /* ---------- datos de prueba ---------- */
@@ -208,6 +209,55 @@ describe('startSession', () => {
     const session = nuevaSesion({
       exIds: undefined,
       plan: [{ name: 'Press de banca', sets: 2 }, { name: 'Ejercicio inventado' }],
+    });
+    expect(session.entries.map((e) => e.exId)).toEqual(['press-banca']);
+  });
+
+  /* Nada se descarta en silencio (informe `matcher-nombres.md` §5.2): lo que el
+     matcher no asocia vuelve por `onUnresolved` con nombre y razón, y la sesión
+     sigue con lo que sí resolvió. */
+
+  it('lo que no resuelve sale por onUnresolved, no desaparece', () => {
+    const avisos: UnresolvedName[] = [];
+    const session = nuevaSesion({
+      exIds: undefined,
+      plan: [{ name: 'Press de banca', sets: 2 }, { name: 'Ejercicio inventado' }],
+      onUnresolved: (items) => avisos.push(...items),
+    });
+    expect(session.entries.map((e) => e.exId)).toEqual(['press-banca']);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]).toMatchObject({
+      name: 'Ejercicio inventado',
+      reason: 'no está en tu biblioteca',
+    });
+  });
+
+  it('sin onUnresolved la sesión arranca igual (el callback es opcional)', () => {
+    const session = nuevaSesion({
+      exIds: undefined,
+      plan: [{ name: 'Ejercicio inventado', sets: 2 }],
+    });
+    expect(session.entries).toEqual([]);
+  });
+
+  it('un calificativo que el candidato NO cumple no se reescribe (veto)', () => {
+    const avisos: UnresolvedName[] = [];
+    const session = nuevaSesion({
+      exIds: undefined,
+      plan: [{ name: 'Press de banca inclinado', sets: 2 }],
+      onUnresolved: (items) => avisos.push(...items),
+    });
+    /* sin el veto esto se reescribía a «Press de banca» (0,88 por contención) */
+    expect(session.entries).toEqual([]);
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0]?.reason).toContain('inclinado');
+    expect(avisos[0]?.candidate?.name).toBe('Press de banca');
+  });
+
+  it('un nombre difuso (≥ 0,85 y sin conflicto) sí se resuelve', () => {
+    const session = nuevaSesion({
+      exIds: undefined,
+      plan: [{ name: 'Press de banca para pecho', sets: 2 }],
     });
     expect(session.entries.map((e) => e.exId)).toEqual(['press-banca']);
   });

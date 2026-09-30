@@ -240,6 +240,45 @@ describe('pickForGroup', () => {
     });
     expect(pickForGroup(muchas, 'pecho', 1, { rotate: 0 }).map((e) => e.id)).toEqual(['press']);
   });
+
+  /* El ★ entra DESPUÉS de `type` y ANTES de `recent` (spec §3.2): si no, o se
+     rompe «compuesto antes que aislado» de la v1 o deja de desempatar. */
+  it('el ★ desempata entre compuestos, pero nunca salta a un aislado', () => {
+    const pressFav = library().map((e) => (e.id === 'press' ? { ...e, fav: true } : e));
+    expect(pickForGroup(input({ exercises: pressFav }), 'pecho', 2).map((e) => e.id)).toEqual([
+      'press',
+      'flex',
+    ]);
+
+    /* un ★ aislado sigue por detrás de los compuestos: manda el tipo */
+    const apertFav = library().map((e) => (e.id === 'apert' ? { ...e, fav: true } : e));
+    expect(pickForGroup(input({ exercises: apertFav }), 'pecho', 9).map((e) => e.id)).toEqual([
+      'flex',
+      'press',
+      'apert',
+    ]);
+  });
+
+  it('el ★ manda sobre la rotación y, dentro de los ★, sigue mandando la rotación', () => {
+    const base = input({ sessions: [session('2026-09-26', ['remo'])] });
+    const marcar = (ids: readonly string[]): Exercise[] =>
+      base.exercises.map((e) => (ids.includes(e.id) ? { ...e, fav: true } : e));
+
+    /* sin ★, la rotación deja para el final lo recién usado */
+    expect(pickForGroup(base, 'espalda', 1, { rotate: 3 }).map((e) => e.id)).toEqual(['dominadas']);
+
+    /* ★ en el recién usado: el favorito sale primero A PESAR de la rotación */
+    const favReciente = input({ ...base, exercises: marcar(['remo']) });
+    expect(pickForGroup(favReciente, 'espalda', 1, { rotate: 3 }).map((e) => e.id)).toEqual([
+      'remo',
+    ]);
+
+    /* dos ★: dentro de ellos la rotación vuelve a decidir */
+    const dosFavs = input({ ...base, exercises: marcar(['remo', 'dominadas']) });
+    expect(pickForGroup(dosFavs, 'espalda', 1, { rotate: 3 }).map((e) => e.id)).toEqual([
+      'dominadas',
+    ]);
+  });
 });
 
 /* ---------- recetas ---------- */

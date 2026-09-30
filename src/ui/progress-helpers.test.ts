@@ -271,6 +271,32 @@ describe('topExercises', () => {
     ]);
   });
 
+  it('los ★ desempatan antes que el id, pero la frecuencia sigue mandando', () => {
+    const empatadas = [
+      sesion('2026-09-20', [entrada('zzz', []), entrada('aaa', [])]),
+      sesion('2026-09-22', [entrada('zzz', []), entrada('aaa', [])]),
+    ];
+    /* mismo número de sesiones: gana el ★, no el id alfabético */
+    expect(topExercises(empatadas, 8, [{ ...ejercicio('zzz', 'pecho'), fav: true }])).toEqual([
+      { id: 'zzz', n: 2 },
+      { id: 'aaa', n: 2 },
+    ]);
+    /* sin ★ el orden vuelve a ser el de siempre (regresión) */
+    expect(topExercises(empatadas, 8, [ejercicio('zzz', 'pecho')])).toEqual([
+      { id: 'aaa', n: 2 },
+      { id: 'zzz', n: 2 },
+    ]);
+    /* la frecuencia manda sobre el ★ */
+    const asimetrica = [
+      sesion('2026-09-20', [entrada('aaa', [])]),
+      sesion('2026-09-22', [entrada('aaa', []), entrada('zzz', [])]),
+    ];
+    expect(topExercises(asimetrica, 8, [{ ...ejercicio('zzz', 'pecho'), fav: true }])).toEqual([
+      { id: 'aaa', n: 2 },
+      { id: 'zzz', n: 1 },
+    ]);
+  });
+
   it('historyExerciseIds deja solo los que aparecen en el historial (picker «Otro»)', () => {
     expect(exIds(BIBLIO).filter((id) => historyExerciseIds(lista).includes(id))).toEqual([
       'press',

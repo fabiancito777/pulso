@@ -281,6 +281,99 @@ describe('ejercicios propios', () => {
   });
 });
 
+/* ---------- flags de usuario: ★ y oculto ---------- */
+
+describe('flags de usuario (★ / oculto)', () => {
+  /** Un ejercicio del catálogo, permitido y no custom (el caso que el filtro
+   *  de persistencia tiraría si se olvidara la regla). */
+  const catalogo = (): Exercise => {
+    const semilla = store.exercises.value.find((e) => !e.custom && e.allowed);
+    if (!semilla) throw new Error('la biblioteca está vacía');
+    return semilla;
+  };
+
+  it('bulkSetExerciseFlag persiste un ejercicio DE CATÁLOGO y sobrevive a recargar', () => {
+    const semilla = catalogo();
+    expect(persistedExercises().some((e) => e.id === semilla.id)).toBe(false);
+
+    store.bulkSetExerciseFlag([semilla.id], { fav: true, hidden: true });
+
+    const enMemoria = store.exercises.value.find((e) => e.id === semilla.id);
+    expect(enMemoria).toMatchObject({ fav: true, hidden: true });
+    /* el filtro de antes (`custom || !allowed`) lo habría tirado: sin esta
+       clave la ★ «funcionaría» en pantalla y desaparecería al recargar */
+    expect(persistedExercises().find((e) => e.id === semilla.id)).toMatchObject({
+      fav: true,
+      hidden: true,
+    });
+
+    store.refresh();
+    expect(store.exercises.value.find((e) => e.id === semilla.id)).toMatchObject({
+      fav: true,
+      hidden: true,
+    });
+  });
+
+  it('al quitar ★ y oculto de un permitido NO custom, deja de persistirse', () => {
+    const semilla = catalogo();
+    store.bulkSetExerciseFlag([semilla.id], { fav: true, hidden: true });
+    expect(persistedExercises().some((e) => e.id === semilla.id)).toBe(true);
+
+    store.bulkSetExerciseFlag([semilla.id], { fav: false, hidden: false });
+
+    expect(store.exercises.value.find((e) => e.id === semilla.id)?.fav).toBe(false);
+    expect(persistedExercises().some((e) => e.id === semilla.id)).toBe(false);
+    /* y al recargar sigue sin ★: el flag ya no está ni en la señal ni en disco */
+    store.refresh();
+    expect(store.exercises.value.find((e) => e.id === semilla.id)?.fav).toBe(false);
+  });
+
+  it('el patch solo toca lo que viene («Quitar ★» no baja el oculto)', () => {
+    const semilla = catalogo();
+    store.bulkSetExerciseFlag([semilla.id], { fav: true, hidden: true });
+
+    store.bulkSetExerciseFlag([semilla.id], { fav: false });
+
+    expect(store.exercises.value.find((e) => e.id === semilla.id)).toMatchObject({
+      fav: false,
+      hidden: true,
+    });
+  });
+
+  it('sin claves no escribe ni persiste nada', () => {
+    const semilla = catalogo();
+    const antes = store.exercises.value;
+    store.bulkSetExerciseFlag([semilla.id], {});
+    expect(store.exercises.value).toBe(antes);
+    expect(persistedExercises()).toEqual([]);
+  });
+
+  it('una ★ en catálogo NO se pierde al cambiar su permiso (mismo persistExercises)', () => {
+    const semilla = catalogo();
+    store.bulkSetExerciseFlag([semilla.id], { fav: true });
+    store.setExerciseAllowed(semilla.id, false);
+    store.setExerciseAllowed(semilla.id, true);
+
+    expect(store.exercises.value.find((e) => e.id === semilla.id)?.fav).toBe(true);
+    expect(persistedExercises().find((e) => e.id === semilla.id)?.fav).toBe(true);
+  });
+
+  it('los propios siguen guardando sus campos aunque cambien los flags', () => {
+    const creada = store.saveExercise(nuevo('Fondos en silla'));
+    store.bulkSetExerciseFlag([creada.id], { fav: true });
+
+    expect(persistedExercises().find((e) => e.id === creada.id)).toMatchObject({
+      custom: true,
+      fav: true,
+    });
+    store.refresh();
+    expect(store.exercises.value.find((e) => e.id === creada.id)).toMatchObject({
+      custom: true,
+      fav: true,
+    });
+  });
+});
+
 /* ---------- datos de ejemplo ---------- */
 
 function realSession(id: string): Session {

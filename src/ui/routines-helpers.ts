@@ -17,7 +17,6 @@
 import { addDays } from '@/domain/dates';
 import {
   findExercise,
-  findExerciseByName,
   GOAL_REPS,
   GOAL_REST,
   GOAL_SETS,
@@ -25,6 +24,7 @@ import {
   isAvailable,
 } from '@/domain/data';
 import type { EquipmentMap } from '@/domain/data';
+import { matchExercise } from '@/domain/match';
 import { clamp, int, num } from '@/domain/num';
 import { richItems, routineFromTemplate } from '@/domain/plan';
 import type { PlanInput } from '@/domain/plan';
@@ -36,9 +36,6 @@ import { dayState } from './calendar-helpers';
 
 /** Cuántos ejercicios devuelve la búsqueda por defecto. */
 export const SEARCH_LIMIT = 8;
-
-/** A partir de esta similitud (0-1) un nombre se considera "el mismo ejercicio". */
-const MATCH_THRESHOLD = 0.6;
 
 /* ---------- búsqueda de ejercicios ---------- */
 
@@ -54,7 +51,8 @@ function score(query: string, ex: Exercise): number {
  * Ejercicios que encajan con lo escrito, ordenados de mejor a peor.
  *
  * `query` vacío devuelve los primeros de la biblioteca (para que el selector no
- * aparezca en blanco); `exclude` evita los que ya están en la rutina.
+ * aparezca en blanco), **con los ★ primero**; con texto, el desempate es
+ * puntuación → ★ → nombre. `exclude` evita los que ya están en la rutina.
  */
 export function matchExercises(
   query: string,
@@ -65,11 +63,14 @@ export function matchExercises(
   const q = norm(query);
   const skip = new Set(exclude);
   const pool = library.filter((ex) => !skip.has(ex.id));
-  if (!q) return pool.slice(0, limit);
+  /* estable: sin ★ el orden de la semilla se conserva tal cual */
+  const byFav = (a: Exercise, b: Exercise): number =>
+    (b.fav === true ? 1 : 0) - (a.fav === true ? 1 : 0);
+  if (!q) return [...pool].sort(byFav).slice(0, limit);
   return pool
     .map((ex) => ({ ex, s: score(q, ex) }))
     .filter((hit) => hit.s >= 0.4)
-    .sort((a, b) => b.s - a.s || a.ex.name.localeCompare(b.ex.name))
+    .sort((a, b) => b.s - a.s || byFav(a.ex, b.ex) || a.ex.name.localeCompare(b.ex.name))
     .slice(0, limit)
     .map((hit) => hit.ex);
 }
@@ -179,31 +180,24 @@ function toRationale(value: unknown): string[] {
 }
 
 /**
- * Nombre exacto de la biblioteca para el que ha escrito el modelo: primero a
- * pelo (`findExerciseByName`, tolerante a tildes y al slug) y después por
- * similitud. Por debajo del umbral se conserva el nombre tal cual y `matched`
- * queda en `false` (eso se pinta con su badge, no se inventa un ejercicio).
+ * Nombre de la biblioteca para el que ha escrito el modelo, con el matcher
+ * ÚNICO de `domain/match` (umbral 0,85 + veto por conflicto de atributos):
+ *
+ * - `exact`/`fuzzy` → se conserva el nombre de la biblioteca y `matched: true`
+ *   (así, al aplicar la propuesta, el nombre ya resuelve exacto);
+ * - `none` → se conserva TAL CUAL el nombre del coach y `matched: false`: eso se
+ *   pinta con su badge, no se reescribe un ejercicio ni se inventa otro.
+ *
+ * El veto es lo que impide que «unilateral con mancuerna» caiga en «Kroc Row»
+ * bilateral o que «… inclinado» acabe en la versión plana del catálogo.
  */
 function resolveName(
   name: string,
   library: readonly Exercise[],
 ): { name: string; matched: boolean } {
-  const exact = findExerciseByName(library, name);
-  if (exact) return { name: exact.name, matched: true };
-
-  const query = norm(name);
-  let best: Exercise | null = null;
-  let bestScore = 0;
-  for (const ex of library) {
-    const s = similarity(query, ex.name);
-    if (s > bestScore) {
-      bestScore = s;
-      best = ex;
-    }
-  }
-  return best && bestScore >= MATCH_THRESHOLD
-    ? { name: best.name, matched: true }
-    : { name, matched: false };
+  const match = matchExercise(name, library);
+  if (match.ex) return { name: match.ex.name, matched: true };
+  return { name, matched: false };
 }
 
 /**

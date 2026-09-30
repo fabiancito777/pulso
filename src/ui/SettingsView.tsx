@@ -10,9 +10,10 @@
  * Preact es el evento `change` del navegador), igual que hacía la v1.
  */
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 
 import { EQUIPMENT } from '@/domain/catalog';
+import { daysSince, exerciseSummary, prs, type ExerciseSummary } from '@/domain/analytics';
 import {
   ACCENTS,
   AI_MODELS,
@@ -27,11 +28,13 @@ import {
   THINKING_LEVELS,
   equipCats,
   equipPreset,
+  equipPresetList,
   goalLabel,
   groupLabel,
   isAvailable,
   missingEquipment,
 } from '@/domain/data';
+import { today } from '@/domain/dates';
 import { draftFrom, toExercise } from '@/domain/exercise-draft';
 import type { ExerciseDraft } from '@/domain/exercise-draft';
 import { fmtN, inputNum } from '@/domain/format';
@@ -50,6 +53,7 @@ import {
   addPlate,
   applyEquipment,
   bulkSetAllowed,
+  bulkSetExerciseFlag,
   clearDemo,
   demoData,
   equipment,
@@ -427,21 +431,15 @@ function SecEquipo() {
           <span class="tiny muted">filtra qué ejercicios se pueden sugerir</span>
         </div>
         <div class="hr-scroll">
-          {(
-            [
-              ['basico', 'Casa básica'],
-              ['gym', 'Gym completo'],
-              ['todo', 'Todo'],
-              ['ninguno', 'Solo peso corporal'],
-            ] as const
-          ).map(([kind, label]) => (
+          {equipPresetList().map((preset) => (
             <button
-              key={kind}
+              key={preset.key}
               type="button"
               class="chip"
-              onClick={() => applyEquipment(equipPreset(kind))}
+              title={preset.fullLabel}
+              onClick={() => applyEquipment(equipPreset(preset.key))}
             >
-              {label}
+              {preset.label}
             </button>
           ))}
         </div>
@@ -644,15 +642,38 @@ function SecDiscos() {
 
 /* ---------- ejercicios ---------- */
 
+/** Los cuatro segmentos de la lista (spec `ejercicios-revamp.md` §3.3.1). */
+const EX_SEGMENTS = [
+  { key: 'fav', label: '★ Favoritos' },
+  { key: 'catalogo', label: 'Catálogo' },
+  { key: 'custom', label: 'Propios' },
+  { key: 'ocultos', label: 'Ocultos' },
+] as const;
+
+type ExSegment = (typeof EX_SEGMENTS)[number]['key'];
+
 function SecEjercicios() {
   const [q, setQ] = useState('');
   const [group, setGroup] = useState('');
   const [state, setState] = useState('all');
+  /* Segmento inicial: ★ si ya hay alguno, si no el catálogo. Es una decisión de
+     ESTA apertura (no se persiste): al recargar volverías a favoritos solo si
+     sigues teniendo alguno. */
+  const [segment, setSegment] = useState<ExSegment>(
+    exercises.value.some((e) => e.fav === true) ? 'fav' : 'catalogo',
+  );
   /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
   const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
   const list = exercises.value;
+  const eq = equipment.value;
   const blocked = list.filter((e) => !e.allowed).length;
-  const usable = list.filter((e) => e.allowed && isAvailable(e, equipment.value));
+  const usable = list.filter((e) => e.allowed && isAvailable(e, eq));
+  const favCount = list.filter((e) => e.fav === true).length;
+  const hiddenCount = list.filter((e) => e.hidden === true).length;
+
+  /* Métricas de la fila en UNA pasada por el historial, memorizada por render:
+     con 139 filas, que cada una recorra las sesiones sería O(filas × sesiones). */
+  const summary = useMemo(() => exerciseSummary(sessions.value), [sessions.value]);
 
   /* Los de la biblioteca no se borran: `removeExercise` devuelve `false` y aquí
      se avisa (en la v1 lo hacía el toast del store). */
@@ -676,31 +697,75 @@ function SecEjercicios() {
   const needle = norm(q.trim());
   const filtered = list
     .filter((e) => {
+      /* el segmento y el select de estado se combinan en AND */
+      const hidden = e.hidden === true;
+      if (segment === 'ocultos' ? !hidden : hidden) return false;
+      if (segment === 'fav' && e.fav !== true) return false;
+      if (segment === 'catalogo' && e.custom) return false;
+      if (segment === 'custom' && !e.custom) return false;
       if (needle && !norm(e.name).includes(needle)) return false;
       if (group && e.group !== group) return false;
       if (state === 'allowed' && !e.allowed) return false;
       if (state === 'blocked' && e.allowed) return false;
-      if (state === 'unavailable' && isAvailable(e, equipment.value)) return false;
-      if (state === 'custom' && !e.custom) return false;
+      if (state === 'unavailable' && isAvailable(e, eq)) return false;
       return true;
     })
     .sort((a, b) => {
       const ga = GROUPS.findIndex((x) => x.key === a.group);
       const gb = GROUPS.findIndex((x) => x.key === b.group);
       if (ga !== gb) return ga - gb;
+      const fa = a.fav === true ? 0 : 1;
+      const fb = b.fav === true ? 0 : 1;
+      if (fa !== fb) return fa - fb;
       return a.name.localeCompare(b.name, 'es');
     });
   const shown = filtered.filter((e) => e.allowed).length;
+  const filteredIds = filtered.map((e) => e.id);
+  const flagFiltered = (patch: Partial<Pick<Exercise, 'fav' | 'hidden'>>): void => {
+    bulkSetExerciseFlag(filteredIds, patch);
+  };
+
+  /* Atajo de la petición 1: ★ a los ejercicios con los que ya tienes récords.
+     Es un ATAJO, no el modelo: los ★ se siguen pudiendo marcar a mano. */
+  const favMyRecords = (): void => {
+    const known = new Set(list.map((e) => e.id));
+    const ids = Object.keys(prs(sessions.value)).filter((id) => known.has(id));
+    if (!ids.length) {
+      toast('Todavía no tienes récords: entrena un poco y vuelve a marcarlos', { kind: 'warn' });
+      return;
+    }
+    bulkSetExerciseFlag(ids, { fav: true });
+    toast(`${ids.length} ejercicios marcados con ★`, { kind: 'ok' });
+  };
 
   return (
     <>
       <div class="grid c3">
-        <Kpi label="Biblioteca" value={list.length} delta="ejercicios" help="opt.exercises" />
-        <Kpi label="Permitidos" value={list.length - blocked} delta={`${blocked} prohibidos`} />
+        <Kpi
+          label="Biblioteca"
+          value={list.length}
+          delta={`${list.length - blocked} permitidos`}
+          help="opt.exercises"
+        />
+        <Kpi label="★ Favoritos" value={favCount} delta={`${hiddenCount} ocultos`} />
         <Kpi label="Con tu equipo" value={usable.length} delta="listos para sugerir" />
       </div>
-      <div class="card mt">
-        <div class="search">
+      {/* pegado bajo la barra superior: los segmentos y el buscador son lo que
+          más se toca y la lista mide 139 filas (spec §3.3.1) */}
+      <div class="card tight mt ex-toolbar">
+        <div class="seg">
+          {EX_SEGMENTS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              class={segment === s.key ? 'on' : ''}
+              onClick={() => setSegment(s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div class="search mt-s">
           <Icon name="search" />
           <input
             class="input"
@@ -709,7 +774,9 @@ function SecEjercicios() {
             onInput={(e) => setQ(e.currentTarget.value)}
           />
         </div>
-        <div class="grid c2 mt-s">
+      </div>
+      <div class="card mt-s">
+        <div class="grid c2">
           <select class="select" value={group} onChange={(e) => setGroup(e.currentTarget.value)}>
             <option value="">Todos los grupos</option>
             {GROUPS.map((g) => (
@@ -723,7 +790,6 @@ function SecEjercicios() {
             <option value="allowed">Permitidos</option>
             <option value="blocked">Prohibidos</option>
             <option value="unavailable">Sin material</option>
-            <option value="custom">Propios</option>
           </select>
         </div>
         <div class="row mt-s" style="gap:8px">
@@ -747,31 +813,45 @@ function SecEjercicios() {
           </span>
         </div>
       </div>
-      <div class="row wrap between mt-s" style="gap:8px">
-        <button
-          type="button"
-          class="btn sm ghost"
-          onClick={() =>
-            bulkSetAllowed(
-              filtered.map((e) => e.id),
-              true,
-            )
-          }
-        >
-          Permitir los {filtered.length} filtrados
-        </button>
-        <button
-          type="button"
-          class="btn sm ghost"
-          onClick={() =>
-            bulkSetAllowed(
-              filtered.map((e) => e.id),
-              false,
-            )
-          }
-        >
-          Prohibir los {filtered.length} filtrados
-        </button>
+      <div class="card tight mt-s">
+        <div class="row wrap" style="gap:8px">
+          <button
+            type="button"
+            class="btn sm ghost"
+            onClick={() => bulkSetAllowed(filteredIds, true)}
+          >
+            Permitir
+          </button>
+          <button
+            type="button"
+            class="btn sm ghost"
+            onClick={() => bulkSetAllowed(filteredIds, false)}
+          >
+            Prohibir
+          </button>
+          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ fav: true })}>
+            ★ Marcar
+          </button>
+          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ fav: false })}>
+            Quitar ★
+          </button>
+          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ hidden: true })}>
+            Ocultar
+          </button>
+          <button
+            type="button"
+            class="btn sm ghost"
+            onClick={() => flagFiltered({ hidden: false })}
+          >
+            Mostrar
+          </button>
+        </div>
+        <div class="row mt-s" style="gap:8px">
+          <button type="button" class="btn sm ghost" onClick={favMyRecords}>
+            ★ Los de mis récords
+          </button>
+          <span class="tiny muted grow">acciones sobre los {filteredIds.length} filtrados</span>
+        </div>
       </div>
       <div class="card flush mt">
         {filtered.length ? (
@@ -779,6 +859,8 @@ function SecEjercicios() {
             <ExerciseRow
               key={e.id}
               ex={e}
+              stats={summary.get(e.id)}
+              showHidden={segment === 'ocultos' || e.hidden === true}
               onEdit={() => setEditor(e)}
               onDelete={() => confirmDelete(e)}
             />
@@ -788,9 +870,11 @@ function SecEjercicios() {
         )}
       </div>
       <InfoCard>
-        Los ejercicios del catálogo solo se permiten o se prohíben (si los editaras, la biblioteca
-        se restauraría al recargar). <b>Crear, editar y borrar</b> vale para los <b>propios</b>: usa
-        «Añadir propio» o el lápiz de los que lleven la insignia «propio».
+        <b>★ Favorito</b> es prioridad, no exclusión: los marcados salen primeros en los buscadores,
+        en los generadores y en los consejos del coach. <b>Oculto</b> es solo presentación (lo saca
+        de esta lista y del selector, pero el coach sigue pudiendo nombrarlo). <b>Prohibido</b> es
+        el único que lo aparta de las propuestas. Los ejercicios del catálogo solo se permiten o se
+        prohíben; <b>crear, editar y borrar</b> vale para los <b>propios</b>.
       </InfoCard>
       {editor === null ? null : (
         <ExerciseEditor
@@ -966,16 +1050,41 @@ function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClos
 
 function ExerciseRow({
   ex,
+  stats,
+  showHidden,
   onEdit,
   onDelete,
 }: {
   ex: Exercise;
+  /** métricas del historial (`exerciseSummary`); vacías = sin datos todavía */
+  stats?: ExerciseSummary;
+  /** el pill de ocultar/mostrar solo se muestra en «Ocultos» o si ya está oculto */
+  showHidden: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const missing = missingEquipment(ex, equipment.value);
+  /* `hace Nd · PR · ×n`: lo que haya; sin series hechas la línea no sale */
+  const bits: string[] = [];
+  if (stats) {
+    if (stats.n > 0 && stats.lastIso) bits.push(`hace ${daysSince(stats.lastIso, today())}d`);
+    if (stats.e1rm > 0) bits.push(`PR ${fmtN(stats.e1rm)} kg`);
+    if (stats.n > 0) bits.push(`×${fmtN(stats.n)}`);
+  }
+  const fav = ex.fav === true;
+  const hidden = ex.hidden === true;
   return (
     <div class="ex-pick" style={ex.allowed ? '' : 'opacity:.55'}>
+      <button
+        type="button"
+        class={`ex-fav${fav ? ' on' : ''}`}
+        title={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+        aria-pressed={fav}
+        aria-label={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+        onClick={() => bulkSetExerciseFlag([ex.id], { fav: !fav })}
+      >
+        ★
+      </button>
       <div class="grow" style="min-width:0">
         <div class="row" style="gap:6px">
           <span class="li-title ellipsis">{ex.name}</span>
@@ -991,7 +1100,20 @@ function ExerciseRow({
             </>
           ) : null}
         </div>
+        {bits.length ? <div class="li-sub ex-metrics num">{bits.join(' · ')}</div> : null}
       </div>
+      {showHidden ? (
+        <button
+          type="button"
+          class="toggle-pill"
+          title={hidden ? 'Volver a mostrar' : 'Sacar de la vista'}
+          aria-pressed={hidden}
+          onClick={() => bulkSetExerciseFlag([ex.id], { hidden: !hidden })}
+        >
+          <Icon name={hidden ? 'eye' : 'eye-off'} />
+          {hidden ? 'mostrar' : 'ocultar'}
+        </button>
+      ) : null}
       <button
         type="button"
         class={`toggle-pill ${ex.allowed ? 'on' : 'off'}`}

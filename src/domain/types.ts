@@ -95,6 +95,21 @@ export interface Exercise {
   rest: number;
   /** permitido / prohibido por el usuario */
   allowed: boolean;
+  /**
+   * ★ preferido: manda en el orden de listas y pickers y desempata en el
+   * generador local. **Opcional** a propósito: `E()` del catálogo generado y las
+   * literales de los tests no lo traen, así que no hay que regenerar `catalog.ts`
+   * ni tocar la v1 (que lo ignora). En memoria `library.normalize()` lo
+   * materializa como boolean, y al escribir solo se persiste `=== true`.
+   */
+  fav?: boolean;
+  /**
+   * Ocultación suave: solo presentación — fuera de los pickers y de la lista de
+   * Ajustes por defecto (queda tras el segmento «Ocultos»). **No** lo leen ni el
+   * coach ni el generador: para no proponer un ejercicio sigue estando
+   * `allowed: false`. Mismo porqué que `fav` respecto a la v1.
+   */
+  hidden?: boolean;
   custom: boolean;
   bw: boolean;
   tags: string[];

@@ -7,7 +7,14 @@
  * pasa como mapa (`{ clave: boolean }`) en vez de leerlo del estado global, que
  * es lo que hacía `S.isAvailable()` en la v1 y obligaba a probarlo en el navegador.
  */
-import { DEFAULT_EQUIPMENT, EQUIPMENT, EQUIP_PRESETS, GOALS, GROUPS } from './catalog';
+import {
+  DEFAULT_EQUIPMENT,
+  EQUIPMENT,
+  EQUIP_PRESETS,
+  GOALS,
+  GROUPS,
+  SEED_EXERCISES,
+} from './catalog';
 import { norm, slug } from './text';
 import type { Exercise, ExerciseType } from './types';
 
@@ -50,11 +57,59 @@ export function defaultEquipment(): EquipmentMap {
   return out;
 }
 
-export type EquipPresetKind = 'todo' | 'gym' | 'basico' | 'ninguno';
+export type EquipPresetKind = 'todo' | 'gym' | 'kit' | 'basico' | 'ninguno';
+
+/**
+ * Presets que NO salen del catálogo de la v1. Viven aquí y no en `catalog.ts`
+ * porque ese fichero es generado (`node tools/port-catalog.mjs`) y regenerarlo
+ * los borraría (AGENTS.md §4).
+ *
+ * `kit` es el «material real» de quien entrena en casa sin banco: mancuernas
+ * ajustables (montadas como barra larga) y fijas, barra cargable, barra de
+ * dominadas, discos y esterilla — sin banco y sin máquina.
+ */
+export const EQUIP_USER_PRESETS: Record<string, readonly string[]> = {
+  kit: [
+    'banco_dominadas',
+    'mancuernas_ajustables',
+    'mancuernas_fijas',
+    'discos',
+    'barra_olimpica',
+    'colchoneta',
+  ],
+};
+
+/** Una opción de material para los chips de Ajustes y los pills del onboarding. */
+export interface EquipPresetOption {
+  key: string;
+  /** etiqueta corta (chips de Ajustes → Equipo) */
+  label: string;
+  /** etiqueta explicativa (pills de la primera visita) */
+  fullLabel: string;
+}
+
+/**
+ * Los presets que se ofrecen, en el orden en que se muestran. Ajustes y
+ * Onboarding iteran ESTA lista, así que añadir un preset es tocar un solo sitio.
+ */
+export const EQUIP_PRESET_LIST: readonly EquipPresetOption[] = [
+  { key: 'basico', label: 'Casa básica', fullLabel: 'Mancuernas + banco' },
+  { key: 'kit', label: 'Mi kit', fullLabel: 'Mancuernas + barra (sin banco)' },
+  { key: 'gym', label: 'Gym completo', fullLabel: 'Gimnasio completo' },
+  { key: 'todo', label: 'Todo', fullLabel: 'Todo el catálogo' },
+  { key: 'ninguno', label: 'Solo peso corporal', fullLabel: 'Solo peso corporal' },
+];
+
+/** Los mismos presets, listos para pintar (chips de Ajustes y pills del onboarding). */
+export function equipPresetList(): readonly EquipPresetOption[] {
+  return EQUIP_PRESET_LIST;
+}
 
 /**
  * Material que activa cada preset (fuente única para onboarding y Ajustes).
- * `gym` = todo el catálogo menos las piezas excluidas; el resto son listas.
+ * `gym` = todo el catálogo menos las piezas excluidas; `kit` = los manuales de
+ * arriba; el resto son listas. Un preset desconocido cae en `basico`, igual que
+ * en la v1 (lo fija `data.test.ts`).
  */
 export function equipPreset(kind: string): EquipmentMap {
   const all: EquipmentMap = {};
@@ -69,7 +124,7 @@ export function equipPreset(kind: string): EquipmentMap {
     for (const key of equipmentKeys) all[key] = !excluded.has(key);
     return all;
   }
-  const keys = EQUIP_PRESETS[kind] ?? EQUIP_PRESETS.basico ?? [];
+  const keys = EQUIP_USER_PRESETS[kind] ?? EQUIP_PRESETS[kind] ?? EQUIP_PRESETS.basico ?? [];
   for (const key of keys) if (key in all) all[key] = true;
   return all;
 }
@@ -150,3 +205,92 @@ export const EXERCISE_TYPES: readonly ExerciseType[] = [
   'cardio',
   'movilidad',
 ];
+
+/* ---------- semilla manual: lo que la v1 no tenía ---------- */
+
+/**
+ * Mismo patrón que el `E()` de `catalog.ts` (que no está exportado, porque ese
+ * fichero lo genera `tools/port-catalog.mjs`): un ejercicio de semilla con id
+ * derivado del nombre.
+ */
+function E(
+  name: string,
+  group: string,
+  equip: string,
+  type: ExerciseType,
+  sets: number,
+  repMin: number,
+  repMax: number,
+  rest: number,
+  tips = '',
+): Exercise {
+  return {
+    id: slug(name),
+    name,
+    group,
+    equip: equip || '',
+    type,
+    sets,
+    repMin,
+    repMax,
+    rest,
+    allowed: true,
+    custom: false,
+    bw: false,
+    tags: [],
+    tips,
+  };
+}
+
+/**
+ * Ejercicios que faltan en la biblioteca de la v1 y se declaran AQUÍ, a mano
+ * (lo generado vive en `catalog.ts` y regenerarlo los borraría).
+ *
+ * Son tres variantes «en suelo» de los típicos de quien entrena sin banco: el
+ * material es solo mancuerna (sin `banco_*`, que es lo que les bloqueaba) y los
+ * rangos son los mismos que sus primos de banco en el catálogo.
+ */
+export const USER_SEED_EXERCISES: readonly Exercise[] = [
+  E(
+    'Press de Piso con Mancuernas',
+    'pecho',
+    'mancuernas_fijas|mancuernas_ajustables',
+    'compuesto',
+    3,
+    6,
+    10,
+    120,
+    'Espalda baja apoyada y codos rozando el suelo: baja controlado y sube sin rebote.',
+  ),
+  E(
+    'Floor Press',
+    'pecho',
+    'mancuernas_fijas|mancuernas_ajustables',
+    'compuesto',
+    3,
+    6,
+    10,
+    120,
+    'Press de pecho desde el suelo: el recorrido corta en los codos apoyados.',
+  ),
+  E(
+    'Rompecráneos en Suelo',
+    'triceps',
+    'mancuernas_fijas|mancuernas_ajustables',
+    'aislado',
+    3,
+    8,
+    12,
+    60,
+    'Tumbado en el suelo, extiende la mancuerna sin mover los codos.',
+  ),
+];
+
+/**
+ * Semilla COMPLETA de la biblioteca: el catálogo generado + los declarados a
+ * mano arriba. Es lo que fusiona `state/store.ts` con lo guardado, así que un
+ * ejercicio nuevo se puede añadir aquí sin regenerar nada.
+ */
+export function seedExercises(): Exercise[] {
+  return [...SEED_EXERCISES, ...USER_SEED_EXERCISES];
+}

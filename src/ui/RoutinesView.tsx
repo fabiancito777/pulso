@@ -23,6 +23,7 @@ import { go } from '@/app/router';
 import { GOAL_REPS, GOAL_REST, TEMPLATES, goalLabel, groupLabel, isAvailable } from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
 import { fmtN, inputNum } from '@/domain/format';
+import { matchExercise, unresolvedNames } from '@/domain/match';
 import { clamp, int } from '@/domain/num';
 import { findTemplate } from '@/domain/plan';
 import { trunc } from '@/domain/text';
@@ -99,15 +100,26 @@ function NoticeBox({ notice, onClose }: { notice: Notice; onClose: () => void })
 function ProposalCard({
   proposal,
   unit,
+  library,
   onApply,
   onDiscard,
 }: {
   proposal: RoutineSuggestion;
   unit: string;
+  library: readonly Exercise[];
   onApply: () => void;
   onDiscard: () => void;
 }) {
   const unmatched = proposal.exercises.filter((ex) => !ex.matched).length;
+  /* El motivo se recalcula aquí con el MISMO matcher que usará «Aplicar»
+     (`domain/match`): si el veto de atributos rechazó el nombre, el badge no
+     puede decir «no está en tu biblioteca» si ahí está. */
+  const reasonFor = (name: string): { label: string; reason: string } => {
+    const match = matchExercise(name, library);
+    return match.conflict
+      ? { label: 'no encaja en tu biblioteca', reason: match.conflict }
+      : { label: 'no está en tu biblioteca', reason: 'no está en tu biblioteca' };
+  };
   return (
     <section class="card rt-proposal">
       <div class="between">
@@ -133,25 +145,32 @@ function ProposalCard({
           <span>Descanso</span>
           <span>Peso</span>
         </div>
-        {proposal.exercises.map((ex, i) => (
-          <div class="rt-trow" key={`${ex.name}-${i}`}>
-            <span class="rt-tname">
-              <span class="ellipsis">{ex.name}</span>
-              {!ex.matched ? <span class="badge danger">no está en tu biblioteca</span> : null}
-            </span>
-            <span class="num">
-              {ex.sets} × {ex.repMin}-{ex.repMax}
-            </span>
-            <span class="num">{ex.rest} s</span>
-            <span class="num">{ex.weight === null ? '—' : `${fmtN(ex.weight)} ${unit}`}</span>
-          </div>
-        ))}
+        {proposal.exercises.map((ex, i) => {
+          const reason = ex.matched ? null : reasonFor(ex.name);
+          return (
+            <div class="rt-trow" key={`${ex.name}-${i}`}>
+              <span class="rt-tname">
+                <span class="ellipsis">{ex.name}</span>
+                {reason ? (
+                  <span class="badge danger" title={reason.reason}>
+                    {reason.label}
+                  </span>
+                ) : null}
+              </span>
+              <span class="num">
+                {ex.sets} × {ex.repMin}-{ex.repMax}
+              </span>
+              <span class="num">{ex.rest} s</span>
+              <span class="num">{ex.weight === null ? '—' : `${fmtN(ex.weight)} ${unit}`}</span>
+            </div>
+          );
+        })}
       </div>
 
       {unmatched ? (
         <div class="tiny warn mt-s">
-          {unmatched} {unmatched === 1 ? 'ejercicio no está' : 'ejercicios no están'} en tu
-          biblioteca: se omitirán al aplicar.
+          {unmatched} {unmatched === 1 ? 'ejercicio no' : 'ejercicios no'} se aplicarán: no están en
+          tu biblioteca o no encajan con ella. Se avisará al aplicar.
         </div>
       ) : null}
 
@@ -900,18 +919,24 @@ export function RoutinesView() {
 
   function applyProposal(): void {
     if (!proposal) return;
-    const created = applySuggestionAsRoutine(proposal);
+    const { routine: created, unresolved } = applySuggestionAsRoutine(proposal);
     if (!created) {
       setNotice({
         kind: 'err',
-        text: 'No se pudo aplicar la propuesta: ningún ejercicio de la lista está en tu biblioteca.',
+        text: unresolved.length
+          ? `No se pudo aplicar: ${unresolvedNames(unresolved)} no ${
+              unresolved.length === 1 ? 'está' : 'están'
+            } en tu biblioteca.`
+          : 'No se pudo aplicar la propuesta: ningún ejercicio de la lista está en tu biblioteca.',
       });
       return;
     }
     setProposal(null);
     setNotice({
-      kind: 'ok',
-      text: `Rutina creada: ${created.name}`,
+      kind: unresolved.length ? 'warn' : 'ok',
+      text: unresolved.length
+        ? `Rutina creada: ${created.name} · sin usar (${unresolved.length}): ${unresolvedNames(unresolved)}`
+        : `Rutina creada: ${created.name}`,
       action: { label: 'Ver rutina', run: () => setEditId(created.id) },
     });
   }
@@ -1166,6 +1191,7 @@ export function RoutinesView() {
           <ProposalCard
             proposal={proposal}
             unit={unit}
+            library={library}
             onApply={applyProposal}
             onDiscard={() => setProposal(null)}
           />

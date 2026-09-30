@@ -15,6 +15,7 @@ import {
   durationOf,
   e1rm,
   exerciseSeries,
+  exerciseSummary,
   groupSets,
   groupVolume,
   lastEntry,
@@ -312,6 +313,42 @@ describe('histórico de un ejercicio', () => {
     expect(sessionDate(last!.session)).toBe(HOY);
     expect(last!.entry.exId).toBe('ex-press');
     expect(lastEntry(historial, 'no-existe')).toBeNull();
+  });
+});
+
+describe('resumen por ejercicio (métricas de la fila de Ajustes)', () => {
+  it('resume última fecha, series hechas y mejor 1RM en una sola pasada', () => {
+    const out = exerciseSummary([
+      sesion('2026-09-20', [press([serie(60, 5), serie(60, 5, false)])]),
+      sesion(HOY, [press([serie(70, 5)]), sentadilla([serie(100, 3)])]),
+    ]);
+    expect(out.get('ex-press')).toEqual({ lastIso: HOY, n: 2, e1rm: e1rm(70, 5) });
+    expect(out.get('ex-sentadilla')).toEqual({ lastIso: HOY, n: 1, e1rm: e1rm(100, 3) });
+  });
+
+  it('la última fecha es la del ÚLTIMO día con series hechas, no el último que aparece', () => {
+    const out = exerciseSummary([
+      sesion(HOY, [press([serie(60, 5, false)])]),
+      sesion('2026-09-20', [press([serie(60, 5)])]),
+    ]);
+    expect(out.get('ex-press')?.lastIso).toBe('2026-09-20');
+    expect(out.get('ex-press')?.n).toBe(1);
+  });
+
+  it('un ejercicio sin series hechas entra a cero (la fila queda sin métricas)', () => {
+    const out = exerciseSummary([sesion('2026-09-22', [press([serie(60, 5, false)])])]);
+    expect(out.get('ex-press')).toEqual({ lastIso: null, n: 0, e1rm: 0 });
+  });
+
+  it('uno que nunca apareció no entra en el mapa y sin sesiones sale vacío', () => {
+    expect(exerciseSummary([]).size).toBe(0);
+    const out = exerciseSummary([sesion(HOY, [press([serie(60, 5)])])]);
+    expect(out.has('ex-sentadilla')).toBe(false);
+  });
+
+  it('los pesos se leen en la unidad de SU sesión (lb → kg)', () => {
+    const out = exerciseSummary([sesion(HOY, [press([serie(220.462, 5)])], { unit: 'lb' })]);
+    expect(out.get('ex-press')?.e1rm).toBeCloseTo(e1rm(100, 5), 2);
   });
 });
 

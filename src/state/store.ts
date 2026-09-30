@@ -12,8 +12,8 @@
  */
 import { signal } from '@preact/signals';
 
-import { SEED_EXERCISES, TEMPLATES } from '@/domain/catalog';
-import { defaultEquipment, type EquipmentMap } from '@/domain/data';
+import { TEMPLATES } from '@/domain/catalog';
+import { defaultEquipment, seedExercises, type EquipmentMap } from '@/domain/data';
 import { today } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { demoSessions } from '@/domain/demo';
@@ -472,11 +472,43 @@ export function setEquipment(key: string, on: boolean): void {
 /* ---------- biblioteca de ejercicios ---------- */
 
 /**
- * Biblioteca ya fusionada con lo guardado (se lee al arrancar, igual que la v1).
- * Los ejercicios de biblioteca son la semilla; los del usuario (`custom`) y los
- * flags permitido/prohibido vienen del estado y se conservan.
+ * Semilla completa de la biblioteca: el catálogo generado (`catalog.ts`) más los
+ * ejercicios que se declaran a mano en `domain/data.ts` porque no están en la
+ * v1. `mergeSeed` se aplica SIEMPRE sobre esta lista, no sobre `SEED_EXERCISES`.
  */
-export const exercises = signal<Exercise[]>(mergeSeed(SEED_EXERCISES, initial.exercises));
+const SEED: readonly Exercise[] = seedExercises();
+
+/**
+ * Qué se persiste de la biblioteca: los propios, los prohibidos y los que
+ * llevan un flag de usuario (★ u oculto). El resto se rederiva de la semilla al
+ * arrancar, así que guardarlo solo hincharía el `pulso.state` que comparten
+ * v2 y `v1-final`.
+ *
+ * Ojo con los dos flags: sin este filtro una estrella puesta en un ejercicio del
+ * catálogo «funcionaría» en pantalla y **desaparecería al recargar**. Los que no
+ * están activos se omiten de la fila persistida, así que el formato que lee la
+ * v1 no cambia (solo se le añaden dos claves opcionales cuando valen `true`).
+ */
+function persistExercises(next: readonly Exercise[]): void {
+  const state = readState();
+  state.exercises = next
+    .filter((e) => e.custom || e.allowed === false || e.fav === true || e.hidden === true)
+    .map((e) => {
+      const copy: Exercise = { ...e };
+      if (copy.fav !== true) delete copy.fav;
+      if (copy.hidden !== true) delete copy.hidden;
+      return copy;
+    });
+  writeState(state);
+}
+
+/**
+ * Biblioteca ya fusionada con lo guardado (se lee al arrancar, igual que la v1).
+ * Los ejercicios de biblioteca son la semilla; los del usuario (`custom`), los
+ * flags permitido/prohibido y los flags de usuario (★ / oculto) vienen del
+ * estado y se conservan.
+ */
+export const exercises = signal<Exercise[]>(mergeSeed(SEED, initial.exercises));
 
 export function findExercise(id: string): Exercise | null {
   return exercises.value.find((e) => e.id === id) ?? null;
@@ -484,10 +516,7 @@ export function findExercise(id: string): Exercise | null {
 
 export function setExerciseAllowed(id: string, allowed: boolean): void {
   const next = exercises.value.map((e) => (e.id === id ? { ...e, allowed } : e));
-  const state = readState();
-  /* solo se guarda el flag: el resto de la biblioteca se deriva de la semilla */
-  state.exercises = next.filter((e) => e.custom || e.allowed === false);
-  writeState(state);
+  persistExercises(next);
   exercises.value = next;
 }
 
@@ -752,9 +781,33 @@ export function clearDay(iso: string): void {
 export function bulkSetAllowed(ids: readonly string[], allowed: boolean): void {
   const wanted = new Set(ids);
   const next = exercises.value.map((e) => (wanted.has(e.id) ? { ...e, allowed } : e));
-  const state = readState();
-  state.exercises = next.filter((e) => e.custom || e.allowed === false);
-  writeState(state);
+  persistExercises(next);
+  exercises.value = next;
+}
+
+/**
+ * Marca o desmarca flags de usuario (★ / oculto) en varios ejercicios de una
+ * escritura: es lo que usan las acciones en bloque y el atajo «★ Los de mis
+ * récords» de Ajustes → Ejercicios.
+ *
+ * `patch` solo puede tocar `fav` y `hidden`: las claves que no vienen NO se
+ * tocan (un «Quitar ★» no debe bajar el oculto de nadie), y las que vienen se
+ * normalizan a `=== true`, que es lo único que se persiste.
+ */
+export function bulkSetExerciseFlag(
+  ids: readonly string[],
+  patch: Partial<Pick<Exercise, 'fav' | 'hidden'>>,
+): void {
+  if (!('fav' in patch) && !('hidden' in patch)) return;
+  const wanted = new Set(ids);
+  const next = exercises.value.map((e) => {
+    if (!wanted.has(e.id)) return e;
+    const copy: Exercise = { ...e };
+    if ('fav' in patch) copy.fav = patch.fav === true;
+    if ('hidden' in patch) copy.hidden = patch.hidden === true;
+    return copy;
+  });
+  persistExercises(next);
   exercises.value = next;
 }
 
@@ -792,9 +845,7 @@ export function saveExercise(patch: Exercise): Exercise {
   const next = current
     ? exercises.value.map((e) => (e.id === id ? saved : e))
     : [...exercises.value, saved];
-  const state = readState();
-  state.exercises = next.filter((e) => e.custom || e.allowed === false);
-  writeState(state);
+  persistExercises(next);
   exercises.value = next;
   return saved;
 }
@@ -808,9 +859,7 @@ export function removeExercise(id: string): boolean {
   const current = exercises.value.find((e) => e.id === id);
   if (!current || !current.custom) return false;
   const next = exercises.value.filter((e) => e.id !== id);
-  const state = readState();
-  state.exercises = next.filter((e) => e.custom || e.allowed === false);
-  writeState(state);
+  persistExercises(next);
   exercises.value = next;
   return true;
 }
@@ -893,7 +942,7 @@ export function refresh(): void {
   const next = readState();
   settings.value = next.settings;
   equipment.value = (next.equipment as EquipmentMap | undefined) ?? defaultEquipment();
-  exercises.value = mergeSeed(SEED_EXERCISES, next.exercises);
+  exercises.value = mergeSeed(SEED, next.exercises);
   sessions.value = asSessions(next.sessions);
   routines.value = asRoutines(next.routines);
   meta.value = withDefaults(next.meta, DEFAULT_META);

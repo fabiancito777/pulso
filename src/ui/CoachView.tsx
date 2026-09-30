@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { nowTs } from '@/domain/dates';
+import { unresolvedNames } from '@/domain/match';
 import { int } from '@/domain/num';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
@@ -744,17 +745,27 @@ export function CoachView() {
     if (!line) return;
 
     if (kind === 'routine') {
-      const routine = applySuggestionAsRoutine(line.payload);
+      const { routine, unresolved } = applySuggestionAsRoutine(line.payload);
       if (!routine) {
         addChat({
           role: 'sys',
-          text: 'No pude convertir la propuesta en rutina: no traía ejercicios reconocidos.',
+          text: unresolved.length
+            ? `No pude convertir la propuesta en rutina: ${unresolvedNames(unresolved)} ${
+                unresolved.length === 1 ? 'no está' : 'no están'
+              } en tu biblioteca.`
+            : 'No pude convertir la propuesta en rutina: no traía ejercicios reconocidos.',
           ts: nowTs(),
         });
         return;
       }
       markApplied(index);
-      addChat({ role: 'sys', text: `Rutina creada: ${routine.name}`, ts: nowTs() });
+      addChat({
+        role: 'sys',
+        text: unresolved.length
+          ? `Rutina creada: ${routine.name} · sin usar (${unresolved.length}): ${unresolvedNames(unresolved)}`
+          : `Rutina creada: ${routine.name}`,
+        ts: nowTs(),
+      });
       return;
     }
 
@@ -768,14 +779,20 @@ export function CoachView() {
       return;
     }
     markApplied(index);
+    const skipped = out.unresolved.length
+      ? ` · sin usar (${out.unresolved.length}): ${unresolvedNames(out.unresolved)}`
+      : '';
     addChat({
       role: 'sys',
-      text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas creadas` : ''}`,
+      text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas creadas` : ''}${skipped}`,
       ts: nowTs(),
     });
     /* El plan YA está en el calendario: se salta a verlo, igual que acababa la
        v1 (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). */
     toast(`Semana agendada: ${out.days} días, ${out.routines} rutinas creadas`, { kind: 'ok' });
+    if (out.unresolved.length) {
+      toast(`Sin usar: ${unresolvedNames(out.unresolved)}`, { kind: 'warn' });
+    }
     go('calendario');
   }
 

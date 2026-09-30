@@ -257,7 +257,8 @@ describe('runCoachTask', () => {
     expect(sug.text).toContain(payloadSug.title as string);
 
     /* el mismo payload que ve la vista es el que se aplica */
-    const creada = coach.applySuggestionAsRoutine(sug.payload);
+    const { routine: creada, unresolved } = coach.applySuggestionAsRoutine(sug.payload);
+    expect(unresolved).toEqual([]);
     expect(creada).not.toBeNull();
     expect(creada?.source).toBe('generador'); /* 'local' se guarda como 'generador' (v1) */
     expect(creada?.items.length).toBeGreaterThan(0);
@@ -271,6 +272,7 @@ describe('runCoachTask', () => {
     const aplicado = coach.applyWeek(plan.payload);
     expect(aplicado.days).toBe(7);
     expect(aplicado.routines).toBeGreaterThan(0);
+    expect(aplicado.unresolved).toEqual([]);
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
   });
 
@@ -349,8 +351,8 @@ describe('runCoachTask', () => {
 });
 
 describe('applySuggestionAsRoutine', () => {
-  it('crea la rutina con source ia, omite lo que no resuelve y persiste', () => {
-    const creada = coach.applySuggestionAsRoutine({
+  it('crea la rutina con source ia, reporta lo que no resuelve y persiste', () => {
+    const { routine: creada, unresolved } = coach.applySuggestionAsRoutine({
       title: 'Empuje del coach',
       focus: 'Pecho y tríceps',
       source: 'ia',
@@ -369,6 +371,11 @@ describe('applySuggestionAsRoutine', () => {
         { name: 'Ejercicio inventado por el modelo', sets: 3 },
       ],
     });
+
+    /* LO QUE ANTES DESAPARECÍA SIN DECIR NADA: ahora vuelve con nombre y razón */
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]?.name).toBe('Ejercicio inventado por el modelo');
+    expect(unresolved[0]?.reason).toBe('no está en tu biblioteca');
 
     expect(creada).not.toBeNull();
     expect(creada?.name).toBe('Empuje del coach');
@@ -393,18 +400,45 @@ describe('applySuggestionAsRoutine', () => {
     expect(persistedRoutines().map((r) => r.id)).toContain(creada?.id);
   });
 
-  it('inválido → null', () => {
-    expect(coach.applySuggestionAsRoutine(null)).toBeNull();
-    expect(coach.applySuggestionAsRoutine('un texto')).toBeNull();
-    expect(coach.applySuggestionAsRoutine({ title: 'Sin ejercicios' })).toBeNull();
-    expect(coach.applySuggestionAsRoutine({ title: 'Vacía', exercises: [] })).toBeNull();
+  it('inválido → sin rutina', () => {
+    expect(coach.applySuggestionAsRoutine(null).routine).toBeNull();
+    expect(coach.applySuggestionAsRoutine('un texto').routine).toBeNull();
+    expect(coach.applySuggestionAsRoutine({ title: 'Sin ejercicios' }).routine).toBeNull();
+    expect(coach.applySuggestionAsRoutine({ title: 'Vacía', exercises: [] }).routine).toBeNull();
     expect(
       coach.applySuggestionAsRoutine({
         title: 'Nada resuelto',
         exercises: [{ name: 'Ejercicio inventado por el modelo' }],
-      }),
+      }).routine,
     ).toBeNull();
     expect(store.routines.value).toHaveLength(0);
+  });
+
+  it('un conflicto de atributos NO matchea: el motivo viaja en unresolved', () => {
+    /* «… con barra inclinado» existe en la biblioteca SIN la inclinación: con el
+       umbral viejo (0,6) se reescribía y se perdía «inclinado» (spec §3.1). */
+    const { routine, unresolved } = coach.applySuggestionAsRoutine({
+      title: 'Inclinado',
+      exercises: [{ name: 'Press de banca con barra inclinado', sets: 3 }],
+    });
+
+    expect(routine).toBeNull();
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]?.name).toBe('Press de banca con barra inclinado');
+    expect(unresolved[0]?.reason).toContain('no cumple');
+    expect(unresolved[0]?.reason).toContain('inclinado');
+    expect(unresolved[0]?.candidate?.name).toBe(NOMBRE);
+    expect(store.routines.value).toHaveLength(0);
+  });
+
+  it('un nombre exacto sí se asocia y no queda nada sin resolver', () => {
+    const { routine, unresolved } = coach.applySuggestionAsRoutine({
+      title: 'Casi exacto',
+      exercises: [{ name: 'Press de banca con barra', sets: 3 }],
+    });
+    expect(unresolved).toEqual([]);
+    expect(routine?.items).toHaveLength(1);
+    expect(routine?.items[0]?.exId).toBe(pressId());
   });
 });
 
@@ -430,7 +464,7 @@ describe('applyWeek', () => {
       days,
     });
 
-    expect(aplicado).toEqual({ days: 7, routines: 6 });
+    expect(aplicado).toEqual({ days: 7, routines: 6, unresolved: [] });
     expect(Object.keys(store.schedule.value).sort()).toEqual(
       Array.from({ length: 7 }, (_, i) => addDays(INICIO_SEMANA, i)),
     );
@@ -463,9 +497,49 @@ describe('applyWeek', () => {
     );
   });
 
+  it('lo que no resuelve se acumula en unresolved y no crea rutina vacía', () => {
+    const aplicado = coach.applyWeek({
+      source: 'ia',
+      days: [
+        {
+          date: INICIO_SEMANA,
+          type: 'entreno',
+          title: 'Empuje',
+          focus: 'Pecho',
+          exercises: [
+            { name: NOMBRE, sets: 4, repMin: 6, repMax: 8, weight: 80, rest: 180, notes: '' },
+            { name: 'Press de banca con barra inclinado', sets: 3 },
+          ],
+        },
+        {
+          date: addDays(INICIO_SEMANA, 1),
+          type: 'entreno',
+          title: 'Tirón',
+          focus: 'Espalda',
+          exercises: [{ name: 'Kroc Row unilateral con mancuerna', sets: 3 }],
+        },
+      ],
+    });
+
+    expect(aplicado.days).toBe(2);
+    /* solo el día 1 queda con rutina: el día 2 NO tenía ni un ejercicio reconocible */
+    expect(aplicado.routines).toBe(1);
+    expect(aplicado.unresolved.map((u) => u.name)).toEqual([
+      'Press de banca con barra inclinado',
+      'Kroc Row unilateral con mancuerna',
+    ]);
+    expect(aplicado.unresolved[0]?.reason).toContain('inclinado');
+    expect(aplicado.unresolved[1]?.reason).toBe('no está en tu biblioteca');
+    expect(store.schedule.value[addDays(INICIO_SEMANA, 1)]?.routineId).toBeUndefined();
+  });
+
   it('un plan sin days no toca ni el calendario ni meta', () => {
-    expect(coach.applyWeek(null)).toEqual({ days: 0, routines: 0 });
-    expect(coach.applyWeek({ rationale: 'nada' })).toEqual({ days: 0, routines: 0 });
+    expect(coach.applyWeek(null)).toEqual({ days: 0, routines: 0, unresolved: [] });
+    expect(coach.applyWeek({ rationale: 'nada' })).toEqual({
+      days: 0,
+      routines: 0,
+      unresolved: [],
+    });
     expect(store.schedule.value).toEqual({});
     expect(store.meta.value.lastPlanAt).toBeNull();
   });

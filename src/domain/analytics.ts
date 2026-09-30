@@ -337,6 +337,47 @@ export function lastEntry(
   return null;
 }
 
+/* ---------- resumen por ejercicio (Ajustes → Ejercicios) ---------- */
+
+/** Lo que la lista de Ajustes pinta bajo el nombre de cada ejercicio. */
+export interface ExerciseSummary {
+  /** último día (`YYYY-MM-DD`) con al menos una serie hecha; `null` si no la hay */
+  lastIso: string | null;
+  /** series HECHAS que acumula (las no marcadas no cuentan) */
+  n: number;
+  /** mejor 1RM estimado (Epley), en kg */
+  e1rm: number;
+}
+
+/**
+ * Resumen de todos los ejercicios en UNA sola pasada por sesiones → entradas →
+ * series: es lo que da las métricas de la fila (`hace Nd · PR · ×n`) sin volver
+ * a recorrer el historial una vez por cada uno de los 139 ejercicios.
+ *
+ * Un ejercicio que aparece en el historial pero sin ninguna serie hecha entra
+ * con `{ lastIso: null, n: 0, e1rm: 0 }` (la fila queda sin métricas); uno que
+ * nunca apareció no entra en el mapa. Los pesos se leen en la unidad de SU
+ * sesión, como todo lo demás de este módulo.
+ */
+export function exerciseSummary(sessions: readonly Session[]): Map<string, ExerciseSummary> {
+  const out = new Map<string, ExerciseSummary>();
+  for (const session of sessions) {
+    const iso = sessionDate(session);
+    for (const entry of session.entries) {
+      const current = out.get(entry.exId) ?? { lastIso: null, n: 0, e1rm: 0 };
+      out.set(entry.exId, current);
+      for (const set of entry.sets) {
+        if (!set?.done) continue;
+        if (!current.lastIso || current.lastIso < iso) current.lastIso = iso;
+        current.n += 1;
+        const estimated = e1rm(setKg(set, session.unit), set.reps);
+        if (estimated > current.e1rm) current.e1rm = estimated;
+      }
+    }
+  }
+  return out;
+}
+
 export interface SuggestOptions {
   /** Repeticiones objetivo (si no, el `repMax` del ejercicio o 10). */
   targetReps?: number;

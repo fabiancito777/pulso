@@ -164,8 +164,14 @@ export function recentlyUsedSessions(sessions: readonly Session[], n = 3): Recor
 /**
  * Elige `count` ejercicios de un grupo respetando material, prohibiciones y lo
  * ya elegido. Orden (el de la v1, que es el que hace que la propuesta salga
- * «compuesto primero»): compuestos antes que aislados → los NO usados en las
- * últimas `rotate` sesiones → los MENOS familiares (novedad) → alfabético.
+ * «compuesto primero»): compuestos antes que aislados → ★ los marcados → los NO
+ * usados en las últimas `rotate` sesiones → los MENOS familiares (novedad) →
+ * alfabético.
+ *
+ * Ojo con DÓNDE va el ★: después de `type` y antes de `recent`, nunca antes de
+ * `type` (rompería la regla «compuesto antes que aislado» de la v1 y los tests
+ * de paridad de `plan.test.ts`). Con la biblioteca sin ★ el orden es idéntico
+ * al de siempre, y la rotación sigue mandando DENTRO de los favoritos.
  */
 export function pickForGroup(
   input: PlanInput,
@@ -189,6 +195,9 @@ export function pickForGroup(
     const typeA = a.type === 'compuesto' ? 0 : 1;
     const typeB = b.type === 'compuesto' ? 0 : 1;
     if (typeA !== typeB) return typeA - typeB;
+    const favA = a.fav === true ? 0 : 1;
+    const favB = b.fav === true ? 0 : 1;
+    if (favA !== favB) return favA - favB;
     const recentA = recent[a.id] ? 1 : 0;
     const recentB = recent[b.id] ? 1 : 0;
     if (recentA !== recentB) return recentA - recentB;

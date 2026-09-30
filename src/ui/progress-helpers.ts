@@ -185,10 +185,19 @@ export interface TopExercise {
 
 /**
  * Los ejercicios más repetidos (chips de «Progresión», v1 `exercisePickerRow`).
- * El desempate es por id para que dos ejercicios con el mismo número de sesiones
- * no cambien de orden entre repintados.
+ * El orden es frecuencia → ★ → id: los favoritos solo DESATAMPAN un empate (la
+ * frecuencia manda, que es lo que mide el chip) y el id sigue ahí para que dos
+ * ejercicios con el mismo número de sesiones no cambien de orden entre repintados.
+ *
+ * `exercises` es opcional y solo se leen sus ★, así que el orden sin favoritos
+ * es idéntico al de siempre.
  */
-export function topExercises(sessions: readonly Session[], limit = 8): TopExercise[] {
+export function topExercises(
+  sessions: readonly Session[],
+  limit = 8,
+  exercises: readonly Exercise[] = [],
+): TopExercise[] {
+  const fav = new Set(exercises.filter((e) => e.fav === true).map((e) => e.id));
   const counts = new Map<string, number>();
   for (const session of sessions) {
     for (const entry of session.entries) {
@@ -197,7 +206,12 @@ export function topExercises(sessions: readonly Session[], limit = 8): TopExerci
   }
   return [...counts.entries()]
     .map(([id, n]) => ({ id, n }))
-    .sort((a, b) => b.n - a.n || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .sort(
+      (a, b) =>
+        b.n - a.n ||
+        (fav.has(b.id) ? 1 : 0) - (fav.has(a.id) ? 1 : 0) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
     .slice(0, Math.max(0, limit));
 }
 

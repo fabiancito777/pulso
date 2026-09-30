@@ -4,9 +4,13 @@
  * de `app.js:353`, con el mismo comportamiento):
  *
  * - **excluye** los `exId` que ya están en la sesión (no se pueden añadir dos veces);
- * - **orden v1** (`app.js:368`): disponibles y permitidos → familiaridad (los que
- *   ya has hecho, de más a menos) → nombre. Lo que te falta material o lo tienes
- *   desactivado queda ABAJO, pero **se puede añadir igual**: solo es un aviso;
+ * - **solo disponibles por defecto** (spec `ejercicios-revamp.md` §3.2): la lista
+ *   arranca con lo que puedes hacer hoy y se abre con el chip «Solo
+ *   disponibles»; los ocultos (`hidden`) no salen nunca;
+ * - **orden** (`ui/picker-helpers.ts`): ★ → permitidos y disponibles →
+ *   familiaridad (los que ya has hecho, de más a menos) → nombre. Con el filtro
+ *   abierto lo que te falta material o lo tienes desactivado no aparece; con el
+ *   filtro apagado queda ABAJO, pero **se puede añadir igual**: solo es un aviso;
  * - búsqueda tolerante a tildes (`domain/text.norm`) y filtro por grupo;
  * - el contador dice «N seleccionados» mientras no confirmes;
  * - con `onlyIds` solo se pueden elegir los que ya aparecen en el historial (es
@@ -14,13 +18,13 @@
  */
 import { useState } from 'preact/hooks';
 
-import { GROUPS, groupLabel, isAvailable, missingEquipment } from '@/domain/data';
+import { GROUPS, groupLabel, missingEquipment } from '@/domain/data';
 import { fmtN } from '@/domain/format';
 import { norm, trunc } from '@/domain/text';
-import type { Exercise } from '@/domain/types';
 import { equipment, exercises, sessions } from '@/state/store';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
+import { orderPickerItems, visiblePickerItems } from './picker-helpers';
 
 export interface ExercisePickerModalProps {
   title?: string;
@@ -42,10 +46,10 @@ export function ExercisePickerModal({
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState('');
   const [selected, setSelected] = useState<readonly string[]>([]);
+  /* comportamiento por defecto: solo lo que puedes hacer hoy (spec §3.2) */
+  const [onlyAvail, setOnlyAvail] = useState(true);
 
   const equip = equipment.value;
-  const hidden = new Set(exclude);
-  const only = onlyIds ? new Set(onlyIds) : null;
   const needle = norm(query);
 
   /* familiaridad: cuántas sesiones del historial traen cada ejercicio (v1 `S.familiarity`) */
@@ -53,20 +57,16 @@ export function ExercisePickerModal({
   for (const session of sessions.value) {
     for (const entry of session.entries) fam.set(entry.exId, (fam.get(entry.exId) ?? 0) + 1);
   }
-  const rank = (ex: Exercise): number => (ex.allowed && isAvailable(ex, equip) ? 0 : 1);
 
-  const items = exercises.value
-    .filter((ex) => !hidden.has(ex.id))
-    .filter((ex) => (only ? only.has(ex.id) : true))
-    .filter((ex) => !group || ex.group === group)
-    .filter((ex) => !needle || norm(ex.name).includes(needle))
-    .sort((a, b) => {
-      const byRank = rank(a) - rank(b);
-      if (byRank) return byRank;
-      const byFam = (fam.get(b.id) ?? 0) - (fam.get(a.id) ?? 0);
-      if (byFam) return byFam;
-      return a.name < b.name ? -1 : 1;
-    });
+  const items = orderPickerItems(
+    visiblePickerItems(exercises.value, {
+      equip,
+      availableOnly: onlyAvail,
+      exclude,
+      ...(onlyIds ? { onlyIds } : {}),
+    }),
+    { fam, equip },
+  ).filter((ex) => (!group || ex.group === group) && (!needle || norm(ex.name).includes(needle)));
 
   const toggle = (id: string): void =>
     setSelected((current) =>
@@ -121,6 +121,19 @@ export function ExercisePickerModal({
         ))}
       </div>
 
+      <div class="row between mt-s" style="gap:8px">
+        <button
+          type="button"
+          class={`toggle-pill ${onlyAvail ? 'on' : 'off'}`}
+          aria-pressed={onlyAvail}
+          onClick={() => setOnlyAvail((on) => !on)}
+        >
+          <Icon name="filter" />
+          Solo disponibles
+        </button>
+        <span class="tiny muted">{fmtN(items.length, 0)} en la lista</span>
+      </div>
+
       <div class="card flush mt-s" style="max-height:46dvh;overflow:auto">
         {items.length ? (
           items.map((ex) => {
@@ -135,6 +148,7 @@ export function ExercisePickerModal({
               >
                 <div class="grow" style="min-width:0">
                   <div class="ellipsis" style="font-size:14px;font-weight:600">
+                    {ex.fav === true ? <span class="ex-star">★ </span> : null}
                     {ex.name}
                   </div>
                   <div class="tiny muted ellipsis">
@@ -155,7 +169,11 @@ export function ExercisePickerModal({
         ) : (
           <div class="empty">
             <Icon name="search" />
-            <div>Nada que mostrar con ese filtro</div>
+            <div>
+              {onlyAvail
+                ? 'Nada disponible con ese filtro · prueba a abrir «Solo disponibles»'
+                : 'Nada que mostrar con ese filtro'}
+            </div>
           </div>
         )}
       </div>

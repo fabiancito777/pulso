@@ -74,3 +74,44 @@ describe('mergeSeed', () => {
     expect(mergeSeed([], [null, {}, { id: 'ok', id2: 1 } as unknown as Exercise])).toHaveLength(1);
   });
 });
+
+describe('flags de usuario (fav / hidden)', () => {
+  it('conserva los ★ y los ocultos que traiga lo guardado', () => {
+    const saved: Exercise[] = [{ ...seedPress, fav: true, hidden: true }];
+    const list = mergeSeed(SEED_EXERCISES, saved);
+    const press = list.find((e) => e.id === seedPress.id);
+    expect(press?.fav).toBe(true);
+    expect(press?.hidden).toBe(true);
+  });
+
+  it('materializa los flags como boolean en TODA la lista (la semilla no los trae)', () => {
+    const list = mergeSeed(SEED_EXERCISES, [{ ...seedPress, fav: true }]);
+    expect(list).toHaveLength(SEED_EXERCISES.length);
+    for (const ex of list) {
+      expect(typeof ex.fav, ex.id).toBe('boolean');
+      expect(typeof ex.hidden, ex.id).toBe('boolean');
+    }
+    /* sin marcar todo es false, no undefined: la UI lee `e.fav` sin `?.` */
+    expect(list.find((e) => e.id !== seedPress.id)?.fav).toBe(false);
+    expect(list.find((e) => e.id === seedPress.id)?.hidden).toBe(false);
+  });
+
+  it('un false guardado se queda en false (no se convierte en true)', () => {
+    const list = mergeSeed(SEED_EXERCISES, [{ ...seedPress, fav: false, hidden: false }]);
+    const press = list.find((e) => e.id === seedPress.id);
+    expect(press?.fav).toBe(false);
+    expect(press?.hidden).toBe(false);
+  });
+
+  it('un ★ de catálogo sobrevive a re-fusionar (lo que hace `refresh()`)', () => {
+    const primera = mergeSeed(SEED_EXERCISES, [{ ...seedPress, fav: true }]);
+    /* mismo filtro que `persistExercises`: solo propios, prohibidos y con flag */
+    const persistido = primera.filter(
+      (e) => e.custom || e.allowed === false || e.fav === true || e.hidden === true,
+    );
+    expect(persistido).toHaveLength(1);
+    const recargada = mergeSeed(SEED_EXERCISES, persistido);
+    expect(recargada.find((e) => e.id === seedPress.id)?.fav).toBe(true);
+    expect(recargada).toHaveLength(SEED_EXERCISES.length);
+  });
+});

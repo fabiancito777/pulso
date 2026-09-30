@@ -26,8 +26,10 @@
  * - El RPE no se arrastra: es un dato de esa serie, no una prescripción.
  */
 import { type Suggestion } from './analytics';
-import { findExercise, findExerciseByName } from './data';
+import { findExercise } from './data';
 import { today } from './dates';
+import { matchExercise, unresolvedName } from './match';
+import type { UnresolvedName } from './match';
 import { avg, clamp, int, num, round, uid } from './num';
 import { toKg } from './units';
 import type {
@@ -97,6 +99,12 @@ export interface StartOptions {
   now?: string;
   /** Inyectable para que los tests sean deterministas. */
   id?: string;
+  /**
+   * Nombres del `plan` que NO se asociaron a ningún ejercicio de la biblioteca
+   * (umbral 0,85 + veto de atributos, ver `domain/match`). No se descartan en
+   * silencio: quien arranca la sesión los enseña (toast/aviso) y sigue.
+   */
+  onUnresolved?: (items: UnresolvedName[]) => void;
 }
 
 /* ---------- construcción ---------- */
@@ -181,22 +189,41 @@ type ResolvedPlanItem = RoutineItem & PlanExtras;
 /**
  * Resuelve un item del plan del coach contra la biblioteca y lo deja como
  * `RoutineItem` (con `exId`, que es con lo que se compara en la sesión). Los planes
- * del coach a veces traen solo el `name`, y lo que no esté en la biblioteca no pasa
+ * del coach a veces traen solo el `name`, y lo que no esté en la biblioteca NO pasa
  * a la sesión: mismo criterio que usaba la v1 al montar los ejercicios.
  *
  * **No se puede descartar el `basis`/`reps`**: son con lo que la tarjeta de cada
  * ejercicio explica de dónde sale el peso («repetición de …») y con lo que se
  * piden las reps al repetir. `resolvePlan` era el punto donde se perdían.
+ *
+ * Y desde el matcher único **tampoco se descarta un nombre en silencio**: lo que
+ * no resuelva (umbral 0,85 + veto de atributos en `domain/match`) vuelve en
+ * `unresolved` con la razón, para que quien arranque la sesión avise. Un nombre
+ * sin resolver no se reescribe a otro ejercicio.
  */
-function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): ResolvedPlanItem[] {
-  const out: ResolvedPlanItem[] = [];
+function resolvePlan(
+  plan: readonly PlanItem[],
+  library: readonly Exercise[],
+): { items: ResolvedPlanItem[]; unresolved: UnresolvedName[] } {
+  const items: ResolvedPlanItem[] = [];
+  const unresolved: UnresolvedName[] = [];
   for (const item of plan) {
-    const ex = item.exId
-      ? findExercise(library, item.exId)
-      : findExerciseByName(library, item.name ?? null);
-    if (!ex) continue;
+    let ex: Exercise | null;
+    if (item.exId) ex = findExercise(library, item.exId);
+    else if (item.name) {
+      const match = matchExercise(item.name, library);
+      ex = match.ex ?? null;
+      if (!ex) unresolved.push(unresolvedName(item.name, match));
+    } else {
+      /* sin exId ni nombre no hay nada ni siquiera que avisar */
+      continue;
+    }
+    if (!ex) {
+      if (item.exId) unresolved.push({ name: item.exId, reason: 'ya no está en tu biblioteca' });
+      continue;
+    }
     const extra = item as PlanItem & PlanExtras;
-    out.push({
+    items.push({
       exId: ex.id,
       sets: item.sets,
       repMin: item.repMin,
@@ -208,7 +235,7 @@ function resolvePlan(plan: readonly PlanItem[], library: readonly Exercise[]): R
       ...(extra.reps ? { reps: extra.reps } : {}),
     });
   }
-  return out;
+  return { items, unresolved };
 }
 
 /**
@@ -278,7 +305,9 @@ export function startSession(opts: StartOptions): ActiveSession {
   } else if (opts.exIds?.length) {
     entries = opts.exIds.map((exId) => make({ exId, library: opts.exercises }));
   } else if (opts.plan?.length) {
-    plan = resolvePlan(opts.plan, opts.exercises);
+    const resolved = resolvePlan(opts.plan, opts.exercises);
+    plan = resolved.items;
+    if (resolved.unresolved.length) opts.onUnresolved?.(resolved.unresolved);
     entries = plan.map((item) =>
       fromPlanItem(
         withWeight(

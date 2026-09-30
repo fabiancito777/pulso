@@ -33,11 +33,12 @@
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
-import { findExerciseByName } from '@/domain/data';
 import { addDays, dowLong, iso, label as dateLabel, nowTs, startOfWeek } from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
+import { matchExercise, unresolvedName } from '@/domain/match';
+import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
-import type { RoutineItem, Session, Settings } from '@/domain/types';
+import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
 import { GeminiError, generate } from '@/features/coach/client';
 import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
 import { buildContext } from '@/features/coach/context';
@@ -180,19 +181,44 @@ function dayIsoOf(value: unknown): string {
 
 /**
  * Resuelve una lista de ejercicios propuestos contra la biblioteca: acepta
- * `name`/`exercise`/`ejercicio` (los del coach IA) y `exId` (los de la v1), y
- * los que no resuelvan se OMITEN (mismo criterio que `mapItems` de la v1).
+ * `name`/`exercise`/`ejercicio` (los del coach IA) y `exId` (los de la v1), con
+ * el MISMO matcher que `resolveName` y `resolvePlan` (`domain/match`, umbral
+ * 0,85 + veto de atributos).
+ *
+ * Lo que no resuelve YA NO se descarta en silencio: vuelve en `unresolved` con
+ * el nombre original, la razón («no está en tu biblioteca» o el `conflict` del
+ * matcher) y el candidato más parecido, para que quien aplique la propuesta
+ * avise. Un solo fallo no debe borrar un ejercicio sin decir nada.
  */
-function resolveItems(list: unknown): RoutineItem[] {
-  if (!Array.isArray(list)) return [];
+function resolveItems(list: unknown): {
+  items: RoutineItem[];
+  unresolved: UnresolvedName[];
+} {
+  if (!Array.isArray(list)) return { items: [], unresolved: [] };
   const items: RoutineItem[] = [];
+  const unresolved: UnresolvedName[] = [];
   for (const raw of list) {
     if (!isPlain(raw)) continue;
     const exId = firstString(raw, ['exId']);
     const name = firstString(raw, ['name', 'exercise', 'ejercicio']);
     const found = exId ? findExercise(exId) : null;
-    const ex = found ?? (name ? findExerciseByName(exercises.value, name) : null);
-    if (!ex) continue;
+    let ex: Exercise | null = found;
+    let failure: UnresolvedName | null = null;
+    if (!ex) {
+      if (name) {
+        const match = matchExercise(name, exercises.value);
+        ex = match.ex ?? null;
+        if (!ex) failure = unresolvedName(name, match);
+      } else if (exId) {
+        /* sin nombre solo queda el id, que es como lo pinta la UI */
+        failure = { name: exId, reason: 'ya no está en tu biblioteca' };
+      }
+    }
+    if (!ex) {
+      /* un objeto sin nombre ni id no es un ejercicio perdido: no hay nada que avisar */
+      if (failure) unresolved.push(failure);
+      continue;
+    }
     items.push({
       exId: ex.id,
       sets: int(raw.sets, ex.sets),
@@ -203,7 +229,7 @@ function resolveItems(list: unknown): RoutineItem[] {
       notes: typeof raw.notes === 'string' ? raw.notes : '',
     });
   }
-  return items;
+  return { items, unresolved };
 }
 
 /**
@@ -542,37 +568,46 @@ export async function runCoachTask(
 
 /* ---------- aplicar resultados ---------- */
 
+/** Resultado de aplicar una propuesta del coach: la rutina + lo que no resolvió. */
+export interface SuggestionOutcome {
+  /** `null` si la entrada ni siquiera parece una sugerencia o no quedó NI UN ejercicio */
+  routine: Routine | null;
+  /** nombres propuestos que NO se asociaron a ningún ejercicio: avisar, no callar */
+  unresolved: UnresolvedName[];
+}
+
 /**
  * Convierte una sugerencia del coach en una rutina guardada (`source: 'ia'`, o
  * `'generador'` cuando la propuesta vino del planificador local).
  *
  * Valida `{title, focus?, rationale?, source?, notes?, exercises|items:[…]}`,
- * resuelve cada `name` contra la biblioteca (los que no resuelvan se omiten) y
- * devuelve `null` si no queda NI UN ejercicio reconocible — o si la entrada ni
- * siquiera parece una sugerencia.
+ * resuelve cada `name` contra la biblioteca con `resolveItems` y devuelve la
+ * rutina junto con los `unresolved` — antes lo que no resolvía desaparecía sin
+ * más, y ahora la vista puede decir exactamente qué se cayó y por qué.
  */
-export function applySuggestionAsRoutine(sug: unknown): Routine | null {
-  if (!isPlain(sug)) return null;
+export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
+  if (!isPlain(sug)) return { routine: null, unresolved: [] };
   const list = Array.isArray(sug.exercises)
     ? sug.exercises
     : Array.isArray(sug.items)
       ? sug.items
       : null;
-  if (!list) return null;
-  const items = resolveItems(list);
-  if (!items.length) return null;
+  if (!list) return { routine: null, unresolved: [] };
+  const { items, unresolved } = resolveItems(list);
+  if (!items.length) return { routine: null, unresolved };
 
   const source = routineSource(firstString(sug, ['source']));
   const focus = firstString(sug, ['focus']);
   const rationale = rationaleText(sug.rationale);
   const notes = joinNotes(firstString(sug, ['notes']), rationale);
-  return addRoutine({
+  const routine = addRoutine({
     name: firstString(sug, ['title']) || 'Rutina del coach',
     focus,
     source,
     notes,
     items,
   });
+  return { routine, unresolved };
 }
 
 /**
@@ -582,11 +617,21 @@ export function applySuggestionAsRoutine(sug: unknown): Routine | null {
  * `'generador'` para el plan local, nombre `título · fecha`) y se enlaza con
  * `routineId`.
  *
- * Devuelve cuántos días se escribieron y cuántas rutinas se crearon; un plan
- * sin `days` no toca nada ni siquiera `meta`.
+ * Devuelve cuántos días se escribieron, cuántas rutinas se crearon y —acumulado
+ * de TODOS los días— los nombres que no se asociaron a ningún ejercicio: un plan
+ * no puede perder ejercicios sin que la vista lo cuente. Un plan sin `days` no
+ * toca nada ni siquiera `meta`.
  */
-export function applyWeek(plan: unknown): { days: number; routines: number } {
-  const out = { days: 0, routines: 0 };
+export function applyWeek(plan: unknown): {
+  days: number;
+  routines: number;
+  unresolved: UnresolvedName[];
+} {
+  const out: { days: number; routines: number; unresolved: UnresolvedName[] } = {
+    days: 0,
+    routines: 0,
+    unresolved: [],
+  };
   if (!isPlain(plan) || !Array.isArray(plan.days)) return out;
 
   const source = firstString(plan, ['source']) || 'ia';
@@ -596,7 +641,8 @@ export function applyWeek(plan: unknown): { days: number; routines: number } {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
 
     const list = Array.isArray(raw.exercises) ? raw.exercises : raw.items;
-    const items = resolveItems(list);
+    const { items, unresolved } = resolveItems(list);
+    out.unresolved.push(...unresolved);
     const type =
       typeof raw.type === 'string' && DAY_KEYS.includes(raw.type)
         ? raw.type

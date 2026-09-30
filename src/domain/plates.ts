@@ -25,6 +25,7 @@
  * `normalizePlates`, que es quien migra `pairs` → `discs` al leer y quien
  * rellena el espejo `pairs = floor(discs/2)` al escribir.
  */
+import { UNILATERAL_RX } from './match';
 import { int, num, round, sum } from './num';
 import { toKg } from './units';
 import type { BarWeights, PlateModeKey, PlateStock, Unit } from './types';
@@ -379,8 +380,8 @@ export function maxLoadable(opts: SolveOpts = {}): {
 
 /* ---------- modo sugerido por ejercicio ---------- */
 
-const UNILATERAL_RX = /unilateral|a una mano|una mano|kroc|por brazo|por lado|por pierna/;
-
+/* `UNILATERAL_RX` vive en `match.ts` (fuente única: también decide si un nombre
+   propuesto por el coach es bilateral o a una mano). */
 export interface ExerciseHint {
   name?: string;
   equip?: string;

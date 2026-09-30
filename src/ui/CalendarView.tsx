@@ -52,6 +52,7 @@ import {
   weekDates,
 } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
+import { unresolvedNames } from '@/domain/match';
 import type { Session } from '@/domain/types';
 import { localWeek } from '@/features/coach/local';
 import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
@@ -802,8 +803,10 @@ export function CalendarView() {
     const result = applyWeek(plan.raw);
     setApplied(result.days);
     setNotice({
-      kind: 'ok',
-      text: `Plan aplicado: ${result.days} días, ${result.routines} rutinas`,
+      kind: result.unresolved.length ? 'warn' : 'ok',
+      text: result.unresolved.length
+        ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas · sin usar (${result.unresolved.length}): ${unresolvedNames(result.unresolved)}`
+        : `Plan aplicado: ${result.days} días, ${result.routines} rutinas`,
     });
   }
 
