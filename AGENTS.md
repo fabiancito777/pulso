@@ -1,514 +1,264 @@
-# AGENTS.md · Pulso
+# AGENTS.md · Pulso **v2**
 
-Documento de contexto para trabajar en esta app. Si el hilo se alarga o se pierde el
-contexto, **lee primero esto**: aquí está lo vital (arquitectura, convenciones, decisiones de
-diseño y por qué se hicieron así) y el registro de revisiones/cambios.
+Documento de contexto de esta app. Aquí no es HTML+JS vanilla: es
+**Vite + TypeScript + Preact**, con tests de verdad. La v1 congelada está en `legacy/` (y en el
+tag **`v1-final`**, que es su última versión con los fixes de audio) y su documentación completa
+—decisiones de diseño, reglas de la sesión, timer de descanso, coach IA— está en
+**`AGENTS-v1.md`**: sigue siendo válida como referencia del _por qué_ de cada regla, así que si
+dudas, mira ahí primero.
 
-> Última actualización: 17-sep-2026 · fix del ducking de Spotify (keep-alive solo en descanso,
-> sin mediaSession, ajuste `bgAudio` y `U.audio.release()`) + revisión de bugs y arreglo (§7) +
-> ronda de detalles de experiencia en la sesión (§5, "Sesión activa" y "Timer de descanso") +
-> dibujo nuevo de la calculadora de discos (§5, "Calculadora de discos").
+> Última actualización: 29-sep-2026 · **migración completa**: la v2 es la app por defecto
+> (`main` = v2); las 7 pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y
+> Ajustes), coach IA con cerebro, memoria y consultas **más** planificador local sin key, PWA y
+> onboarding. `npm run test` ≈ **687 tests**; ojo: los `smoke`/`edge` de `src/features/coach/`
+> hablan con la API REAL usando la key de `.env.local` (~13 llamadas por `npm run test`; se
+> excluyen con `--exclude`).
 
 ---
 
-## 1. Qué es
+## 1. Qué es esta app
 
-App de entrenamiento personal en **HTML + CSS + JS vanilla**: sin dependencias, sin build, sin
-backend. Todos los datos viven en `localStorage` (`pulso.state`). El coach con IA es opcional y
-usa la **API key propia de Gemini** del usuario. UI mobile-first en español, con navegación
-inferior y PWA instalable (`manifest.webmanifest` + `sw.js`).
+| Situación      | Qué hay                                                                                           | Cómo se abre                                          |
+| -------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **hoy**        | **v2**: la app portada a Vite 8 + TypeScript 6 + Preact 10 + Vitest 5, con ESLint/Prettier.       | `npm run dev` (o `npm run build` + `npm run preview`) |
+| `v1-final`     | **v1** (HTML + CSS + JS vanilla, sin deps ni build), tal como quedó al cerrar la migración.       | sacar el tag y abrir `index.html`                     |
 
-Se abre con doble clic en `index.html` (funciona en `file://`) o servida en local.
+- `legacy/` es la **v1 congelada** (fuente de la migración). No se toca, no se formatea y no
+  entra en el lint (`eslint.config.js` la ignora). Es el patrón de referencia.
+- El estado sigue en `localStorage['pulso.state']` con el **mismo formato que la v1**: v2 lee y
+  escribe lectura-modificación-escritura, así que los datos que ya tienes valen.
+
+### Decisiones de stack y por qué
+
+- **Vite 8** — servidor de desarrollo con HMR, `import`/`export` de verdad y build estático
+  minificado (38 KB de JS, ~15 KB gzip). Config en `vite.config.ts`, con `base: './'` para que el
+  `dist/` funcione también desde un subdirectorio.
+- **Preact 10 + `@preact/signals`** — componentes con estado reactivo y ~4 KB de runtime (un
+  framework grande engordaría la PWA offline sin dar nada a cambio). Esto elimina de raíz la clase
+  de bug que más dolía en la v1: repintados a mano (`A.rerenderPart`, `Ch.mountAll`,
+  `document.getElementById('session-rest')` cogiendo otra copia del mismo id…).
+- **TypeScript 6** (no 7) — a 16-sep-2026 `typescript-eslint` 8.70 exige `typescript <6.1`, así
+  que TS 7 dejaría el proyecto sin lint tipado. Cuando typescript-eslint lo soporte, subir a 7 es
+  cambiar una versión.
+- **Vitest 5** — las comprobaciones que en la v1 vivían dentro del auto-test del navegador
+  (`legacy/js/app.js` → `selfTest()`) ahora son tests normales, sin navegador y con estado
+  explícito. El auto-test sigue existiendo en `legacy/`, pero su sitio natural es `src/**/*.test.ts`.
+- **ESLint 10 + `typescript-eslint` (tipado) + Prettier** — el lint usa información de tipos
+  (`projectService`), por eso caza cosas que el lint clásico no ve.
 
 ---
 
 ## 2. Cómo ejecutarla y cómo verificarla
 
 ```bash
-# servidor local (recomendado: algunos navegadores restringen localStorage en file://)
-npm run serve                  # tools/serve.mjs → http://localhost:8080 (sin caché, MIME correcto)
-python -m http.server 8080     # alternativa sin Node (manda menos cabeceras: ver nota de entorno)
+npm install          # una vez
+npm run dev          # http://localhost:5173 — desarrollo con HMR
+npm run build        # build de producción en dist/
+npm run preview      # sirve el build
 ```
 
-**La app no tiene dependencias ni build**, pero sí herramientas de desarrollo en `tools/` (Node 18+,
-sin `npm install`):
+| Comando                       | Qué hace                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`           | `tsc --noEmit` con `strict`, `noUnusedLocals`…                                                                            |
+| `npm run lint`                | ESLint con reglas tipadas (`recommendedTypeChecked`)                                                                      |
+| `npm run test`                | Vitest (hoy ≈ **585 tests**: dominio, estado y UI; ver las notas de abajo sobre los dos archivos de red del coach)        |
+| `npm run verify`              | typecheck + lint + test + build (lo que hay que dejar verde)                                                              |
+| `npm run format`              | Prettier sobre todo lo que no sea `legacy/`                                                                               |
+| `node tools/port-catalog.mjs` | **Regenera** `src/domain/catalog.ts` desde `legacy/js/data.js` (luego `npx prettier --write src/domain/catalog.ts`)       |
+| `node tools/port-icons.mjs`   | **Regenera** `src/ui/icons.ts` desde los `ico(...)` de `legacy/js/core.js` (luego `npx prettier --write src/ui/icons.ts`) |
 
-| Comando | Qué hace |
-|---|---|
-| `npm run serve` | Servidor estático de desarrollo (`Cache-Control: no-store` + MIME correcto). Acepta puerto: `node tools/serve.mjs 8081`. |
-| `npm run check` | Comprobaciones estáticas propias: sintaxis de los `js/*.js`, assets de `index.html`, `SHELL` del service worker, `data-act`/`data-act-change`/`data-act-input` sin handler, `U.icon()` inexistente y orden de carga. **Es el guardián de las convenciones de §4.** |
-| `npm run selftest` | El auto-test en Chrome headless, con código de salida (falla si no pasan todas). `--chrome <ruta>`, `--port`, `--verbose`. |
-| `npm run verify` | `check` + `selftest`. La puerta rápida antes de dar algo por bueno. |
+Notas de entorno:
 
-| Herramienta | Cómo | Qué hace |
-|---|---|---|
-| Auto-test | `index.html?selftest=1` (o `#selftest`) | 78 comprobaciones (equipo, discos y modos de la calculadora, 1RM, planificador, ciclo completo de sesión, reglas del descanso (última serie / desmarcar / anuncio del siguiente ejercicio), arrastre del peso entre series, descanso en el recuadro pegajoso, duración del pitido de fin, aviso de prueba sin pisar el descanso, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del coach, render de todas las vistas y capa de acciones). Muestra el informe, pone el resultado en `document.title` y **exporta y restaura tus datos al terminar**. Debe pasar también con datos y modos ya guardados (no dependas del estado previo). |
-| Modo demo | `index.html?demo=1` | Carga 8 semanas de sesiones de ejemplo + plan semanal. Se quitan desde Ajustes → Datos. |
-| `node --check js/*.js` | terminal | Comprobación de sintaxis (la que uso antes de cada verificación). |
-| `_check.html` | abrir en el navegador | Comprueba la sintaxis de cada `js/*.js` con `new Function(src)`. |
-| `_restshot.html` | abrir en el navegador | Captura el recuadro de descanso dentro de un iframe. |
-
-`_check.html` y `_restshot.html` son **utilidades de desarrollo** que quedan en la raíz; no
-forman parte de la app (no se referencian desde `index.html`).
-
-⚠️ **El auto-test no cubre los flujos de modal/UI**, y ahí estaban todos los bugs de §7. Si
-tocas un flujo con `U.modal`, verifícalo a mano en el navegador (los pasos que usé están en §7).
-
-> Nota de entorno: `python -m http.server` no manda `Cache-Control`, así que el navegador puede
-> servir los JS desde su caché heurística y **probar código viejo**. Para verificar cambios usa
-> `npm run serve` (manda `no-store`), o sirve en un puerto nuevo (otro origen ⇒ otra caché), o haz
-> un hard reload.
+- El servidor de Vite manda `no-store`, así que **no** te pasa lo de la v1 con la caché del
+  navegador sirviendo código viejo.
+- Si algo de UI no se puede probar con Vitest (modales, timer, dibujo), se comprueba en el
+  navegador con Playwright y se guarda una captura en `_shots/` (está en `.gitignore`).
+- **Tests contra la API real**: `src/features/coach/smoke.test.ts` y `edge.test.ts` no mockean la
+  red: leen la key de **`.env.local`** (gitignored, **nunca commitear**) y hacen ~13 llamadas a
+  Gemini por `npm run test` (presupuesto duro por archivo: 2 y 20; sin key se saltan enteros). Para
+  una pasada sin red ni cuota:
+  `npx vitest run --exclude 'src/features/coach/{smoke,edge}.test.ts'`.
+- `_specs/` guarda las specs de trabajo de la migración (gitignored, como `_shots/`): son el
+  contrato de cada bloque; el estado consolidado —no duplicado— está en `src/app/roadmap.ts`.
 
 ---
 
-## 3. Arquitectura y orden de carga
-
-`index.html` carga, en este orden exacto:
+## 3. Arquitectura y carpetas
 
 ```
-core.js → data.js → store.js → charts.js → trainer.js → coach.js
-→ views-train.js → views-routines.js → views-calendar.js → views-coach.js
-→ views-stats.js → views-settings.js → app.js
+index.html          → entrada de Vite (carga src/main.tsx)
+src/main.tsx        → monta <App /> en #app e importa los estilos
+src/app/            → shell de la app (App.tsx) y roadmap.ts (estado de la migración)
+src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado global
+    num / format / units / dates / text        utilidades base
+    plates.ts                                  calculadora de discos (solver)
+    analytics.ts                               volumen, 1RM (Epley), PRs, rachas, semanas
+    session.ts                                 reglas de la sesión en curso (marcar, arrastrar, cerrar)
+    rest.ts                                    timer de descanso por timestamp (máquina de estados)
+    plan.ts                                    plantillas y planner local (rotación y pesos, sin IA)
+    catalog.ts                                 catálogo GENERADO desde la v1 (no se edita a mano)
+    data.ts                                    API del catálogo (grupos, material, disponibilidad)
+    library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
+    defaults.ts                                ajustes e inventario por defecto
+    types.ts                                   contrato del dominio y del estado
+src/state/          → estado y persistencia (store.ts) + signals
+    store.ts                                   ajustes, material, biblioteca, sesiones, apilar sesión
+    session.ts                                 sesión activa y descanso (signals + efectos: audio, loop)
+    coach.ts                                   runner del coach: bucle de consultas y fallback local
+src/features/       → piezas concretas con sus propios tests
+    coach/                                     cerebro del coach: context (contexto), insights,
+                                               memory (memoria), history (historial y consultas),
+                                               prompts, parse (JSON), client (Gemini) y local
+                                               (planificador sin key)
+src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx, ProgressCard.tsx,
+                      SessionCard.tsx, Icon.tsx, Ring.tsx)
+    *View.tsx                                  vistas de pestaña: Hoy, Settings, Progress, Routines,
+                                               Calendar y Coach (+ Onboarding.tsx: primera visita)
+    icons.ts                                   catálogo de iconos GENERADO desde la v1 (no se edita)
+src/platform/       → lo que toca el navegador (audio.ts: pitidos y vibración)
+src/styles/         → base.css (heredada de la v1) + v2.css (shell)
+tools/              → scripts de migración (port-catalog.mjs, port-icons.mjs)
+legacy/             → v1 congelada (referencia y fuente de la migración)
+_specs/             → specs de trabajo de la migración (gitignored)
+.env.local          → API key del coach para los tests de red (gitignored, NUNCA commitear)
 ```
 
-**Sin módulos ES a propósito** (nada de `import`/`export`, ni bundler, ni CORS): así la app
-funciona con doble clic sobre `index.html`. Cada archivo es un IIFE que cuelga su API en
-`window.App`. El orden importa: `app.js` envuelve `App.actions['settings:set']`, que ya debe
-existir (se define en `views-settings.js`, que carga antes).
+Reglas de dependencia (de dentro hacia fuera, nunca al revés):
 
-| Archivo | Exporta | Responsabilidad |
-|---|---|---|
-| `js/core.js` | `App.u` (U) | DOM (`$`, `$$`), fechas (`U.d`), storage con fallback en memoria (`U.st`), toasts, modales (`U.modal`/`confirm`/`promptDialog`), audio/vibración/notificaciones/wake lock, catálogo de iconos, unidades kg↔lb, `U.md` (markdown-lite), `U.ring`, descarga/lectura de archivos. |
-| `js/data.js` | `App.data` (D) | `GROUPS` (13), `EQUIPMENT` (49 piezas + `paralelas` insertada con `splice`), `EQUIP_PRESETS`/`equipPreset()`, `PLATES_DEFAULT`, `BARS_DEFAULT`, `DEFAULT_SETTINGS`, `SEED_EXERCISES` (136), `TEMPLATES` (9), `GOAL_REPS/SETS/REST`, `AI_MODELS`, `THINKING_LEVELS`. |
-| `js/store.js` | `App.store` (S) | Estado único (`pulso.state`) + persistencia con debounce + analítica en `S.a` (volumen, 1RM, PRs, racha, staleness, series semanales) + generadores locales de rutina + `demoData`. |
-| `js/charts.js` | `App.charts` (Ch) | Gráficos SVG propios (bar, line, donut, hbars, heat, spark). |
-| `js/trainer.js` | `App.trainer` (T) | Sesión activa, timer de descanso, calculadora de discos. |
-| `js/coach.js` | `App.coach` (C) | Cliente Gemini, `buildContext()`, planificador local, `parseJSON` tolerante, mapeo de respuestas IA, `applyWeek`. |
-| `js/views-*.js` | `App.views.<tab>` | Cada vista es `{ title, tab, icon, sub(), render(root) }`. |
-| `js/app.js` | `App` | Router por hash, delegación de eventos, tema/acento, `App.ui` (pickers, editores, detalle de sesión, calculadora, temporizador), arranque, `selfTest()`. |
-| `sw.js` | — | Service worker: **shell offline** (precarga + network-first con respaldo en caché) y notificaciones de fin de descanso en segundo plano (`postMessage({type:'notify'})`) + `notificationclick`. ⚠️ Si añades un `js/*.js` o un CSS nuevo, súmalo a `SHELL` en `sw.js` (`npm run check` lo avisa si se te olvida). |
-| `tools/*.mjs` | — | Herramientas de **desarrollo** en Node sin dependencias: `serve.mjs` (estático sin caché), `check.mjs` (comprobaciones estáticas) y `selftest.mjs` (auto-test en Chrome headless). No forman parte de la app. |
+```
+domain  ←  features  ←  state  ←  ui
+```
+
+- **`domain/` no importa nada de `features/`, `state/` ni de `ui/`.** Es la regla que hace que la
+  lógica se pueda probar sin navegador: el solver de discos recibe el inventario por parámetro en
+  vez de ir a buscar los ajustes. En la v1 esto estaba mezclado (`T.plates` leía `S.settings()` por
+  dentro) y por eso había que probarlo en el navegador.
+- **`features/` solo importa de `domain/`** (el cerebro del coach es puro: contexto, prompts,
+  parseo, memoria y planificador local), y es `state/coach.ts` quien le da red, clave y bucle.
+- **Nada escribe el estado directamente**: se pasa por `state/store.ts` (`patchSettings`,
+  `rememberPlateMode`), que lee-modifica-escribe el estado completo para no pisar lo que gestiona
+  la v1.
+- **Los componentes no montan HTML a mano.** Preact escapa solo, así que `U.esc()` no se porta
+  (si algún día hace falta HTML crudo, será una decisión explícita y localizada).
 
 ### Flujo de datos
 
 ```
-localStorage ('pulso.state')
-      ↕  S.load() / S.save() (debounce 220 ms)
-   state (objeto único en memoria, estructura en freshState())
-      ↕  setters + S.notify(reason) → guarda y avisa a los suscriptores
-   vistas (leen con S.xxx() y repintan con App.render())
+localStorage['pulso.state']  (mismo formato que la v1)
+        ↕  readState() / writeState()  (tolerantes: JSON roto → valores por defecto)
+   state (objeto completo en memoria)
+        ↕  patchSettings(patch)
+   signal `settings`  → cualquier componente que lea settings.value se repinta solo
 ```
 
-`state = { version, createdAt, settings, equipment, exercises, routines, sessions, schedule,
-active, chat, meta }`.
+`withDefaults()` rellena las claves que falten de forma recursiva, así que añadir un ajuste nuevo
+**no** necesita migración (es el `mergeDefaults` de la v1, con tipos).
 
 ---
 
-## 4. Convenciones (respétalas al tocar el código)
+## 4. Convenciones (respétalas al portar)
 
-- **Eventos por delegación global.** Nada de `addEventListener` por elemento en el HTML
-  generado: se registra `App.actions['ns:accion']` y se usa en el markup
-  `data-act="ns:accion"`, `data-act-change="..."` (inputs/selects, evento `change`) o
-  `data-act-input="..."` (búsquedas, debounce 220 ms salvo si el nombre contiene `search`).
-  Los parámetros van en `data-*` y se leen con `el.getAttribute('data-x')`.
-  Navegación: `data-act="go" data-tab="hoy"` (y `data-sub` para `#/ajustes/<sub>`).
-  ⚠️ Un `data-act` **sin acción registrada** ensucia la consola con `acción sin handler`, el
-  aviso con el que se detectan los typos. Si un modal maneja sus propios botones, usa un
-  atributo propio (`data-dact`, `data-ob-equip`, `data-ex`, `data-t`…), no `data-act`.
-- **Rutas**: `#/tab` y `#/ajustes/<sub>`. `A.router.go(tab, sub)`.
-- **Estado**: nunca tocar `state` desde una vista; siempre setters del store (`S.setDay`,
-  `S.addSession`, `S.setEquipment`…) que llaman a `S.notify()`.
-- **Ajustes anidados**: `App.setSettingPath('bars.olimpica', 20)`; las claves `ai.*` van a
-  `settings.ai` (`A.setSettingPath('ai.temperature', 0.7)`). Los presets de equipamiento salen
-  siempre de `D.equipPreset(kind)` (fuente única para onboarding y Ajustes).
-- **Unidades**: todo se calcula **siempre en kg** (`U.units.toKg/fromKg`); cada sesión guarda su
-  `unit` y cada disco del inventario guarda su propia `unit`, así que se pueden mezclar kg y lb.
-- **Números en inputs**: `U.fmt.n()` formatea en español (coma decimal) y **no sirve para
-  `value` de `<input type="number">`** (el navegador lo descarta y el campo sale vacío). En
-  vistas-train hay un helper `inputNum(v)` que devuelve el número con punto.
-- **Fechas**: ISO local `YYYY-MM-DD` con `U.d.*` (`U.d.today()`, `U.d.addDays()`). No uses
-  `toISOString().slice(0,10)` para fechas de calendario (desfase por zona horaria).
-- **Escapes**: todo lo que venga del usuario o de la IA pasa por `U.esc()`; el markdown del
-  coach por `U.md()`.
-- **Añadir un ejercicio** a la biblioteca: una línea en `D.SEED_EXERCISES`:
-  `E('Nombre', 'grupo', 'material_a&material_b|c', 'compuesto', 4, 8, 12, 150)`.
-  `&` = Y, `|` = O, cadena vacía = peso corporal. Al cargar, `mergeSeed()` (store.js) fusiona la
-  semilla y **conserva** los flags permitido/prohibido y los ejercicios `custom` del usuario.
-  ⚠️ `mergeSeed` sobrescribe `name/group/equip/type/repMin/repMax/bw` de los ejercicios de
-  biblioteca y solo respeta `sets/rest/tags/tips` si `!custom`.
-- **Añadir una vista**: objeto en `App.views` con `title/icon/render(root)` + entrada en `TABS`
-  (`js/app.js`).
-- **Añadir un icono**: una línea `ico('nombre', '<path …/>')` en `core.js`; se usa con
-  `U.icon('nombre')` (si no existe, cae en `info`).
-- **Gráficos**: `Ch.bar/line/donut/hbars/heat` devuelven un **placeholder** `[data-chart]` con el
-  spec en JSON. Hay que llamar a `Ch.mountAll(root)` después de pintar (ya lo hace `App.render`);
-  si repintas un trozo a mano, usa `A.rerenderPart(sel, html)`.
-- **Material**: `S.isAvailable(ex)` y `S.missingEquip(ex)`; `S.equipTags(ex)` para etiquetas.
+- **Rutas y alias**: `@/…` apunta a `src/` (definido en `tsconfig.json` y en `vite.config.ts`).
+- **`catalog.ts` y `ui/icons.ts` son generados**: no se editan a mano. Se cambia la v1 (o el
+  generador) y se vuelve a lanzar `node tools/port-catalog.mjs` / `node tools/port-icons.mjs`. Lo que
+  se añade a mano va en `data.ts`, y `data.test.ts` vigila la integridad del catálogo (grupos o
+  material inexistentes, ids repetidos, rangos al revés).
+- **Nada de estado que se repinte solo en exceso**: un componente que lee `restSeconds.value` se
+  repinta cada segundo, así que eso vive en componentes pequeños (`RestBox`, `Clock`) y nunca en la
+  tarjeta que contiene los inputs: si no, cada tic reescribiría el `value` de lo que estás
+  escribiendo. Los campos de la sesión se guardan en `change` (no en `input`) por el mismo motivo,
+  y para que el arrastre del peso copie el valor cuando terminas de teclear.
+- **Material en los ejercicios**: `equip` es `''` (peso corporal) o `'a&b|c'` = exige `a` **y**
+  (`b` **o** `c`). Se consulta con `isAvailable`/`missingEquipment`/`equipTags` pasando el mapa de
+  material por parámetro (`{ clave: boolean }`), nunca leyendo el estado desde el dominio.
+- **Imports de tipos** con `import type` (`verbatimModuleSyntax` está activo).
+- **Números en inputs**: usa `inputNum()` de `src/domain/format.ts` para el `value` de un
+  `<input type="number">`. `fmtN()` usa la coma de es-ES y el navegador **descarta** ese valor (el
+  campo sale vacío). Fue un bug real de la v1.
+- **Fechas**: ISO local `YYYY-MM-DD` con `src/domain/dates.ts`. Nunca
+  `toISOString().slice(0, 10)` para fechas de calendario (desfase por zona horaria).
+- **Unidades**: todo se calcula **siempre en kg** (`toKg`/`fromKg`) y solo se convierte para
+  mostrar; cada sesión y cada disco guardan su unidad original.
+- **JSDoc en castellano** y nombres de identificadores en inglés, igual que la v1. Los comentarios
+  explican _por qué_, no _qué_.
+- **CSS**: se hereda `base.css` de la v1 para que lo portado se vea igual. A las clases nuevas
+  (`v2-*`, `rm-*`) se les añade su bloque en `v2.css`. Se irá podando cuando las vistas estén todas
+  en componentes.
+- **Estilos/prettier**: 2 espacios, comillas simples, ancho 100.
 
-### Contrato de los modales (importante)
+### Receta para portar un bloque de la v1
 
-`U.modal(cfg)` devuelve una promesa y, al cerrarse, **retira el scrim del DOM antes de resolver**.
-Por eso:
+1. **Dominio primero**: lleva la lógica a `src/domain/`, quítale el acceso al estado (que entre por
+   parámetro) y escribe el test en `xxx.test.ts`. Nada de UI todavía.
+2. **Estado después**: si necesita persistencia, añade el setter a `src/state/store.ts`.
+3. **UI al final**: crea el componente en `src/ui/`.
+4. **Borra la copia desde `legacy/` solo cuando el bloque esté cubierto por tests**, y actualiza
+   `src/app/roadmap.ts` (que es lo que se ve en la app: `portado` / `en curso` / `pendiente`).
 
-- ❌ **Nunca leas el DOM del modal dentro del `.then()`**: el modal ya no existe (`U.$('#campo')`
-  → `null`). Ese fue el bug crítico de §7 (4 flujos rotos en silencio).
-- ✅ Lee los valores en `onClick: function (box, close) { close(datos); }` o en `onMount`, y
-  resuelve con el dato ya extraído. Los `.then()` solo reciben el valor.
-- Los modales se **apilan**: `U.modal.current` apunta al de arriba y, al cerrarlo, vuelve
-  automáticamente al anterior (`ui.closeModal()` cierra el correcto).
-- `close()` es idempotente (`closed`): llamarlo dos veces no rompe nada.
+El estado de cada bloque está en **`src/app/roadmap.ts`** — una sola fuente, sin listas duplicadas
+en la documentación.
 
 ---
 
-## 5. Cómo funciona lo importante (y por qué)
+## 5. Cosas de la v1 que NO se pueden romper al portar
 
-### Sesión activa
-`state.active` guarda la sesión en curso (entradas → series con `weight/reps/done/ts/rpe`).
-`T.start()` prellenado con `S.a.suggestWeight()` (Epley de la última vez + `settings.increment`);
-**si no hay historial el peso queda vacío** (no 0), para que un ejercicio a peso corporal no
-parezca que pesa 0 kg. `T.finish()` filtra solo las series marcadas, calcula RPE medio, guarda en
-`sessions`, marca el día como `done` en el calendario, apaga el wake lock y notifica.
-`T.discard()` la tira.
+Están explicadas a fondo en `AGENTS-v1.md`; aquí queda el resumen de lo delicado:
 
-**Reglas de las series (detalles pedidos por el usuario, no las "arregles" sin querer):**
-
-- **El valor se arrastra hacia ABAJO.** Editar el peso (o las reps) de la serie N lo aplica a las
-  series siguientes sin marcar de ese ejercicio; **nunca a las de arriba ni a las ya marcadas**
-  (`T.propagateSet`, llamado desde `train:set-field`). Los inputs de debajo se refrescan a mano en
-  el DOM para no tener que re-renderizar (que cerraría el teclado). El **RPE no se arrastra**.
-- **El peso se puede borrar**: `''` es "sin peso", distinto de `0`.
-- **El RPE por serie** aparece como tercera columna **solo si `settings.showRpe`** está activo
-  (`set-row.with-rpe`); se acota a 1-10 y viaja a la sesión guardada (el detalle la muestra).
-- **Marcar series**: el descanso automático depende de `T.toggleSet` (ver el apartado siguiente).
-  Al marcar una serie se copian sus valores a la siguiente **si está vacía**.
-- **Desmarcar una serie cancela el descanso** en curso (la serie no está hecha).
-- **Botones que no aplican desaparecen o se deshabilitan**: borrar serie con una sola serie, y las
-  flechas de reordenar en el primero/último ejercicio. Un botón que no responde parece roto.
-- **Al añadir ejercicios o una rutina** la vista hace scroll al primero nuevo y lo resalta un
-  momento (`focusEntry`, clase `.new`). Sin eso quedan pantallas más abajo y parece que no se
-  añadieron.
-
-### Timer de descanso (por qué es por timestamp)
-`T.rest` guarda `{ endsAt, total, running, label }` en memoria y espeja `{endsAt,total,label}` en
-`localStorage` (`pulso.rest`). **No hay contador acumulado**: el tiempo restante se calcula con
-`endsAt - Date.now()`, así que sigue siendo correcto aunque la pestaña quede en segundo plano o
-el móvil se bloquee. `T.loop()` (cada 500 ms desde `app.js`) solo pinta, lanza los ticks de los últimos 3 s
-(`settings.countdownTick`) y dispara el aviso de fin una vez (`doneFired`).
-
-- **Cuándo arranca el descanso al marcar una serie** (`T.toggleSet` + `nextLabel`):
-  · si al ejercicio le quedan series → arranca y el aviso nombra **el propio ejercicio**;
-  · si era su **última** serie pero **queda otro ejercicio pendiente** → arranca igual (es el
-    momento de cambiar de máquina) y el aviso nombra **el siguiente ejercicio**;
-  · si era la última serie de la sesión → **no arranca nada**;
-  · desmarcar una serie **cancela** el descanso en curso.
-  La duración sigue siendo la del ejercicio que acabas de terminar (`restSec`), no la del
-  siguiente: en una superserie el primer ejercicio lleva 15 s de transición y el segundo el
-  descanso largo, que es justo lo que se quiere al cerrar el par.
-- El descanso se muestra **dentro** del recuadro de sesión (`#session-rest`); si el usuario está
-  en otra pestaña de la app (no hay `#session-rest`), cae a la barra compacta `#restbar`.
-- **El recuadro es pegajoso** (`.rest-card` → `position:sticky` con `top:var(--appbar-h)`):
-  mientras hay descanso se queda pegado bajo la barra superior, así el tiempo sigue a la vista
-  aunque estés en el último ejercicio de la lista. `--appbar-h` lo publica `syncAppbarHeight()`
-  (app.js) en cada render y al redimensionar; `z-index:35` lo mantiene por debajo de la appbar
-  (40) para que esta lo tape al pasar por encima.
-- **Botón "Resumen"/"Descanso"** en el propio recuadro (`rest:view`): alterna entre la cuenta
-  atrás y el resumen de la sesión (tiempo, volumen, series hechas). En la vista de resumen el
-  descanso pasa a una línea compacta (`#sr-mini-time` + `#sr-mini-label`) dentro del recuadro
-  pegajoso, y `rest.paint()` la pinta en vez de la barra flotante: si ves el recuadro grande O la
-  línea compacta, **no** aparece la barra de abajo (las tres ramas de `paint()` son excluyentes).
-- **+15s con el descanso ya terminado** arranca una cuenta nueva desde ahora (`T.rest.add`):
-  antes se sumaba a un `endsAt` ya pasado y el botón del aviso de "completado" no hacía nada.
-- **El descanso no lo configura el usuario**: lo define cada ejercicio en la biblioteca
-  (compuestos 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s) y el coach IA puede ajustarlo
-  por sesión. El ajuste `autoRest` solo activa/desactiva el arranque automático al marcar serie.
-  Para alargarlo o acortarlo en vivo están los botones ∓15 s (en la barra compacta, `rest-sub`
-  todavía no está; solo `rest-add`).
-- El aviso de fin es **pitido + vibración + notificación**. Ver el apartado siguiente, que es el
-  punto delicado de toda la app.
-
-### Aviso de descanso con el móvil bloqueado (por qué hay tres mecanismos)
-Es el requisito más frágil del proyecto: el usuario bloquea el móvil mientras descansa y **tiene
-que sonar** el aviso. Un solo mecanismo no basta, así que hay tres capas que se complementan:
-
-1. **Pitido largo (~3,5 s) tirando de la pestaña viva.** `U.beep('end')` programa 5 avisos
-   (988/1319 Hz) cada 0,7 s con la Web Audio API. Es largo a propósito: con el móvil en el bolsillo
-   un beep corto se pierde. (Elegido sobre un `<audio>` con un mp3 para no añadir assets y porque el
-   `AudioContext` se puede programar con precisión.)
-2. **Keep-alive de audio** (`U.keepAlive`, ÚLTIMO RECURSO): solo se usa donde NO hay service worker
-   que programe el aviso (sin SW o iOS, que no lo ejecuta en segundo plano). Ahí se reproduce en bucle
-   una **pista de silencio** generada en memoria (WAV de 1 s en un `<audio loop>`) mientras corre un
-   DESCANSO, y se apaga al terminarlo, cancelarlo, disparar el aviso o cerrar la sesión. En Android
-   moderno con SW **nunca se enciende**: el `<audio>` pide el foco de audio y atenúa la música de
-   fondo (Spotify…) de forma permanente, y publicar `mediaSession.metadata` encima le robaba los
-   controles del bluetooth; así era el bug del volumen bajo (el ajuste `bgAudio` que lo apagaba a mano
-   se eliminó en 1.0.3 porque ya no hace falta: por capacidad nunca se activa). El `play()` puede quedar
-   bloqueado si la app se recargó sin gesto de usuario: `U.keepAlive.retry()` (primer toque y al volver
-   a primer plano) lo reintenta. Hay botón "Probar aviso con el móvil bloqueado" en Ajustes →
-   Apariencia (`T.testRestNotice`, no pisa un descanso en curso) para verificar la capa 3 en el móvil.
-   Además el `AudioContext` de los pitidos **se suspende solo** (`U.audio.release()` tras cada
-   pitido y auto-suspendido 1,5 s después de cada gesto en `U.audio.ensure()`): un contexto abierto
-   en idle también retiene la salida y dejaba la música atenuada tras el aviso. El programado al SW
-   se manda por `controller` con fallback a `serviceWorker.ready` (sin controlador se perdía en
-   silencio) y al programar se pide el permiso de notificaciones si está en `default`.
-3. **Notificación PROGRAMADA en el service worker** (`sw.js` → `scheduleRest`). Si aun así la
-   pestaña está congelada o cerrada, el SW se mantiene despierto con `waitUntil` hasta la hora exacta
-   (`rest.endsAt`) y lanza la notificación del sistema (con `requireInteraction: true`). Esto es
-   **distinto** de "pedir" una notificación: el mensaje `schedule-rest` se envía al ARRANCAR el
-   descanso, y `cancel-rest` al terminar/saltar. `notifyWhenHidden()` evita el aviso duplicado si la
-   app está delante. En iOS, sin notificaciones web instaladas, el pitido+keep-alive es la única vía.
-
-También presente: el **wake lock** (`U.wakeLock`) mantiene la pantalla encendida, pero el sistema lo
-suelta al ocultar la página; por eso `U.wakeLock.refresh()` se llama en `visibilitychange` (antes se
-pedía una sola vez y se perdía para siempre).
-
-### Sonido y vibración
-`U.beep()` y `U.vibrate()` (core.js) leen los ajustes con el helper local `settings()`, que tira
-del store (`App.store.settings()`) y, si aún no está cargado, de `localStorage` (`pulso.state`).
-Se hace así **a propósito**: core.js carga antes que store.js, así que no puede capturar `S` en
-tiempo de carga. `U.beep()` respeta `settings.sound === false` y `settings.volume`; `U.vibrate()`
-respeta `settings.vibrate`. Tipos de pitido: `end` (5 avisos, ~3,5 s → fin de descanso), `tick`,
-`done` (fin de sesión), `tap`.
-
-`settings.countdownTick` (por defecto `true`, interruptor en Ajustes → Apariencia) añade un `tick`
-suave en los últimos 3 s del descanso desde `T.loop()`, con `R.lastTick` para no repetirlo (el bucle
-corre cada 500 ms). Se resetea al arrancar/ampliar/recortar/parar el descanso.
-
-### Calculadora de discos (v2: modos de carga)
-Todo se calcula en kg (`invKg()`, `T.plates()`) y cada disco mantiene su unidad original para
-mostrar "20,41 kg · 45 lb".
-
-**El peso no sale solo de la barra.** El mismo inventario no rinde igual en todo, y por eso existe
-el concepto de **huecos** (sitios donde entra un disco):
-
-| modo | clave | huecos | lo que pesa `total` |
-|---|---|---|---|
-| Barra | `bar` | 2 (lados) | barra + 2·Σ(disco por lado) |
-| 1 mancuerna (unilateral) | `db1` | 2 (extremos) | mango + 2·Σ(por extremo) |
-| 2 mancuernas (bilateral) | `db2` | 4 (2 por mancuerna) | mango + 2·Σ(por extremo **en cada una**) |
-| Máquina / mancuerna fija | `none` | 0 | el peso pedido tal cual |
-
-- Un **par** son 2 discos, así que cada medida reparte `2·pares` discos entre los huecos:
-  `cap = floor(2·pares / huecos)`. Con 8 pares de 3 kg (16 discos): la barra admite 8 por lado, una
-  mancuerna 8 por extremo y, con dos a la vez, 4 por extremo en cada una. De ahí que `db2` alcance
-  mucho menos peso que `db1` **a propósito** (es la realidad física, no un bug).
-- El reparto es siempre **simétrico** (los mismos discos en cada hueco) y se elige por
-  **enumeración completa (DP sobre las sumas alcanzables, `enumerateSums`)**, quedándose con la
-  combinación **más cercana** al peso pedido —por encima o por debajo— y, si hay empate, con la que
-  usa menos discos. Antes se hacía greedy (redondeaba hacia abajo) y podía dejar 4 kg sin usar.
-  El margen `exact` es 0,1 kg: con discos de kg y lb mezclados no tiene sentido marcar 0,04 kg como
-  "te pasas".
-- Cada ejercicio se calcula **por su cuenta** (los discos son los mismos y se mueven de un ejercicio
-  a otro; el inventario no se "gasta").
-- El modo se **sugiere** por ejercicio (`T.plateModeFor`): `bw` → `none`; nombre/equipo con
-  "mancuerna" → `db1` si el nombre es unilateral (`unilateral`, `a una mano`, `kroc`, `por lado`…)
-  y `db2` si no; nombre o equipo con "barra" → `bar`. Lo que el usuario eligió a mano manda: se
-  guarda en `settings.plateModes[exId]` (`T.setPlateMode`, clave `__tool__` para la calculadora
-  suelta) y se recuerda entre sesiones.
-- `T.maxLoadable({ mode })` devuelve `{ barKg, sideKg, totalKg, mode, per }` (**ojo: `totalKg`**, no
-  `total`); el `sideKg` es por hueco, y en `db2` el `totalKg` ya es por mancuerna.
-- **Cómo se enseña el reparto** (modal `ui.plates`): el dibujo es fiel al modo —barra, UNA
-  mancuerna o las DOS— con cada disco en su extremo y el mango/barra en el centro (`.load-vis` y
-  `.lv-chip`, colores reutilizados de `.plate.pXX`). Con **pocos** discos por hueco (hasta 6) se
-  dibuja uno a uno, en orden de carga (el más pesado pegado al mango); con **muchos**
-  (`res.discsPerHole > 6`, p. ej. 60 kg en barra = 13 por lado) se agrupan por medida en una pila
-  con "×N" (`.lv-back` asoma una franja de 5 px por disco, tope de 3 niveles). Es a propósito: la fila llegaba a
-  medir 984 px dentro de un modal de 579 y, al recortarse, parecía que un lado iba vacío. `T.plates`
-  devuelve además `discsPerHole`, `discsTotal` y `usage` (`used` vs `have` por medida) porque en
-  `db2` el mismo reparto va en los 4 extremos: "3 discos de 3 kg por extremo" son **12 discos**
-  reales y el modal lo dice ("12 en total · 6 por mancuerna", "12 de tus 16 discos de 3 kg · te
-  quedan 4"). Las filas hablan en palabras ("3 discos de 3 kg"), el máximo se etiqueta «Máximo por
-  mancuerna» y el campo del mango dice «Mango» (no «Barra»). Si un número no cuadra con la realidad,
-  lo primero que hay que mirar es Ajustes → Discos (se cuentan **pares**) y Ajustes → Barras (peso del
-  mango; por defecto 0 kg).
-- **Defecto del inventario** (`D.PLATES_DEFAULT`): 3 kg ×8 pares, 2,5 kg ×4, 1,25 kg ×4, 5 lb ×4,
-  2,5 lb ×4. **Barras a 0 kg** (`D.BARS_DEFAULT`): una barra de plástico no pesa, todo el peso lo
-  ponen los discos; los tres campos (barra, barra EZ, mango de mancuerna) son editables por si algún
-  día hay una barra que pesa. Equipo por defecto (`D.DEFAULT_EQUIPMENT`): mancuernas ajustables, discos,
-  barra cargable, barra de dominadas y paralelas; el resto apagado hasta activarlo.
-- La migración a estos valores va en `store.js` (`applyPersonalSetup`, clave `pulso.applied-setup` con
-  el id `inventario-v2`), **una sola vez por dispositivo**: si el usuario cambia el inventario a mano,
-  una recarga no se lo revierte, y un "Borrar todo" tampoco lo reaplica.
-
-### Contexto del coach (`C.buildContext`, js/coach.js)
-Se envía en **todas** las llamadas (chat, sesión de hoy, plan semanal, análisis): perfil,
-equipamiento + inventario en kg, ejercicios permitidos por grupo, **historial serie a serie real**
-(hasta 16-20 sesiones), días desde el último estímulo por grupo, récords, rutinas guardadas y
-volumen semanal. Detalle clave: el historial va etiquetado como **lo realizado** y las rutinas
-como **prescripción** ("NO es lo realizado"), y cuando la sesión salió de una rutina se añade el
-objetivo de la plantilla y el cumplimiento (`40x8, 40x7 … [objetivo plantilla: 4x10-12 · cumple
-0/4]`), para que el modelo no confunda el plan con las marcas.
-`C.parseJSON()` es tolerante (fences ```json, comas finales, recortes) porque el modelo a veces
-devuelve JSON envuelto.
-
-### Thinking / modelos (a sep-2026)
-Endpoint `POST {BASE}/models/{modelo}:generateContent?key=…`.
-`generationConfig.thinkingConfig`: `thinkingLevel` (`minimal|low|medium|high`, Gemini 3) **o**
-`thinkingBudget` (Gemini 2.5, `0` desactiva, `-1` dinámico) — son mutuamente excluyentes y en la
-app el nivel tiene prioridad; `includeThoughts: true` devuelve el resumen de razonamiento (se
-muestra plegable en el chat).
-
-### Tema y acento
-`A.applyTheme()` pone `data-theme` en `<html>` (amoled/dark/light), `--accent`, `--accent-soft` y
-`--accent-ink` (contraste calculado con luminancia) y actualiza `<meta name="theme-color">`.
-
-### Auto-test
-`selfTest()` en `app.js` respalda con `S.export()`, ejecuta las comprobaciones y restaura con
-`S.importJSON(backup)`. Cubre el store y el render de todas las vistas (en un sandbox fuera de
-pantalla), no los modales.
-
-### PWA: instalación y offline
-- `manifest.webmanifest` (nombre, iconos 192/512 + maskable, `display: standalone`, `start_url: './'`)
-  + `<link rel="manifest">` + `apple-touch-icon` y metas de iOS en `index.html`. Con eso la app es
-  instalable y abre a pantalla completa.
-- `sw.js` se registra en `init()` **solo si el protocolo es http/https** (`file://` no tiene service
-  worker: abriendo el archivo con doble clic no hay offline ni notificaciones).
-- Estrategia de caché: **network-first con respaldo en caché** (`pulso-shell-v2`). Se eligió así porque
-  el proyecto no tiene build ni hashes de archivo: con cache-first la app se quedaría congelada en una
-  versión vieja. Al estar online siempre entra la versión nueva y sin conexión se abre desde la caché.
-- El `?v=` de los assets se resuelve con `caches.match(req, { ignoreSearch: true })`, así la precarga no
-  necesita conocer la versión. Los POST (API de Gemini) y los orígenes externos **no** se interceptan.
-- `A.pwa` (en `app.js`) centraliza el estado: `installed()` (display-mode standalone), `canInstall()`
-  (evento `beforeinstallprompt` diferido), `hasSW()` e `install()`. La fila "Instalar como aplicación"
-  está en Ajustes → Datos y, si no hay prompt nativo, abre un modal con los pasos por plataforma.
-- El **mismo** service worker atiende los avisos de descanso: mensajes `notify` (aviso inmediato),
-  `schedule-rest` (programado, se mantiene despierto con `waitUntil`) y `cancel-rest`. Ver §5
-  "Aviso de descanso con el móvil bloqueado".
-
-### Rutinas personales puntuales (no son defaults)
-En `store.js` hay un array `PERSONAL_ROUTINES` con rutinas concretas que se inyectan **una sola vez por
-dispositivo** desde `seedPersonalRoutines()`: la rutina entra en `state.routines` y, si el día está
-libre, se agenda para hoy (aparece en la pestaña Hoy con "Empezar sesión").
-- El registro de "ya sembrado" va en su **propia clave de localStorage** (`pulso.seeded-routines`, vía
-  `SEED_KEY`), no en el estado: así, al hacer *Ajustes → Datos → Borrar todo*, la rutina **no vuelve**
-  (el estado se reemplaza por `freshState()`, pero las claves sueltas no se tocan).
-- Para añadir otra: un objeto en `PERSONAL_ROUTINES` con `id` estable (`rt-personal-…`), `name`, `focus`,
-  `source: 'manual'` y `items`. Al ser una clave nueva de id, se sembrará en el siguiente arranque.
-
-### Superseries (cómo se representan hoy)
-La app **no tiene soporte nativo de superseries** (sigue en la lista de mejoras del README). En una rutina
-con superseries se representan como ejercicios consecutivos y se usa el temporizador a favor:
-- el **primer** ejercicio del par lleva `rest: 15` (transición) → el timer solo marca el cambio de ejercicio;
-- el **segundo** lleva el descanso real de la superserie (`45`/`60`) → ahí es donde toca descansar;
-- y cada `notes` empieza por `SUPERSERIE n (1/2)` / `(2/2)` para que se lea en la sesión.
-
-### Peso y notas en las rutinas (por qué `weight` existe)
-Los items de rutina son `{ exId, sets, repMin, repMax, rest, weight, notes }`:
-- `weight` es **opcional** (puede ser `null`): lo usan las rutinas con pesos concretos y los planes del
-  coach IA. `S.addRoutine` lo conserva, `T.start({routineId})` lo aplica a todas las series (tiene
-  prioridad sobre la sugerencia por historial) y el editor de rutina lo mantiene al editar (no tiene
-  campo propio, pero `commit(box)` solo sobrescribe series/reps/descanso).
-- `notes` de cada item llegan a la sesión como pista debajo de las series (antes se perdían al arrancar
-  desde una rutina, porque solo las usaba el plan del día).
+- **Calculadora de discos**: el mismo inventario no rinde igual en todo, de ahí los **huecos**
+  (`bar` 2 lados, `db1` 2 extremos, `db2` 4 huecos = 2 por mancuerna, `none` 0). `cap =
+floor(2·pares/huecos)` y reparto **simétrico**, eligiendo la suma más cercana al peso pedido por
+  enumeración completa (nunca propone discos que no tengas). El margen `exact` es 0,1 kg y en `db2`
+  el peso devuelto es el de **cada** mancuerna. El dibujo se agrupa en pilas con "×N" cuando el
+  hueco lleva más de 6 discos, porque si no la fila mide 984 px dentro de un contenedor de 579 y se
+  ve cortada (parecía que un lado iba vacío).
+- **Reglas de la sesión**: el valor se arrastra hacia ABAJO (nunca hacia arriba ni a las series ya
+  marcadas), el RPE no se arrastra, el peso puede estar vacío (`''` ≠ `0`), desmarcar cancela el
+  descanso, y el descanso arranca en la última serie del ejercicio **solo** si quedan series de otro
+  (anunciando el siguiente ejercicio).
+  - En v2 el arrastre son **dos pasos** (`setSet` + `propagateSet`, igual que el handler de la v1).
+    Al portarlo se añadió `editSetField`, que hace los dos: `propagateSet` **no** escribe la serie
+    editada, solo las de abajo, y es fácil creer que sí.
+  - `toggleSet` **devuelve** la decisión de descanso (`start`/`cancel`/`none`) en vez de ejecutarla:
+    así "cuándo hay descanso" se prueba con Vitest y el timer, el pitido y el service worker viven
+    fuera del dominio.
+  - **Marcar una serie autorrellena la siguiente** con su peso y sus reps si está vacía
+    (`autofillNext`), y el descanso de una serie no se corta al marcar la última: si ya estaba
+    corriendo, sigue. Ojo: eso significa que marcar la última serie de la sesión no arranca nada
+    **pero tampoco para** lo que hubiera; lo para `finishSession`.
+- **Timer de descanso**: el tiempo restante sale de `endsAt - Date.now()` (nunca de un contador), así
+  que sigue siendo correcto con la pestaña congelada. `+15 s` con el descanso ya terminado arranca una
+  cuenta NUEVA y el aviso de "completado" se cierra solo a los 30 s. El bucle (500 ms) lo arranca
+  `App.tsx` y solo pinta/avisa: las decisiones están en `domain/rest.ts`.
+- **Sugerencia de peso**: si el 1RM calculado sale **igual o por encima** del peso de la última vez,
+  se propone `anterior + increment` (con las mismas reps el cálculo da exactamente el peso anterior,
+  así que repetir el entreno sugiere subir) y nunca se salta más de un incremento. Al revés, si pides
+  **más** repeticiones el peso baja de verdad. Está fijado en `analytics.test.ts` para que no se
+  "arregle" por parecer raro.
+- **Aviso con el móvil bloqueado**: pitido largo + keep-alive de audio + notificación programada en
+  el service worker. Son tres capas a propósito; no basta con una.
+- **PWA**: manifest instalable, service worker network-first (para no congelar versiones sin
+  hashes) y notificaciones de fin de descanso.
 
 ---
 
-## 6. Privacidad
+## 6. Registro de cambios
 
-Sesiones, rutinas, ajustes, inventario y la API key viven **solo en `localStorage`**. No hay
-backend ni analítica. La única salida de red es `generativelanguage.googleapis.com` cuando se usa
-el coach. Si `localStorage` está bloqueado, `U.st` cae a memoria y la app avisa (los datos no
-persisten).
-
----
-
-## 7. Revisión de bugs y arreglos (15-sep-2026)
-
-Verificado en navegador real (servidor local + Playwright) además de por lectura de código.
-**Todo lo de esta sección está arreglado y verificado**; queda como referencia de por qué se
-programó así.
-
-### 🔴 Crítico · `U.modal()` borraba el DOM antes de resolver la promesa
-`close(val)` hacía `scrim.remove()` y **después** `resolve(val)`; los `.then()` corren como
-microtask, o sea después del borrado, así que cualquier handler que leyera el modal con
-`U.$('#algo')` recibía `null` o `undefined`. Una sola causa raíz, seis funciones rotas:
-
-| Función | Síntoma (verificado antes del arreglo) | Arreglo |
-|---|---|---|
-| `U.promptDialog()` | Devolvía siempre `null` → no se guardaban notas de ejercicio, nota de sesión ni el renombrado de sesión. | El valor se lee en `onClick` del botón Guardar (y con Enter en `onMount`). |
-| `ui.exerciseEditor()` | `TypeError: …reading 'trim'` → crear/editar ejercicios propios no guardaba nada y fallaba en silencio (unhandled rejection). | Nuevo `readPatch(box)` en `onClick`; valida el nombre antes de cerrar (si está vacío, avisa y **no cierra**). |
-| `ui.routineEditor()` | Guardaba "Rutina sin nombre" y perdía nombre/enfoque/notas. | `commit(box)` en `onClick` lee cabecera **y** las series/reps de cada ejercicio del modal. |
-| `ui.plates()` | "Usar este peso" no aplicaba nada (`onUse` nunca se llamaba). | El botón resuelve con el peso leído en ese momento. |
-| `ui.timer()` | Ignoraba los segundos elegidos y siempre arrancaba 90 s. | El botón resuelve con `#tm-sec` (acotado 5-3600). |
-| `onboarding()` | El equipo elegido se perdía: elegir "Gimnasio completo" cargaba "casa básica". | El botón Empezar resuelve con un objeto `{name, goal, days, units, equip}`. |
-
-Extra: `onboarding()` usaba la clave inexistente **`bosca`** (es `bosu`) en el preset gym y su
-"Casa básica" no coincidía con la de Ajustes. Ahora los dos usan `D.equipPreset(kind)` en
-`data.js` (fuente única) y los tests confirman que el preset gym excluye `bosu` y `trap_bar`.
-
-**Por qué se programó así ahora:** el patrón `close(datos)` deja el `.then()` como consumidor
-puro de valores y elimina la dependencia de "el DOM sigue vivo". Ver §4 · Contrato de los modales.
-
-### 🟠 Alto · `views-train.js` mostraba "máx 0 kg"
-`T.maxLoadable()` devuelve `totalKg`; la tarjeta de la calculadora de discos usaba `ml.total`
-(inexistente). Arreglado → "máx 200 kg" en el caso por defecto.
-
-### 🟡 Medio · Los ajustes de sonido y vibración se leían de una clave inexistente
-`U.beep()`/`U.vibrate()` leían `U.st.get('settings')`, pero los ajustes están en
-`pulso.state.settings` (la única clave es `pulso.state`). Efectos: el volumen siempre era 0,6 y
-los interruptores "Vibración" y "Sonido" no hacían nada. Arreglado con el helper `settings()` de
-core.js (store → localStorage) y respetando `sound`.
-
-### 🟡 Medio · Pesos con decimales invisibles en la sesión
-En `setRow` (views-train.js) el `value` de los `<input type="number">` se generaba con
-`U.fmt.n()` (coma decimal, "2,5"), y el navegador **descarta** ese valor: el campo aparecía
-vacío (aviso en consola `The specified value "2,5" cannot be parsed`). Afectaba a cualquier peso
-o repetición decimal (medio kilo/lb, conversiones kg↔lb). Arreglado con el helper `inputNum(v)`
-(punto decimal).
-
-### 🟡 Bajo · Duplicidad y limpieza
-- Ajustes → Entreno tenía **dos filas para el mismo ajuste** `autoRest` ("Descanso automático al
-  marcar serie" e "Iniciar descanso automático"); se quitó la segunda (no era un ajuste distinto).
-- El onboarding usaba `data-act="ob:equip"` sin acción registrada → aviso `acción sin handler` en
-  cada click. Ahora usa `data-ob-equip`, como el resto de modales (`data-dact`).
-- `index.html`: añadido `<meta name="mobile-web-app-capable">` (el de Apple está deprecado en
-  Chrome). Consola limpia: 0 errores y 0 avisos en una carga normal.
-- `U.fmt.n(v, dec)` ignoraba `dec` (salvo 0) y `U.fmt.w()` era código muerto con ramas idénticas;
-  ahora `dec` fija los decimales máximos (con caché de formateadores) y `U.fmt.w()` = 1 decimal.
-- `views-coach.js`: eliminada la condición `!V._noScroll` (variable que nunca se asignaba).
-- `views-routines.js`: eliminado un `var last` sin usar.
-- `App.ui._notified` crecía sin límite; ahora se guarda solo la última sesión avisada
-  (`_notifiedSession`).
-- `README.md`: "24 comprobaciones" → 57; nota de que el auto-test no cubre modales.
-- `trainer.js`: comentario de cabecera actualizado (ya no hay modal de descanso).
-
-### Cómo se verificó (útil para repetirlo)
-Con la app servida en local y Playwright: auto-test 57/57, `node --check` de todos los JS, y los
-flujos a mano: `promptDialog` devolviendo el texto escrito, editor de rutina guardando
-nombre/enfoque/series, editor de ejercicio creando y editando, calculadora devolviendo el peso,
-temporizador respetando 45 s, `beep` silencioso con Sonido off y con volumen 0,2, tarjeta "máx
-200 kg", onboarding aplicando gym y solo-peso-corporal, sesión completa (empezar → marcar serie →
-descanso dentro del recuadro → finalizar → detalle), notas de sesión, y menú de rutina →
-eliminar dejando 0 modales abiertos. Consola: 0 errores.
-
----
-
-## 8. Registro de cambios
-
-| Fecha | Cambio | Por qué |
-|---|---|---|
-| 15-sep-2026 | Creación de `AGENTS.md` | Documentar arquitectura, decisiones e informe de la revisión para no perder contexto entre sesiones. |
-| 15-sep-2026 | Arreglo del bug crítico de `U.modal` en los 6 flujos afectados (promptDialog, editores de rutina y ejercicio, calculadora de discos, temporizador, onboarding) | Eran funciones que no guardaban nada y fallaban sin avisar. Se adoptó el patrón `onClick(box, close)` y se documentó el contrato en §4. |
-| 15-sep-2026 | Helper `settings()` en core.js; `U.beep` respeta `sound` y `volume`; `U.vibrate` respeta `vibrate` | Los ajustes se leían de una clave de localStorage que no existe: los interruptores no hacían nada. |
-| 15-sep-2026 | `D.equipPreset()` / `D.EQUIP_PRESETS` y uso en onboarding y Ajustes → Equipo | Unificar los presets, que no coincidían, y corregir la clave inexistente `bosca` → `bosu`. |
-| 15-sep-2026 | `inputNum()` en views-train + `U.fmt.n(dec)` corregido | Los pesos decimales se pintaban con coma y los `<input type="number">` los descartaban (campos vacíos). |
-| 15-sep-2026 | `ml.total` → `ml.totalKg`; pila de modales en `U.modal`; fila duplicada de `autoRest`; limpiezas varias | Bugs menores y ruido; la pila hace que cerrar un diálogo devuelva el foco al modal de debajo en vez de dejarlo huérfano. |
-| 15-sep-2026 | `sw.js` con shell offline + precarga; `manifest` ampliado (`id`, `dir`, `display_override`, `categories`); `A.pwa` + fila "Instalar como aplicación" en Ajustes → Datos | La app ya era instalable pero no había offline: el service worker solo atendía notificaciones. Se eligió network-first con respaldo en caché para no congelar versiones en un proyecto sin hashes. |
-| 15-sep-2026 | `weight` opcional en los items de rutina (+ `T.start` lo aplica y arrastra las `notes`); coach y editor lo conservan | Los pesos del coach y de las rutinas con peso se perdían al guardar/arrancar: la sesión siempre prellenaba con la sugerencia por historial. |
-| 15-sep-2026 | `PERSONAL_ROUTINES` + `seedPersonalRoutines()` con la rutina "Espalda + Pecho + Brazos (superseries)" y su agenda para el día | El usuario pidió esa rutina para entrenar ya, y solo una vez: se siembra una sola vez por dispositivo (clave `pulso.seeded-routines`) y no reaparece al borrar los datos. |
-| 16-sep-2026 | Aviso de fin de descanso de ~3,5 s (`U.beep('end')` = 5 avisos) + `U.keepAlive` (audio de silencio en bucle + `mediaSession`) + `U.wakeLock.refresh()` | Con el móvil bloqueado el navegador congela la pestaña y no sonaba nada: el keep-alive la mantiene viva para que el pitido llegue, y el aviso es largo para oírse desde lejos. |
-| 16-sep-2026 | `schedule-rest` / `cancel-rest`: el descanso se **programa** en el service worker (`waitUntil` + `showNotification` con `requireInteraction`) | Tercera capa del aviso con el móvil bloqueado o la app cerrada; `notifyWhenHidden()` evita el duplicado si la app está delante. |
-| 16-sep-2026 | Calculadora de discos v2: modos `bar`/`db1`/`db2`/`none`, huecos y `cap = floor(2·pares/huecos)`, reparto simétrico por enumeración completa y alternativas (±1 paso) en la UI; `settings.plateModes` recuerda el modo por ejercicio | Antes asumía una barra: con mancuernas ajustables daba pesos imposibles de montar con el inventario real. Ahora busca el peso más cercano al pedido y explica cómo cargarlo. |
-| 16-sep-2026 | Inventario y equipo por defecto nuevos (`D.PLATES_DEFAULT`, `BARS_DEFAULT` a 0 kg, `DEFAULT_EQUIPMENT` con mancuernas ajustables + discos + dominadas + paralelas) y migración única `inventario-v2` (`pulso.applied-setup`) | Ajustar la app al material real del usuario sin pisarle los cambios que haga después a mano. |
-| 16-sep-2026 | `paint(root)` en el timer de descanso (la vista le pasa su contenedor) | `document.getElementById('session-rest')` podía pintar otra copia del mismo id (p. ej. el render del auto-test) y dejaba el recuadro vacío. |
-| 16-sep-2026 | Auto-test ampliado a 66 comprobaciones (modos de la calculadora, caps por modo, beep de ~3,5 s, precisión del solver) y ahora independiente de los modos guardados | El test anterior no cubría nada de esto y fallaba si el usuario había guardado un modo a mano. |
-| 16-sep-2026 | Descanso: no arranca en la última serie del ejercicio salvo que queden series en otro (entonces sí, anunciando el siguiente ejercicio); desmarcar cancela; `+15s` funciona tras terminar el descanso; ticks en los últimos 3 s (`settings.countdownTick`) | Detalles de experiencia pedidos por el usuario: el descanso no tiene sentido al terminar un ejercicio, pero sí al cambiar de máquina, y el aviso debe decir a qué vas en vez de a qué acabas de ir. |
-| 16-sep-2026 | Recuadro de descanso **pegajoso** (`--appbar-h` + `syncAppbarHeight()`) y botón que alterna descanso ↔ resumen (`rest:view`, `#sr-mini-time`) | Con 11 ejercicios el tiempo de descanso se iba de la pantalla al bajar por la lista. |
-| 16-sep-2026 | Arrastre del valor hacia abajo entre series (`T.propagateSet`) con refresco directo de los inputs | Pedido del usuario: cambiar el peso en la serie 1 debe aplicarse a las siguientes, y desde la 3 solo de la 3 en adelante. |
-| 16-sep-2026 | Peso vacío en vez de `0` cuando no hay historial (`prefill`/`blankSet`) | Un 0 en todas las series parecía un dato obligatorio y falseaba la lectura de los ejercicios a peso corporal. |
-| 16-sep-2026 | Columna de **RPE por serie** (solo con `settings.showRpe`), acotada a 1-10 y visible en el detalle de la sesión | El interruptor "Mostrar RPE" existía desde el principio pero no mostraba nada (ni había dónde apuntarlo). |
-| 16-sep-2026 | Rama `chore/dev-stack`: `tools/` con herramientas de desarrollo **sin dependencias** (`serve.mjs` con `no-store`, `check.mjs` con comprobaciones propias, `selftest.mjs` en Chrome headless con código de salida), `package.json` solo con scripts (`serve`/`check`/`selftest`/`verify`), `.editorconfig` y `node_modules/`+`_shots/` ignorados. `check.mjs` destapó dos cosas y se arreglaron: el botón "Cargar datos de ejemplo" de Progreso usaba `data-act="settings:demo"` **sin handler** (no hacía nada) y `cal:week-plan` estaba registrado sin usarse (eliminado). | El proyecto no tenía linter ni forma de verificar sin abrir el navegador a mano, y las convenciones de §4 (`data-act` con handler, iconos existentes, `SHELL` completo) se rompían en silencio. Las herramientas son de desarrollo: la app sigue sin dependencias, sin build y abriéndose con doble clic. |
-| 16-sep-2026 | Calculadora de discos con muchos discos por hueco: se agrupan por medida en una pila con "×N" (`.lv-back`) y se quita la fila de chips de abajo, que repetía lo mismo | La fila de discos medía 984 px dentro de un modal de 579: se veía cortada y parecía que un lado de la barra iba vacío (60 kg = 13 discos por lado). El caso de mancuernas de 18 kg (3 por extremo) se sigue viendo disco a disco. |
-| 16-sep-2026 | Calculadora de discos: **dibujo fiel al modo** (barra, una mancuerna o las dos, con los discos en sus extremos y el mango en el centro) en vez de la barra única con etiquetas en el medio; `T.plates` ahora devuelve `discsPerHole`, `discsTotal` y `usage` (discos usados vs disponibles) y el modal lo enseña en palabras ("3 discos de 3 kg por extremo", "12 en total · 6 por mancuerna", "12 de tus 16 discos de 3 kg · te quedan 4"); etiquetas del campo mango y "Máximo por mancuerna" corregidas (antes decía "Barra" y "Máximo en este modo") | En "2 mancuernas" el dibujo parecía una barra con 3 discos en el centro y el usuario no podía saber que necesitaba 12 discos: el cálculo era correcto (18 kg = 3 discos de 3 kg por extremo en cada mancuerna) y parecía erróneo. Ahora el reparto se ve dónde va y contra qué inventario. |
-| 16-sep-2026 | Botones que no aplican: borrar serie oculto con una sola serie, flechas de reordenar deshabilitadas en los extremos, scroll + resaltado al añadir ejercicios, y el descanso usa el nombre del **siguiente** ejercicio | Varios toques no daban respuesta o dejaban el resultado fuera de la pantalla. |
-| 17-sep-2026 | Keep-alive solo durante el descanso + sin `mediaSession.metadata` + ajuste `bgAudio` + `U.audio.release()` tras los pitidos + auto-suspend en `ensure()` + `swPost` con fallback a `ready` + permiso al programar + `timestamp` en el SW |
-| 17-sep-2026 | El `<audio>` de silencio ya no se enciende en Android moderno (el aviso lo programa el SW sin pedir foco de audio: cero ducking de Spotify); queda solo como último recurso sin SW o en iOS. Se elimina el ajuste `bgAudio`, se añade botón "Probar aviso con el móvil bloqueado" (`T.testRestNotice`) y versión 1.0.3 | El `<audio>` de silencio vivía toda la sesión y anunciaba "Pulso" como reproductor: con Spotify + bluetooth la música quedaba atenuada de forma permanente. Ahora el silencio solo suena en el descanso (y se apaga al terminarlo), no roba los controles, el `AudioContext` se suspende tras cada pitido y quien escuche música puede apagarlo en Ajustes → Apariencia sin perder el aviso (sigue por notificación del sistema + vibración). |
+| Fecha       | Cambio                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Por qué                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 16-sep-2026 | Rama `v2` desde `main`: `legacy/` con la v1 congelada, toolchain (Vite 8 + TypeScript 6 + Preact 10 + Vitest 5 + ESLint/Prettier) y scripts `dev/build/test/lint/typecheck/verify`                                                                                                                                                                                                                                                                     | Tener un stack donde el estado tenga tipos, la lógica se pueda probar sin navegador y las vistas no se monten concatenando strings.                                                                                                                                                                                                                                                                                                |
+| 16-sep-2026 | Dominio puro portado: `num`, `format`, `units`, `dates`, `defaults` y `plates` (el solver de discos, ahora sin estado escondido) + **33 tests** con Vitest                                                                                                                                                                                                                                                                                             | Son las piezas que más se tocan y las que en la v1 solo se podían verificar dentro del navegador con `?selftest=1`.                                                                                                                                                                                                                                                                                                                |
+| 16-sep-2026 | `src/state/store.ts`: ajustes reactivos con signals, lectura tolerante y **mismo formato de `localStorage`** que la v1                                                                                                                                                                                                                                                                                                                                 | Los datos ya existentes valen en las dos ramas y no hace falta migrar nada.                                                                                                                                                                                                                                                                                                                                                        |
+| 16-sep-2026 | `src/ui/Plates.tsx` + `src/ui/LoadView.tsx`: la calculadora de discos ya funciona en la v2 (modo, ±, alternativas, inventario usado y el dibujo con pilas) y recuerda el modo por ejercicio                                                                                                                                                                                                                                                            | Primer bloque end-to-end en el stack nuevo; sirve de referencia para portar el resto.                                                                                                                                                                                                                                                                                                                                              |
+| 16-sep-2026 | `src/app/App.tsx` (shell + estado de migración visible) y `src/styles/v2.css` sobre `base.css`                                                                                                                                                                                                                                                                                                                                                         | Poder abrir la v2 y ver qué está portado y qué no, sin depender de la documentación.                                                                                                                                                                                                                                                                                                                                               |
+| 16-sep-2026 | Añadido `useGrouping: true` explícito en los formateadores                                                                                                                                                                                                                                                                                                                                                                                             | V8/Intl ya no separa millares de 4 dígitos por defecto: 1000 kg se leían "1000" en vez de "1.000".                                                                                                                                                                                                                                                                                                                                 |
+| 16-sep-2026 | Catálogo portado: `catalog.ts` (generado con `tools/port-catalog.mjs` desde `legacy/js/data.js`) + `data.ts` (grupos, material, presets, disponibilidad) + `text.ts` (norm/slug/similarity) + `library.ts` (`mergeSeed`) con 24 comprobaciones nuevas                                                                                                                                                                                                  | El catálogo son ~300 líneas de datos que se colaban a mano con erratas (grupo o material inexistente, ids repetidos): ahora se genera y hay tests de integridad. De paso aparecieron dos datos curiosos que quedan fijados en los tests: el catálogo tiene **49** piezas de material (48 + `paralelas`, no 50 como decía la doc de la v1) y **10** ejercicios de cardio/movilidad con `rest: 0` a propósito (se miden en minutos). |
+| 16-sep-2026 | `src/state/store.ts`: material (`equipment`) y biblioteca (`exercises`, ya fusionada con lo guardado) como signals, con `setEquipment` y `setExerciseAllowed`                                                                                                                                                                                                                                                                                          | Para que el dominio puro sea usable desde la UI sin volver a leer el estado a mano, y para que la tarjeta de biblioteca muestre datos reales (136 ejercicios, 45 disponibles con el material por defecto).                                                                                                                                                                                                                         |
+| 16-sep-2026 | Movido el tooling de la v1 (`tools/serve                                                                                                                                                                                                                                                                                                                                                                                                               | check                                                                                                                                                                                                                                                                                                                                                                                                                              | selftest.mjs`) fuera de esta rama | Esas comprobaciones eran para `js/*.js` y el auto-test del navegador; en v2 su equivalente es typecheck + lint + Vitest + build. Siguen en `main`. |
+| 24-sep-2026 | Analítica portada: `src/domain/analytics.ts` (1RM de Epley, volumen, series, duración, ventanas, reparto por grupo, _staleness_, semanas, rachas, PRs, histórico y sugerencia de peso, todo por parámetro) + **42 tests** y la tarjeta `ProgressCard`                                                                                                                                                                                                  | Era el bloque que necesita "Progreso", y es puro: se prueba entero sin navegador. La regla de la sugerencia de peso (subir un incremento cuando el cálculo no da más) parecía un bug hasta ver el caso, así que queda documentada y fijada en tests.                                                                                                                                                                               |
+| 24-sep-2026 | `src/state/store.ts`: signal de solo lectura `sessions`, con validación de forma                                                                                                                                                                                                                                                                                                                                                                       | La tarjeta de progreso lee el mismo `pulso.state` que la v1, así que los números de las dos ramas se pueden contrastar a ojo. Apilar y editar sesiones llega con el bloque de la sesión activa.                                                                                                                                                                                                                                    |
+| 24-sep-2026 | Timer de descanso portado a `src/domain/rest.ts` (**23 tests**) y pitido/vibración a `src/platform/audio.ts`                                                                                                                                                                                                                                                                                                                                           | La máquina de estados (ticks de los últimos 3 s, aviso de fin una sola vez, cierre a los 30 s, `+15 s` que arranca cuenta nueva) deja de estar dentro del bucle de la UI. El `now` entra por parámetro, así que se prueba sin esperar 90 s de verdad.                                                                                                                                                                              |
+| 24-sep-2026 | Catálogo de **iconos** generado con `tools/port-icons.mjs` (54 iconos) + `src/ui/Icon.tsx` y `src/ui/Ring.tsx`                                                                                                                                                                                                                                                                                                                                         | Copiar 54 trazos SVG a mano es la misma trampa que el catálogo de ejercicios: se genera desde `legacy/js/core.js`. El anillo del descanso pasa a ser un componente (en la v1 había que refrescarlo a mano con `U.ringUpdate`).                                                                                                                                                                                                     |
+| 24-sep-2026 | `src/state/session.ts` (sesión en curso + descanso con signals y **la misma persistencia que la v1**: `pulso.state.active` y `pulso.rest`) y `src/ui/SessionCard.tsx`                                                                                                                                                                                                                                                                                  | Ya se puede entrenar entero en la v2: marcar series, arrastre del peso, descanso con recuadro pegajoso, notas, finalizar (apila la sesión y marca el día como hecho, con el mismo formato que la v1) o descartar. Verificado en el navegador de principio a fin.                                                                                                                                                                   |
+| 24-sep-2026 | `autofillNext` en `domain/session.ts` (marcar rellena la siguiente) y el aviso de "todas las series marcadas"                                                                                                                                                                                                                                                                                                                                          | Eran dos detalles de la v1 que estaban en el handler del click, no en `T.toggleSet`: sin el autorrelleno, cada serie se escribe desde cero.                                                                                                                                                                                                                                                                                        |
+| 24-sep-2026 | Reglas de la sesión portadas a `src/domain/session.ts` (**39 tests**) con tipos `ActiveSet`/`ActiveEntry`/`ActiveSession`, `findExerciseByName` en `data.ts` y la operación combinada `editSetField`                                                                                                                                                                                                                                                   | Son las reglas que más se rompen sin querer (arrastre hacia abajo, peso vacío ≠ 0, cuándo arranca el descanso) y en la v1 solo se podían comprobar entrenando o con el auto-test del navegador. Las funciones no mutan nada (para que Preact repinte solo) y devuelven la decisión de descanso en vez de arrancar el timer.                                                                                                        |
+| 29-sep-2026 | Migración **prácticamente completa**: las 7 pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y Ajustes), coach IA (`src/features/coach/` + `src/state/coach.ts`) con memoria, consultas al historial y planificador local sin key (`src/domain/plan.ts`), extras de sesión (discos por serie, «Añadir rutina», picker multi, descanso editable), avisos con el móvil bloqueado, PWA e onboarding. `npm run test` ≈ **585 tests** | `src/app/roadmap.ts` queda en **16 de 16 bloques `portado`**, así que el estado se mira ahí y no en la doc. Los dos archivos de red del coach (`smoke.test.ts`, `edge.test.ts`) son los únicos que hablan con Gemini de verdad: van con la key de `.env.local` y se excluyen con `--exclude`.                                                                                                                                      |

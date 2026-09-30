@@ -1,28 +1,33 @@
 # Pulso · entrenamiento, progreso y coach AI
 
-App de entrenamiento personal en **HTML + CSS + JS vanilla**, sin dependencias, sin build y sin
-servidores propios. Todos los datos viven en tu dispositivo (`localStorage`). El coach con IA es
-opcional y usa **tu propia API key de Gemini**.
+App de entrenamiento personal hecha con **Vite + TypeScript + Preact**. Todos los datos viven en
+tu dispositivo (`localStorage`). El coach con IA es opcional y usa **tu propia API key de Gemini**,
+y **todo funciona sin key** (el planificador local cubre sugerencias y plan semanal).
+
+> La **v1** (HTML + CSS + JS vanilla, sin build) quedó congelada en `legacy/` y en el tag
+> **`v1-final`**; su documentación de diseño está en **`AGENTS-v1.md`**. El contexto completo de
+> esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
 
 ---
 
 ## Cómo abrirla
 
-**Opción A · doble clic**
-Abre `index.html` en el navegador. Funciona directamente: la API de Gemini permite CORS desde
-`file://`, así que el coach AI también funciona así.
-
-**Opción B · servidor local (recomendado)**
-Garantiza que `localStorage` siempre esté disponible (algunos navegadores lo restringen en `file://`):
-
 ```bash
-cd /Users/fama/Documents/cline
-python3 -m http.server 8080
-# abre http://localhost:8080
+npm install          # una vez
+npm run dev          # http://localhost:5173 — desarrollo con HMR
+npm run build        # build de producción en dist/
+npm run preview      # sirve el build
 ```
 
-En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pantalla de inicio
-(la interfaz es mobile-first, con navegación inferior y soporte de área segura/notch).
+Verificación completa: `npm run verify` (typecheck + lint + tests + build).
+
+En el móvil: despliega `dist/` en cualquier hosting estático (funciona desde un subdirectorio) o
+sírvelo desde tu ordenador y abre su IP; puedes **añadirlo a la pantalla de inicio** (PWA: abre a
+pantalla completa y funciona offline).
+
+> Los tests de red del coach (`smoke`/`edge`) leen la key de `.env.local` (gitignored) y hacen
+> ~13 llamadas a Gemini por `npm run test`; para una pasada sin red:
+> `npx vitest run --exclude 'src/features/coach/{smoke,edge}.test.ts'`.
 
 ---
 
@@ -53,7 +58,8 @@ En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pa
   ~180-240 s, auxiliares ~90-120 s, aislamientos ~60-75 s) y el coach IA puede ajustarlo por sesión.
   En la pantalla de sesión solo se muestra el tiempo sugerido.
 - **Aviso de fin aunque no estés mirando la app**: al terminar suena el pitido, vibra y lanza una
-  **notificación del sistema**; con la app en segundo plano la lanza el *service worker* (`sw.js`), y con el
+  **notificación del sistema**; con la app en segundo plano la lanza el *service worker*
+  (`public/sw.js`), y con el
   móvil bloqueado la recibes si instalas la app como PWA (Añadir a pantalla de inicio; en iOS es
   requisito, 16.4+). El aviso es un **pitido largo (~3,5 s) + vibración + notificación**: mientras hay
   sesión activa la app mantiene su audio en segundo plano (un audio en silencio en bucle) para que el
@@ -116,7 +122,7 @@ En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pa
 - **Se instala como app** (Añadir a pantalla de inicio / icono de instalar del navegador) y abre a pantalla
   completa, sin barra del navegador. Desde *Ajustes → Datos → Instalar como aplicación* hay un botón que usa el
   diálogo nativo si está disponible y, si no (p. ej. Safari en iOS), explica los pasos.
-- **Funciona sin conexión**: el *service worker* (`sw.js`) cachea el shell (HTML, CSS, JS e iconos) la primera
+- **Funciona sin conexión**: el *service worker* (`public/sw.js`) cachea el shell (HTML, CSS, JS e iconos) la primera
   vez y luego sirve **network-first con respaldo en caché**, así que online siempre entra la versión nueva y
   offline abre igual. Los datos ya eran locales, así que todo queda disponible.
 - Las notificaciones de fin de descanso siguen funcionando con la app en segundo plano o el móvil bloqueado
@@ -161,7 +167,8 @@ En el móvil: sirve la carpeta y abre la IP de tu ordenador, o añádela a la pa
 ### Qué recibe exactamente el coach (transparencia del contexto)
 
 Cada petición a Gemini lleva, como `systemInstruction`, el contexto generado por `buildContext()` en
-`js/coach.js`. Se envía **en todas las funciones del coach** (chat, sesión de hoy, plan semanal y análisis):
+`src/features/coach/context.ts`. Se envía **en todas las funciones del coach** (chat, sesión de hoy,
+plan semanal y análisis):
 
 1. **Perfil**: nombre, nivel, objetivo, días/semana, unidades, incremento, descanso base y rangos objetivo
    (series/reps/descanso derivados del objetivo).
@@ -193,65 +200,55 @@ se guarda en servidores propios.
 ## Estructura del proyecto
 
 ```
-index.html              · shell: appbar, vista, modal de descanso, nav inferior, modales, toasts
-sw.js                   · service worker: shell offline (network-first + caché) y notificaciones de descanso
-manifest.webmanifest    · PWA instalable (Añadir a pantalla de inicio)
-icons/                  · icono de la app (svg + png 192/512)
-assets/styles.css       · design system (temas AMOLED/dark/light, componentes)
-js/core.js              · utilidades: DOM, fechas, storage con fallback, toasts, modales, audio, iconos, markdown
-js/data.js              · grupos musculares, catálogo de equipo, 136 ejercicios, plantillas, ajustes por defecto
-js/store.js             · estado + persistencia + analítica (volumen, 1RM, PRs, racha, staleness) + generadores
-js/charts.js            · gráficos SVG (barras, líneas/área, donut, barras horizontales, heatmap, sparkline)
-js/trainer.js           · sesión activa, timer de descanso, calculadora de discos
-js/coach.js             · cliente Gemini, contexto, planificador local, mapeo de respuestas de la IA
-js/views-train.js       · pestaña Hoy (sesión activa + panel)
-js/views-routines.js    · biblioteca y plantillas
-js/views-calendar.js    · semana, día, mes y auto-planificación
-js/views-coach.js       · chat y acciones rápidas
-js/views-stats.js       · progreso y gráficos
-js/views-settings.js    · todos los ajustes
-js/app.js               · router, delegación de eventos, tema, modales/helpers de UI, arranque y auto-test
-tools/                  · herramientas de desarrollo en Node, SIN dependencias (servir, comprobar, auto-test)
-package.json            · solo scripts de desarrollo (la app no usa Node, ni deps, ni build)
+index.html              · entrada de Vite (carga src/main.tsx)
+src/main.tsx            · monta <App /> en #app e importa los estilos
+src/app/                · shell de la app (App.tsx), router y roadmap de migración
+src/domain/             · NÚCLEO PURO (sin DOM ni estado): discos, analítica, sesión,
+                          descanso, planner local, catálogo (generado) y formatos
+src/state/              · estado + persistencia (store, sesión activa, coach, chat)
+src/features/coach/     · cerebro del coach: contexto, memoria, historial, prompts,
+                          parseo, cliente Gemini y planificador local
+src/ui/                 · componentes y vistas Preact (Hoy, Entrenar, Rutinas,
+                          Calendario, Coach, Progreso, Ajustes, Onboarding)
+src/platform/           · lo que toca el navegador (audio, keep-alive, SW, notify, theme)
+src/styles/             · base.css (heredado de la v1) + v2.css y estilos por vista
+public/                 · manifest, service worker e iconos de la PWA
+tools/                  · scripts de migración (port-catalog.mjs, port-icons.mjs)
+legacy/                 · la v1 congelada (referencia; no se toca ni se formatea)
 ```
 
-Sin módulos ES a propósito: se puede abrir con doble clic (`file://`) sin CORS ni bundler.
+Regla de dependencias: `domain ← features ← state ← ui`. El dominio no importa nada de
+fuera de sí mismo, así que se prueba sin navegador.
 
 ---
 
 ## Herramientas de desarrollo
 
-Todo esto es **opcional** y **sin dependencias** (solo Node 18+): la app sigue abriéndose con doble
-clic sobre `index.html`. No hay `npm install` que hacer.
-
 | Comando | Qué hace |
 |---|---|
-| `npm run serve` | Servidor local con `Cache-Control: no-store` y MIME correcto (evita el clásico "estoy probando código viejo"). Acepta puerto: `node tools/serve.mjs 8081`. |
-| `npm run check` | Comprobaciones estáticas propias: sintaxis de los `js/*.js`, assets de `index.html`, SHELL del service worker, `data-act` sin handler (el aviso "acción sin handler"), iconos inexistentes y orden de carga. |
-| `npm run selftest` | Auto-test en Chrome **headless**: falla si no pasan todas las comprobaciones. Acepta `--chrome "ruta"`, `--port`, `--verbose`. |
-| `npm run verify` | `check` + `selftest`: la puerta rápida antes de dar algo por bueno. |
-
-Sobre el editor: hay `.editorconfig` (UTF-8, LF, 2 espacios) para que no se peleen sangrías ni saltos.
+| `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
+| `npm run typecheck` | `tsc --noEmit` con `strict`. |
+| `npm run lint` | ESLint con reglas tipadas. |
+| `npm run test` | Vitest (dominio, estado y UI; ~687 tests). |
+| `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
+| `npm run format` | Prettier sobre todo lo que no sea `legacy/`. |
 
 ---
 
 ## Notas de desarrollo
 
-- **Auto-test integrado**: añade `?selftest=1` (o `#selftest`) a la URL. Ejecuta 78 comprobaciones
-  (equipo, discos, 1RM, planificador, ciclo completo de sesión, reglas del descanso y arrastre del
-  peso entre series, calendario, analítica, JSON tolerante, markdown, unidades, rutinas, contexto del
-  coach y render de todas las vistas) y muestra el informe. Restaura tus datos al terminar. No cubre
-  los flujos de modal: verifícalos a mano.
-- **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo, aplica un plan semanal y deja la app
-  con datos para probar gráficos y calendario. Se quitan desde *Ajustes → Datos*.
-- Añadir un ejercicio a la biblioteca: una línea en `D.SEED_EXERCISES` de `js/data.js`:
-  `E('Nombre', 'grupo', 'material_a&material_b|c', 'compuesto', 4, 8, 12, 150)`.
-  El material usa `&` (Y) y `|` (O); cadena vacía = peso corporal. Al recargar, la app fusiona la semilla
-  y conserva tus flags de permitido/prohibido.
-- Añadir una vista: cualquier objeto en `App.views` con `title`, `icon` y `render(root)`. Para añadir una
-  pestaña, amplía `TABS` en `js/app.js`.
-- Acciones: todo se maneja por delegación con `data-act`, `data-act-change` (p. ej. inputs) y
-  `data-act-input` (búsquedas). Registra handlers en `App.actions['algo:accion']`.
+- **Tests**: viven en `src/**/*.test.ts` (Vitest). Lo que en la v1 era el auto-test del navegador
+  (`?selftest=1`) ahora son tests de dominio/estado/UI sin navegador; los flujos de modal y timer
+  que no se pueden probar así se verifican con Playwright.
+- **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y
+  calendario. Se quitan desde *Ajustes → Datos*.
+- **Catálogo e iconos generados**: `src/domain/catalog.ts` y `src/ui/icons.ts` se generan desde la
+  v1 con `node tools/port-catalog.mjs` / `port-icons.mjs`; no se editan a mano.
+- **Añadir un ejercicio**: a la semilla del generador o desde *Ajustes → Ejercicios* (los propios
+  se fusionan con la semilla al recargar, conservando tus flags de permitido/prohibido).
+- **Añadir una pestaña**: amplía `TABS` en `src/app/router.ts` y añade la vista en `src/ui/`.
+- **Estado**: todo pasa por los setters de `src/state/store.ts` (lectura-modificación-escritura),
+  nunca se escribe el estado a mano.
 
 ---
 

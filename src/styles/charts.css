@@ -1,0 +1,122 @@
+/* ==========================================================================
+   Pulso v2 · charts.css — estilos de los gráficos de Progreso (src/ui/charts.tsx)
+
+   Port del aspecto de `legacy/js/charts.js` + `views-stats.js`. Las clases
+   genéricas de la v1 (`.chart-wrap`, `.ct-grid`, `.ct-axis`, `.ct-line`,
+   `.ct-dot`, `.bar`, `.empty`, `.sec-head`, `.kpi`…) ya viven en `base.css` y
+   aquí NO se repiten: solo se añade lo propio con prefijo `ch-`, para poder
+   podar `base.css` cuando la vista esté entera en componentes.
+   ========================================================================== */
+
+/* Contenedor de un gráfico: misma caja que `.chart-wrap` de la v1. */
+.ch-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px;
+}
+
+/* viewBox + width 100%: el gráfico escala al contenedor, el texto va en
+   unidades del viewBox (en una tarjeta de 360 px sale a tamaño natural). */
+.ch-wrap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* Estado vacío: mismo aspecto que `.empty`, con el padding suelto de la v1. */
+.ch-empty {
+  padding: 18px;
+}
+
+/* ---------- donut: SVG a tamaño fijo + leyenda al lado (la v1 lo centraba) ---------- */
+.ch-donut {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.ch-donut > svg {
+  flex: none;
+  width: 190px;
+  max-width: 100%;
+  height: auto;
+}
+
+.ch-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 130px;
+}
+
+.ch-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ch-legend-row i {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* ---------- barras horizontales ---------- */
+.ch-hb {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.ch-hb-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 3px;
+}
+
+.ch-hb-label > span:first-child {
+  font-weight: 600;
+  min-width: 0;
+}
+
+/* ---------- heatmap de consistencia ----------
+   Tamaño natural (13 px por celda, como la v1): no crece con la tarjeta, solo
+   se encoge si la tarjeta es más estrecha. */
+.ch-heat svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- sparkline de récords ---------- */
+.ch-spark {
+  flex: none;
+}
+
+.ch-spark svg {
+  display: block;
+  width: 92px;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---------- fila de récord (columna central de la v1) ---------- */
+.ch-pr {
+  flex: none;
+  text-align: center;
+}
+
+.ch-pr .num {
+  font-size: 14px;
+  font-weight: 650;
+}

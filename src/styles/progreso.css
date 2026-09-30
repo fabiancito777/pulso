@@ -1,0 +1,30 @@
+/* ==========================================================================
+   Pulso v2 — progreso.css — lo propio de la pestaña Progreso
+   (ProgressView, SessionHistory, SessionDetailModal, PrTableModal y
+   LastStimulus).
+
+   Prefijo `pg2-`. Todo lo demás (`.card`, `.list`, `.list-item`, `.icon-btn`,
+   `.seg`, `.empty`, `.btn`, `.badge`…) es el CSS heredado de la v1 que vive en
+   `base.css`: aquí NO se repite, como en el resto de las vistas portadas.
+   ========================================================================== */
+
+/* Subtítulo bajo el título de un modal («12 sep 2026 · hace 3 días»). `mb-s`
+   no está definido en base.css, así que el hueco va aquí. */
+.pg2-sub {
+  margin-bottom: 10px;
+}
+
+/* Acciones de cada fila del historial (ojo + papelera). */
+.pg2-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Los grupos y las series no se cortan con «…»: `.li-sub` de base.css va con
+   `nowrap` y aquí hacen falta dos líneas. La especificidad va explícita porque
+   `.list-item .li-sub` manda si no. */
+.list-item .li-sub.pg2-groups,
+.list-item .li-sub.pg2-sets {
+  white-space: normal;
+}

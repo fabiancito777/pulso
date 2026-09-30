@@ -1,0 +1,400 @@
+/* ==========================================================================
+   Pulso v2 · Calendario — semana, mes y propuesta semanal (local o IA)
+   `base.css` ya trae la franja semanal (`.week-strip`, `.day-cell`), la
+   cuadrícula mensual (`.month-grid`, `.month-cell`), `.seg`, `.badge`, `.chip`
+   y `.empty`: aquí solo se añade lo que falta y se rematan las piezas nuevas.
+   Ojo: `main.tsx` importa `base.css` DESPUÉS de los componentes, así que toda
+   regla que pisa algo de la v1 va con la raíz `.cal-view` delante (gana por
+   especificidad, no por orden).
+   ========================================================================== */
+
+.cal-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ---------- barra superior: navegación, rango y modo ---------- */
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cal-range {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.cal-view .cal-mode {
+  width: 176px;
+  flex: none;
+}
+
+.cal-view .cal-mode button {
+  flex: 1;
+}
+
+/* ---------- avisos y estados de carga ---------- */
+
+.cal-notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 13.5px;
+}
+
+.cal-notice .ico {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.cal-notice.ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+}
+
+.cal-notice.ok .ico {
+  color: var(--ok);
+}
+
+.cal-notice.warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
+}
+
+.cal-notice.warn .ico {
+  color: var(--warn);
+}
+
+.cal-notice.err {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--border));
+}
+
+.cal-notice.err .ico {
+  color: var(--danger);
+}
+
+.cal-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- semana: resumen + tarjetas ---------- */
+
+.cal-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cal-hint .ico {
+  color: var(--accent);
+}
+
+.cal-empty .btn {
+  margin-top: 10px;
+}
+
+.cal-empty-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.cal-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 10px;
+}
+
+.cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cal-day.today {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.cal-day.sel {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.cal-day.done {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--ok) 8%, transparent), transparent 60%),
+    var(--surface);
+  border-color: color-mix(in srgb, var(--ok) 32%, var(--border));
+}
+
+.cal-day.rest {
+  opacity: 0.72;
+}
+
+.cal-day.skipped {
+  border-style: dashed;
+}
+
+.cal-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cal-day-when {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13.5px;
+}
+
+.cal-day-when b {
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.cal-type {
+  align-self: flex-start;
+}
+
+.cal-day-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-view .cal-routine .select {
+  min-height: 38px;
+  font-size: 13.5px;
+}
+
+.cal-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.cal-session:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.cal-session .ico {
+  width: 16px;
+  height: 16px;
+  color: var(--ok);
+  flex: none;
+}
+
+.cal-day-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.cal-day-actions .btn {
+  flex: 1;
+  min-width: 96px;
+}
+
+/* La franja: la celda marcada se queda con el acento de la tarjeta elegida */
+.cal-view .day-cell.sel {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* ---------- mes: cuadrícula + detalle lateral ---------- */
+
+.cal-month {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (min-width: 760px) {
+  .cal-month {
+    grid-template-columns: minmax(0, 1fr) 268px;
+  }
+}
+
+.cal-month-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-dow-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cal-view .month-grid .month-cell {
+  color: var(--text-2);
+}
+
+.cal-view .month-grid .month-cell.cal-pad {
+  background: transparent;
+  border-color: transparent;
+}
+
+.cal-view .month-grid .month-cell.cal-done {
+  background: color-mix(in srgb, var(--ok) 32%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Intensidad del día (los `lv1`-`lv3` de la v1, `views-calendar.js:217`): la v2
+   ya cubre «planificado» y «1 sesión» con `cal-planned`/`cal-done` y su leyenda,
+   así que solo se distingue el día con 2+ sesiones, con el verde más cargado.
+   Va con especificidad por encima de `.month-cell.lv3` de `base.css`: ese color
+   es el de acento de la v1 y aquí chocaría con el verde de «hecho». */
+.cal-view .month-grid .month-cell.cal-done.lv3 {
+  background: color-mix(in srgb, var(--ok) 60%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--ok) 70%, var(--border));
+  color: var(--text);
+  font-weight: 700;
+}
+
+.cal-view .month-grid .month-cell.cal-planned {
+  background: color-mix(in srgb, var(--accent) 28%, var(--surface-2));
+  color: var(--text);
+  font-weight: 650;
+}
+
+.cal-view .month-grid .month-cell.cal-rest {
+  background: var(--surface-3);
+  color: var(--muted-2);
+}
+
+.cal-view .month-grid .month-cell.cal-skipped {
+  background: transparent;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
+  color: var(--warn);
+}
+
+.cal-view .month-grid .month-cell.cal-sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cal-detail,
+.cal-detail-empty {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cal-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.cal-view .cal-detail .seg button {
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+
+.cal-items .kv {
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.cal-sessions {
+  gap: 6px;
+}
+
+/* ---------- barra de planificación: local SIEMPRE, IA solo con key ---------- */
+
+.cal-plan-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* con dos botones comparten la fila; si no caben (o solo hay uno) cada uno
+   ocupa lo que toque sin desbordar el shell */
+.cal-plan-bar .btn {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+
+/* el pie explica por qué no hay botón de IA: va pegado a la barra, no como
+   otro bloque suelto (`.cal-view` ya separa los bloques con 12 px) */
+.cal-plan-foot {
+  margin-top: -6px;
+  text-align: center;
+}
+
+/* ---------- propuesta de semana (plan local o IA) ---------- */
+
+.cal-plan-days {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cal-plan-day {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+}
+
+.cal-plan-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* ---------- móvil ---------- */
+
+@media (max-width: 420px) {
+  .cal-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cal-range {
+    order: 3;
+    width: 100%;
+    text-align: center;
+  }
+}

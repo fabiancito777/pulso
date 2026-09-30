@@ -1,0 +1,62 @@
+/* ==========================================================================
+   Pulso v2 · vista Hoy (`src/ui/HoyView.tsx`)
+
+   Solo clases `hy-*`: todo lo demás (`.card`, `.btn`, `.badge`, `.kpi`,
+   `.week-strip`, `.day-cell`, `.list-item`…) viene de `base.css`, que aquí NO
+   se toca. `v2.css` tampoco: esta hoja se importa desde el componente, así que
+   solo paga quien abre la pestaña Hoy (mismo trato que `calendar.css` y
+   `routines.css`).
+   ========================================================================== */
+
+/* ---------- saludo ---------- */
+
+/* Saludo y fecha en UNA línea (el `V.sub` de la v1): el hueco lo pone el
+   `gap` de `.v2-main`, aquí solo hay que alinearlos. */
+.hy-greet {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ---------- hero ---------- */
+
+/* Kicker de las tarjetas del día: la regleta de la v1 («Plan de hoy · jueves»),
+   que era `.tiny` con `text-transform` y `letter-spacing` puestos a mano. */
+.hy-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ---------- temporizador libre ---------- */
+
+.hy-hint {
+  margin-bottom: 8px;
+}
+
+/* El panel del temporizador es lo único que late cada segundo: su ancho no se
+   mueve para no reflowear la tarjeta de Herramientas de al lado. */
+.hy-timer {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- detalle de sesión (en línea, sin modal) ---------- */
+
+.hy-detail {
+  padding: 10px 12px 14px;
+  background: var(--surface-2);
+}
+
+.hy-detail .kpi {
+  padding: 9px;
+}
+
+.hy-detail .kpi .kpi-value {
+  font-size: 17px;
+}
+
+/* ---------- fila de sesión abierta ---------- */
+
+.hy-session-open .list-item {
+  border-bottom-color: var(--border);
+}
