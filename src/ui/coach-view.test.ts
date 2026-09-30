@@ -5,13 +5,43 @@
  * Los tests corren en node (sin DOM), así que aquí NO se monta el componente:
  * lo que hay que vigilar es el DATO, que es lo que se rompe sin darse cuenta —
  * los 6 chips de la v1 con sus prompts literales, iconos que existan de verdad
- * en el catálogo generado (`ui/icons.ts` es un archivo generado) y el badge de
- * ms/ok del «Probar».
+ * en el catálogo generado (`ui/icons.ts` es un archivo generado), el badge de
+ * ms/ok del «Probar» y las opciones de un turno (`turnOpts`), que es lo único
+ * que manda la pregunta del usuario al modelo.
  */
 import { describe, expect, it } from 'vitest';
 
 import { ICONS } from '@/ui/icons';
-import { QUICK_ACTIONS, testBadge } from './CoachView';
+import { QUICK_ACTIONS, testBadge, turnOpts } from './CoachView';
+
+describe('turno de la vista (`turnOpts` → runCoachTask)', () => {
+  it('en chat la pregunta viaja en userText y el historial detrás', () => {
+    const history = [
+      { role: 'model' as const, text: 'hola' },
+      { role: 'user' as const, text: '¿y hoy?' },
+    ];
+    expect(turnOpts('chat', '¿qué hice esta semana?', history)).toEqual({
+      userText: '¿qué hice esta semana?',
+      history,
+    });
+  });
+
+  it('fuera del chat no se manda historial, pero la pregunta SÍ', () => {
+    expect(turnOpts('analyze', 'revisa mi volumen', [])).toEqual({
+      userText: 'revisa mi volumen',
+    });
+    expect(turnOpts('suggest', 'sugiere entreno', [])).toEqual({ userText: 'sugiere entreno' });
+    expect(turnOpts('plan', 'planifica la semana', [])).toEqual({
+      userText: 'planifica la semana',
+    });
+  });
+
+  it('ningún turno se queda sin userText (con historial la API devuelve HTTP 400)', () => {
+    for (const task of ['chat', 'analyze', 'suggest', 'plan'] as const) {
+      expect(turnOpts(task, 'pregunta', []).userText, task).toBe('pregunta');
+    }
+  });
+});
 
 describe('chips rápidos (v1 `coach:quick`)', () => {
   it('son 6 y las etiquetas no se repiten (son la key de React)', () => {

@@ -31,11 +31,12 @@ import { go } from '@/app/router';
 import { nowTs } from '@/domain/dates';
 import { int } from '@/domain/num';
 import { GeminiError, testConnection } from '@/features/coach/client';
+import type { ChatMsg } from '@/features/coach/client';
 import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
 import { parseJSON } from '@/features/coach/parse';
 import type { CoachTask } from '@/features/coach/types';
 import { applySuggestionAsRoutine, applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
-import type { CoachOutcome } from '@/state/coach';
+import type { CoachOutcome, CoachTaskOpts } from '@/state/coach';
 import {
   addChat,
   chat,
@@ -641,6 +642,21 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
 
 /* ---------- la vista ---------- */
 
+/**
+ * Opciones de `runCoachTask` para UN turno de la vista.
+ *
+ * La pregunta viaja SIEMPRE en `userText`: es lo único que hace `buildRequest`
+ * con `question`, y sin ella el prompt sale vacío — el modelo contesta a ciegas
+ * y, con historial, la API devuelve **HTTP 400 «Requests ending with a model
+ * turn are not supported»** (el turno de usuario final venía vacío y el último
+ * turno de verdad era el del modelo). El historial solo se lo pasa el chat, y
+ * llega ya calculado con `promptHistory()`: `buildRequest` añade el turno actual
+ * por su cuenta, meterlo dos veces duplicaría la pregunta.
+ */
+export function turnOpts(task: CoachTask, text: string, history: ChatMsg[]): CoachTaskOpts {
+  return task === 'chat' ? { userText: text, history } : { userText: text };
+}
+
 export function CoachView() {
   const msgs = chat.value;
   const hasKey = hasApiKey();
@@ -688,7 +704,7 @@ export function CoachView() {
     addChat({ role: 'user', text, ts: nowTs() });
     let ok = false;
     try {
-      const out = await runCoachTask(task, task === 'chat' ? { history } : {});
+      const out = await runCoachTask(task, turnOpts(task, text, history));
       addChat(resultLine(task, out, String(settings.value.ai.model ?? '')));
       ok = true;
     } catch (err) {
