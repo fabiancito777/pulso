@@ -5,13 +5,14 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { TEMPLATES as CATALOG_TEMPLATES } from './catalog';
 import {
   DAY_TYPES,
   EQUIPMENT,
   GROUPS,
   SEED_EXERCISES,
   TEMPLATES,
-  USER_SEED_EXERCISES,
+  defaultEquipment,
   equipCats,
   equipLabel,
   equipPreset,
@@ -41,7 +42,9 @@ describe('catálogo', () => {
     expect(EQUIPMENT).toHaveLength(49);
     expect(equipmentKeys).toContain('paralelas');
     expect(SEED_EXERCISES).toHaveLength(136);
-    expect(TEMPLATES).toHaveLength(9);
+    /* el catálogo generado sigue trayendo las 9 de la v1; la que usa la app es
+       la de `seed.ts` (comprobada más abajo) */
+    expect(CATALOG_TEMPLATES).toHaveLength(9);
     expect(DAY_TYPES).toHaveLength(4);
   });
 
@@ -139,46 +142,79 @@ describe('presets de equipamiento', () => {
   });
 });
 
-describe('ejercicios declarados a mano (fuera del catálogo generado)', () => {
-  it('son exactamente los 3 que faltan y están en la semilla completa', () => {
-    expect(USER_SEED_EXERCISES.map((e) => e.name)).toEqual([
-      'Press de Piso con Mancuernas',
-      'Floor Press',
-      'Rompecráneos en Suelo',
-    ]);
+describe('semilla por defecto (lo que ve un usuario nuevo)', () => {
+  /* Los 24 nombres LITERALES del encargo, en su orden. Renombrar uno cambia su
+     id (`slug(name)`) y deja de cuadrar con las sesiones guardadas, así que aquí
+     está el contrato: si este test salta, se cambió la app entera a propósito. */
+  const NOMBRES = [
+    'Encogimientos (Shrugs con barra)',
+    'Remo con Barra',
+    'Press de Piso con Mancuernas',
+    'Sentadilla Copa (con mancuerna)',
+    'Pull Over',
+    'Elevación de Talones (unilateral)',
+    'Curl con Barra',
+    'Pullover con Mancuerna',
+    'Remo Unilateral Kroc Row con Mancuerna',
+    'Press Francés',
+    'Rompecráneos en Suelo',
+    'Zancadas',
+    'Press Militar',
+    'Press Militar Sentado con Mancuernas',
+    'Curl de Muñeca con Mancuerna Unilateral',
+    'Curl Martillo',
+    'Curl de Muñeca Invertido Unilateral con Mancuerna',
+    'Pájaros con Mancuernas',
+    'Elevaciones Laterales',
+    'Dominadas',
+    'Plancha',
+    'Flexiones Diamante',
+    'Curl de Bíceps',
+    'Pájaros',
+  ];
+
+  it('son exactamente esos 24 ejercicios (y 7 plantillas)', () => {
+    expect(seedExercises().map((e) => e.name)).toEqual(NOMBRES);
+    expect(TEMPLATES).toHaveLength(7);
+    /* `Floor Press` era un alias de Press de Piso con Mancuernas: ya no existe
+       como ejercicio aparte */
+    expect(TEMPLATES.map((t) => t.id)).not.toContain('hiit');
+    expect(TEMPLATES.map((t) => t.id)).not.toContain('mobility');
+  });
+
+  it('sin ids repetidos, con datos imposibles y apuntando a grupo/material real', () => {
     const semilla = seedExercises();
-    expect(semilla).toHaveLength(SEED_EXERCISES.length + 3);
-    for (const ex of USER_SEED_EXERCISES) {
-      expect(
-        semilla.some((e) => e.id === ex.id),
-        ex.id,
-      ).toBe(true);
-    }
-    /* ni ids repetidos ni datos imposibles, igual que el catálogo */
     const ids = semilla.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const ex of USER_SEED_EXERCISES) {
-      expect(ex.id).toBe(slug(ex.name));
-      expect(ex.custom).toBe(false);
-      expect(ex.allowed).toBe(true);
-      expect(ex.repMin).toBeLessThanOrEqual(ex.repMax);
-      expect(
-        GROUPS.some((g) => g.key === ex.group),
-        ex.group,
-      ).toBe(true);
-      for (const key of ex.equip.split('|')) expect(equipmentKeys).toContain(key);
+
+    const groups = new Set(GROUPS.map((g) => g.key));
+    const equip = new Set(equipmentKeys);
+    for (const ex of semilla) {
+      expect(ex.id, ex.name).toBe(slug(ex.name));
+      expect(ex.custom, ex.name).toBe(false);
+      expect(ex.allowed, ex.name).toBe(true);
+      expect(ex.sets, ex.name).toBeGreaterThan(0);
+      expect(ex.repMin, ex.name).toBeLessThanOrEqual(ex.repMax);
+      if (ex.rest === 0) expect(ex.tags, ex.name).toContain('minutos');
+      else expect(ex.rest, ex.name).toBeGreaterThan(0);
+      expect(groups.has(ex.group), `${ex.name} → grupo ${ex.group}`).toBe(true);
+      for (const key of ex.equip.split('&').flatMap((g) => g.split('|'))) {
+        if (!key) continue;
+        expect(equip.has(key), `${ex.name} → material ${key}`).toBe(true);
+      }
     }
   });
 
-  it('están disponibles con «Mi kit» (solo mancuerna, sin banco)', () => {
-    const kit = equipPreset('kit');
-    for (const ex of USER_SEED_EXERCISES) {
-      expect(isAvailable(ex, kit), ex.name).toBe(true);
-      expect(missingEquipment(ex, kit), ex.name).toEqual([]);
-      expect(ex.equip.includes('banco'), ex.name).toBe(false);
+  it('está TODO disponible con el material de fábrica', () => {
+    const stock = defaultEquipment();
+    for (const ex of seedExercises()) {
+      expect(isAvailable(ex, stock), ex.name).toBe(true);
+      expect(missingEquipment(ex, stock), ex.name).toEqual([]);
     }
-    /* …y no se caen sin material de golpe: sin mancuernas no hay nada que hacer */
-    expect(isAvailable(USER_SEED_EXERCISES[0], {})).toBe(false);
+    /* y sin material de golpe solo quedan los de peso corporal */
+    const sinNada = seedExercises().filter((ex) => isAvailable(ex, {}));
+    expect(sinNada.every((ex) => ex.bw)).toBe(true);
+    expect(sinNada.length).toBeGreaterThanOrEqual(2);
   });
 });
 

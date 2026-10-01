@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
-  SEED_EXERCISES,
   allowedExercises,
   equipPreset,
   findExerciseByName,
   isAvailable,
+  seedExercises,
 } from '@/domain/data';
 import { addDays, today, weekDates } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
@@ -40,7 +40,7 @@ const MODEL = 'gemini-3.5-flash-lite';
  */
 const TIMEOUT = 300_000;
 const MAX_CALLS = 2;
-const QUESTION = '¿cómo me fue en press banca últimamente y qué debería cambiar?';
+const QUESTION = '¿cómo me fue en press de piso últimamente y qué debería cambiar?';
 
 /* ---------- API key: process.env o .env.local de la raíz ---------- */
 
@@ -119,7 +119,7 @@ async function callBrain(req: CoachRequest): Promise<GenResult> {
 /* ---------- fixture realista: material, biblioteca, sesiones y rutinas ---------- */
 
 const HOY = today();
-const EXERCISES: Exercise[] = mergeSeed(SEED_EXERCISES, []);
+const EXERCISES: Exercise[] = mergeSeed(seedExercises(), []);
 const EQUIPMENT = equipPreset('gym');
 const PERMITIDOS: Exercise[] = allowedExercises(EXERCISES).filter((ex) =>
   isAvailable(ex, EQUIPMENT),
@@ -170,16 +170,16 @@ const ROUTINES: CoachRoutine[] = [
     focus: 'Pecho, espalda y hombros',
     items: [
       {
-        exId: exId('Press de banca con barra'),
+        exId: exId('Press de Piso con Mancuernas'),
         sets: 4,
         repMin: 6,
         repMax: 10,
         rest: 180,
         weight: 85,
       },
-      { exId: exId('Remo con barra'), sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 70 },
+      { exId: exId('Remo con Barra'), sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 70 },
       {
-        exId: exId('Press militar con barra'),
+        exId: exId('Press Militar'),
         sets: 3,
         repMin: 6,
         repMax: 10,
@@ -187,7 +187,7 @@ const ROUTINES: CoachRoutine[] = [
         weight: 50,
       },
       {
-        exId: exId('Elevaciones laterales con mancuernas'),
+        exId: exId('Elevaciones Laterales'),
         sets: 3,
         repMin: 12,
         repMax: 18,
@@ -202,45 +202,52 @@ const ROUTINES: CoachRoutine[] = [
     source: 'ai',
     focus: 'Piernas',
     items: [
-      { exId: exId('Sentadilla con barra'), sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 95 },
-      { exId: exId('Peso muerto rumano'), sets: 3, repMin: 8, repMax: 12, rest: 150, weight: 85 },
-      { exId: exId('Zancadas caminando'), sets: 3, repMin: 10, repMax: 12, rest: 90, weight: 20 },
       {
-        exId: exId('Hip thrust con barra'),
-        sets: 3,
-        repMin: 10,
-        repMax: 12,
-        rest: 120,
-        weight: 90,
+        exId: exId('Sentadilla Copa (con mancuerna)'),
+        sets: 4,
+        repMin: 6,
+        repMax: 10,
+        rest: 180,
+        weight: 24,
       },
+      {
+        exId: exId('Elevación de Talones (unilateral)'),
+        sets: 3,
+        repMin: 12,
+        repMax: 15,
+        rest: 60,
+        weight: 19.5,
+      },
+      { exId: exId('Zancadas'), sets: 3, repMin: 10, repMax: 12, rest: 90, weight: 20 },
+      { exId: exId('Plancha'), sets: 3, repMin: 30, repMax: 60, rest: 60, weight: 0 },
     ],
   },
 ];
 
 const SESSIONS: Session[] = [
   sessionAt(2, 'rt1', 'Empuje A', [
-    entry('Press de banca con barra', 80, 6, 4),
-    entry('Remo con barra', 65, 8, 4),
-    entry('Press militar con barra', 47.5, 7, 3),
-    entry('Elevaciones laterales con mancuernas', 10, 12, 3),
+    entry('Press de Piso con Mancuernas', 37.5, 6, 4),
+    entry('Remo con Barra', 65, 8, 4),
+    entry('Press Militar', 22.5, 7, 3),
+    entry('Elevaciones Laterales', 10, 12, 3),
   ]),
   sessionAt(4, 'rt2', 'Tren inferior A', [
-    entry('Sentadilla con barra', 90, 6, 4),
-    entry('Peso muerto rumano', 80, 8, 3),
-    entry('Zancadas caminando', 20, 10, 3),
-    entry('Hip thrust con barra', 85, 10, 3),
+    entry('Sentadilla Copa (con mancuerna)', 24, 6, 4),
+    entry('Elevación de Talones (unilateral)', 19.5, 12, 3),
+    entry('Zancadas', 20, 10, 3),
+    entry('Plancha', 0, 45, 3),
   ]),
   sessionAt(7, 'rt1', 'Empuje A', [
-    entry('Press de banca con barra', 77.5, 7, 4),
-    entry('Remo con barra', 62.5, 8, 4),
-    entry('Press militar con barra', 45, 8, 3),
-    entry('Elevaciones laterales con mancuernas', 10, 12, 3),
+    entry('Press de Piso con Mancuernas', 35, 7, 4),
+    entry('Remo con Barra', 62.5, 8, 4),
+    entry('Press Militar', 20, 8, 3),
+    entry('Elevaciones Laterales', 10, 12, 3),
   ]),
   sessionAt(9, 'rt2', 'Tren inferior A', [
-    entry('Sentadilla con barra', 87.5, 6, 4),
-    entry('Peso muerto rumano', 77.5, 8, 3),
-    entry('Zancadas caminando', 20, 10, 3),
-    entry('Hip thrust con barra', 80, 10, 3),
+    entry('Sentadilla Copa (con mancuerna)', 22.5, 6, 4),
+    entry('Elevación de Talones (unilateral)', 17.5, 12, 3),
+    entry('Zancadas', 20, 10, 3),
+    entry('Plancha', 0, 40, 3),
   ]),
 ];
 
@@ -296,7 +303,7 @@ function suite(name: string, fn: () => void): void {
 
 suite('coach IA contra Gemini (smoke)', () => {
   it(
-    'suggest → JSON con ejercicios del catálogo permitido',
+    'suggest → JSON con ejercicios de la biblioteca permitida',
     async () => {
       const req = buildRequest('suggest', {
         context: CONTEXT,

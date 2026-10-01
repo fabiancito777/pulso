@@ -40,7 +40,7 @@ export const ROADMAP: readonly RoadmapItem[] = [
     v1: 'data.js',
     v2: 'src/domain/catalog.ts + data.ts + library.ts',
     state: 'portado',
-    note: '136 ejercicios, 49 piezas de material, plantillas y presets, generados desde la v1 y verificados con comprobaciones de integridad.',
+    note: '136 ejercicios, 49 piezas de material, plantillas y presets, generados desde la v1 y verificados con comprobaciones de integridad; la biblioteca por defecto que ve el usuario son los 24 ejercicios curados de `domain/seed.ts`.',
   },
   {
     area: 'Sesión activa y descanso',

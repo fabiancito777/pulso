@@ -10,8 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { SEED_EXERCISES, TEMPLATES } from '@/domain/catalog';
-import { equipPreset, findExercise, isAvailable } from '@/domain/data';
+import { TEMPLATES, equipPreset, findExercise, isAvailable, seedExercises } from '@/domain/data';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { addDays } from '@/domain/dates';
 import type { PlanInput } from '@/domain/plan';
@@ -35,7 +34,8 @@ import {
   weightOrNull,
 } from './routines-helpers';
 
-const LIBRARY = SEED_EXERCISES;
+/* La semilla real (24 ejercicios), que es lo que la app le pasa a la vista */
+const LIBRARY = seedExercises();
 
 const session = (patch: Partial<Session>): Session => ({
   id: 's',
@@ -66,22 +66,24 @@ describe('matchExercises', () => {
   });
 
   it('encuentra por nombre aunque venga sin tildes ni mayúsculas', () => {
-    const found = matchExercises('EXTENSION DE TRICEPS EN POLEA ALTA', LIBRARY);
-    expect(found.map((ex) => ex.name)).toContain('Extensión de tríceps en polea alta');
+    const found = matchExercises('CURL DE MUNECA INVERTIDO UNILATERAL CON MANCUERNA', LIBRARY);
+    expect(found.map((ex) => ex.name)).toContain(
+      'Curl de Muñeca Invertido Unilateral con Mancuerna',
+    );
   });
 
   it('encuentra por grupo muscular', () => {
     const found = matchExercises('pecho', LIBRARY, [], 50);
-    expect(found.length).toBeGreaterThan(3);
-    /* El grupo manda; lo único que se cuela es «Jalón al pecho» (espalda),
-       que también lleva la palabra y tampoco está mal mostrarla. */
-    expect(found.filter((ex) => ex.group !== 'pecho').map((ex) => ex.name)).toEqual([
-      'Jalón al pecho',
+    /* la semilla solo tiene 2 de pecho y ninguno otro lleva la palabra */
+    expect(found.map((ex) => ex.name)).toEqual([
+      'Press de Piso con Mancuernas',
+      'Pullover con Mancuerna',
     ]);
+    expect(found.every((ex) => ex.group === 'pecho')).toBe(true);
   });
 
   it('excluye los ejercicios que ya están en la rutina', () => {
-    const press = LIBRARY.find((ex) => ex.name === 'Press de banca con barra');
+    const press = LIBRARY.find((ex) => ex.name === 'Press de Piso con Mancuernas');
     expect(press).toBeTruthy();
     const found = matchExercises('press', LIBRARY, [press?.id ?? '']);
     expect(found.map((ex) => ex.id)).not.toContain(press?.id);
@@ -119,10 +121,10 @@ describe('matchExercises', () => {
 
   it('la puntuación manda sobre el ★ (un ★ flojo no se cuela arriba)', () => {
     const conFav = LIBRARY.map((ex) =>
-      ex.name === 'Press de banca con mancuernas' ? { ...ex, fav: true } : ex,
+      ex.name === 'Press Militar Sentado con Mancuernas' ? { ...ex, fav: true } : ex,
     );
-    const found = matchExercises('press de banca con barra', conFav, [], 5);
-    expect(found[0]?.name).toBe('Press de banca con barra');
+    const found = matchExercises('press de piso con mancuernas', conFav, [], 5);
+    expect(found[0]?.name).toBe('Press de Piso con Mancuernas');
     expect(found.findIndex((ex) => ex.fav === true)).toBeGreaterThan(0);
   });
 });
@@ -191,8 +193,8 @@ describe('toSuggestion', () => {
     focus: 'Pecho · tríceps',
     rationale: ['Toca pecho tras 48 h', ''],
     exercises: [
-      { name: 'Press de banca con barra', sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 60 },
-      { name: 'Press de banca con barra EXTRA', sets: 3, weight: '' },
+      { name: 'Press de Piso con Mancuernas', sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 60 },
+      { name: 'Press de Piso con Mancuernas EXTRA', sets: 3, weight: '' },
       { name: 'Remo con polea para gemelos', sets: 3 },
     ],
   };
@@ -212,7 +214,7 @@ describe('toSuggestion', () => {
 
     /* el modelo se inventó un sufijo: se rescata por similitud */
     expect(difuso?.matched).toBe(true);
-    expect(difuso?.name).toBe('Press de banca con barra');
+    expect(difuso?.name).toBe('Press de Piso con Mancuernas');
     expect(difuso?.weight).toBeNull();
     expect(difuso?.repMin).toBe(8);
     expect(difuso?.rest).toBe(90);
@@ -225,7 +227,7 @@ describe('toSuggestion', () => {
     const sug = toSuggestion(
       {
         title: 'Pierna',
-        items: [{ ejercicio: 'Press de banca con barra' }],
+        items: [{ ejercicio: 'Press de Piso con Mancuernas' }],
         rationale: 'Un día corto.',
       },
       LIBRARY,
@@ -278,8 +280,8 @@ function seedExercise(
 }
 
 describe('templateSummary', () => {
-  it('resume las 9 plantillas del catálogo con ejercicios y grupos', () => {
-    expect(TEMPLATES).toHaveLength(9);
+  it('resume las 7 plantillas de la semilla con ejercicios y grupos', () => {
+    expect(TEMPLATES).toHaveLength(7);
     for (const tpl of TEMPLATES) {
       const summary = templateSummary(tpl);
       expect(summary.count).toBeGreaterThan(0);
@@ -291,7 +293,7 @@ describe('templateSummary', () => {
     const push = TEMPLATES.find((tpl) => tpl.id === 'push');
     expect(push).toBeTruthy();
     const summary = templateSummary(push ?? { id: '', name: '', hint: '', recipe: [] });
-    expect(summary).toEqual({ count: 7, groups: 'Pecho · Hombros · Tríceps' });
+    expect(summary).toEqual({ count: 6, groups: 'Pecho · Hombros · Tríceps' });
   });
 });
 
@@ -302,7 +304,7 @@ describe('generateAuto', () => {
     expect(out?.name).toBe('Empuje · Push');
     expect(out?.source).toBe('generador');
     expect(out?.focus).toContain('Pecho');
-    expect(out?.items).toHaveLength(7);
+    expect(out?.items).toHaveLength(6);
 
     /* hipertrofia por defecto: 8-12 reps, 90 s y 3-4 series */
     for (const item of out?.items ?? []) {
@@ -448,7 +450,7 @@ describe('validScheduleIso', () => {
 
 describe('detailRows', () => {
   it('resuelve nombres, aplica defaults y marca lo que falta material', () => {
-    const press = LIBRARY.find((ex) => ex.name === 'Press de banca con barra');
+    const press = LIBRARY.find((ex) => ex.name === 'Press de Piso con Mancuernas');
     expect(press).toBeTruthy();
     const pressId = press?.id ?? '';
     const items: RoutineItem[] = [
@@ -460,7 +462,7 @@ describe('detailRows', () => {
     const rows = detailRows(items, LIBRARY, {});
     expect(rows).toHaveLength(3);
 
-    expect(rows[0]?.name).toBe('Press de banca con barra');
+    expect(rows[0]?.name).toBe('Press de Piso con Mancuernas');
     expect(rows[0]?.group).toBe('Pecho');
     expect(rows[0]?.sets).toBe(4);
     expect(rows[0]?.weight).toBe(60);

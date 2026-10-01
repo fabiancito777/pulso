@@ -13,7 +13,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { TEMPLATES } from '@/domain/catalog';
+import { TEMPLATES } from '@/domain/data';
 import { routines, type Routine } from '@/state/store';
 
 import { tabSub } from './App';

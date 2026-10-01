@@ -6,9 +6,9 @@
  * `ejercicios-revamp.md` §3.2 y §5):
  *
  * - **ocultos fuera**: `hidden` es solo presentación, el picker no los lista;
- * - **solo disponibles por defecto**: el picker de la v1 listaba los 136 con su
- *   «falta …»; ahora la lista por defecto es la que puedes hacer (el toggle del
- *   modal la puede abrir);
+ * - **solo disponibles por defecto**: el picker de la v1 listaba los 136 del
+ *   catálogo con su «falta …»; ahora la lista por defecto es la que puedes hacer
+ *   (el toggle del modal la puede abrir);
  * - **orden**: ★ → permitido y disponible → familiaridad → nombre. Los ★ van
  *   ANTES que el material a propósito: es lo que pedía el usuario («sus
  *   ejercicios los principales») y el material ya no pinta si el filtro de

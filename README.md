@@ -140,9 +140,10 @@ pantalla completa y funciona offline).
 - **Discos**: inventario editable (medida × **discos** × disponible; se cuenta en unidades sueltas y se
   reparten entre los huecos, así que **con un número impar sobra uno**), peso de barra/barra EZ/mango
   (**0 kg si es de plástico**), máximo cargable en barra y por mancuerna, y gráfico del inventario.
-- **Ejercicios**: biblioteca de **136 ejercicios** con buscador y filtros (grupo, permitidos, prohibidos,
-  sin material, propios). Permite **permitir/prohibir** individualmente o en bloque todo lo filtrado,
-  y crear/editar/borrar ejercicios propios.
+- **Ejercicios**: biblioteca por defecto de **24 ejercicios** con buscador y filtros (grupo, permitidos,
+  prohibidos, sin material, propios). Permite **permitir/prohibir** individualmente o en bloque todo lo
+  filtrado, y crear/editar/borrar ejercicios propios (el catálogo generado de 136 sigue detrás: es de
+  donde salen los propios y las copias de la v1).
 - **Coach AI**: toda la configuración descrita arriba.
 - **Datos**: exportar/importar copia JSON, cargar 8 semanas de ejemplo para ver las gráficas,
   quitarlas, borrar todo y ver el espacio usado.
@@ -231,7 +232,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest (dominio, estado y UI; ~687 tests). |
+| `npm run test` | Vitest (dominio, estado y UI; ~915 tests). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre todo lo que no sea `legacy/`. |
 

@@ -6,7 +6,7 @@
  * recetas de cada plantilla, qué pasa cuando falta material, el camino del
  * PRIMER DÍA (sin historial) y que los pesos salen en la unidad del usuario.
  *
- * La biblioteca cubre los grupos de las 9 plantillas del catálogo: si una
+ * La biblioteca cubre los grupos de las 7 plantillas de la semilla: si una
  * receta pide más ejercicios de los que hay, `pickForGroup` recorta y el día
  * sale incompleto — por eso los tests de recetas cuentan ejercicios.
  */
@@ -41,7 +41,7 @@ function ex(partial: Partial<Exercise> & Pick<Exercise, 'id' | 'name' | 'group'>
   };
 }
 
-/** Biblioteca que cubre los grupos de las 9 plantillas (y sus recetas). */
+/** Biblioteca que cubre los grupos de las 7 plantillas (y sus recetas). */
 function library(): Exercise[] {
   return [
     ex({
@@ -398,7 +398,7 @@ describe('localWeek', () => {
     }
   });
 
-  it('rotación semanal: 1, 3 y 7 días usan las plantillas de la v1', () => {
+  it('rotación semanal: 1, 3 y 7 días siguen la de la semilla', () => {
     const de = (daysPerWeek: number): PlanDayJSON[] => localWeek(params({ daysPerWeek })).days;
 
     expect(
@@ -427,17 +427,19 @@ describe('localWeek', () => {
       'upper',
       'lower',
       'full_a',
-      'mobility',
+      'full_b',
     ]);
     expect(siete.some((d) => d.type === 'descanso')).toBe(false);
-    expect(siete[6]).toMatchObject({ type: 'movilidad', title: 'Movilidad y recuperación' });
+    /* la v1 cerraba la semana con `mobility`; la semilla ya no trae plantillas
+       de movilidad, así que el domingo es un entrenamiento más */
+    expect(siete[6]).toMatchObject({ type: 'entreno', title: 'Full body B' });
   });
 
   it('cada receta sale completa, sin repetir y dentro de sus grupos', () => {
     const push = localWeek(params({ daysPerWeek: 4 })).days[0];
     expect(push.template).toBe('push');
-    expect(push.exercises).toHaveLength(7); /* pecho 3 + hombros 2 + tríceps 2 */
-    expect(new Set(push.exercises.map((item) => item.exId)).size).toBe(7);
+    expect(push.exercises).toHaveLength(6); /* pecho 2 + hombros 2 + tríceps 2 */
+    expect(new Set(push.exercises.map((item) => item.exId)).size).toBe(6);
     for (const item of push.exercises) {
       expect(['pecho', 'hombros', 'triceps']).toContain(groupOf(item.exId));
       expect(library().some((e) => e.id === item.exId)).toBe(true);
@@ -470,8 +472,7 @@ describe('localWeek', () => {
 
     const legs = plan.days[3];
     expect(idsOf(legs, 'cuadriceps')).toEqual(['zancada']);
-    expect(idsOf(legs, 'gluteos')).toEqual(['puente']);
-    expect(idsOf(legs, 'femoral')).toEqual([]); /* sin material no hay femoral */
+    expect(idsOf(legs, 'gemelos')).toEqual([]); /* sin material no hay gemelos */
     for (const day of plan.days) {
       for (const item of day.exercises) {
         expect(library().find((e) => e.id === item.exId)?.equip).toBe('');

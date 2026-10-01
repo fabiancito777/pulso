@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
 import { totals } from '@/domain/analytics';
-import { TEMPLATES } from '@/domain/catalog';
+import { TEMPLATES } from '@/domain/data';
 import { fmtClock } from '@/domain/format';
 import { applyTheme } from '@/platform/theme';
 import { active, rest, sessionSeconds, startLoop } from '@/state/session';

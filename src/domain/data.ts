@@ -1,24 +1,25 @@
 /**
  * Catálogo: API pública del dominio para grupos, material, ejercicios y
- * plantillas. Los datos en sí están en `catalog.ts` (generado desde la v1) y
- * aquí viven las funciones que los consultan.
+ * plantillas. Los datos en sí viven en dos sitios: `catalog.ts` (el catálogo
+ * COMPLETO, generado desde la v1) y `seed.ts` (la semilla por defecto de 24
+ * ejercicios y 7 plantillas, que es lo que de verdad se le pone a un usuario
+ * nuevo). Aquí viven las funciones que los consultan.
+ *
+ * `TEMPLATES` y `seedExercises` se vuelven a exportar DESPUÉS del
+ * `export * from './catalog'`: son los que manda la app, y si se importaran de
+ * `@/domain/catalog` se quedarían con las 9 plantillas y los 136 ejercicios de
+ * la v1.
  *
  * Igual que en `plates.ts`, todo entra por parámetro: el material disponible se
  * pasa como mapa (`{ clave: boolean }`) en vez de leerlo del estado global, que
  * es lo que hacía `S.isAvailable()` en la v1 y obligaba a probarlo en el navegador.
  */
-import {
-  DEFAULT_EQUIPMENT,
-  EQUIPMENT,
-  EQUIP_PRESETS,
-  GOALS,
-  GROUPS,
-  SEED_EXERCISES,
-} from './catalog';
+import { DEFAULT_EQUIPMENT, EQUIPMENT, EQUIP_PRESETS, GOALS, GROUPS } from './catalog';
 import { norm, slug } from './text';
 import type { Exercise, ExerciseType } from './types';
 
 export * from './catalog';
+export { TEMPLATES, seedExercises } from './seed';
 
 export type EquipmentMap = Record<string, boolean>;
 
@@ -205,92 +206,3 @@ export const EXERCISE_TYPES: readonly ExerciseType[] = [
   'cardio',
   'movilidad',
 ];
-
-/* ---------- semilla manual: lo que la v1 no tenía ---------- */
-
-/**
- * Mismo patrón que el `E()` de `catalog.ts` (que no está exportado, porque ese
- * fichero lo genera `tools/port-catalog.mjs`): un ejercicio de semilla con id
- * derivado del nombre.
- */
-function E(
-  name: string,
-  group: string,
-  equip: string,
-  type: ExerciseType,
-  sets: number,
-  repMin: number,
-  repMax: number,
-  rest: number,
-  tips = '',
-): Exercise {
-  return {
-    id: slug(name),
-    name,
-    group,
-    equip: equip || '',
-    type,
-    sets,
-    repMin,
-    repMax,
-    rest,
-    allowed: true,
-    custom: false,
-    bw: false,
-    tags: [],
-    tips,
-  };
-}
-
-/**
- * Ejercicios que faltan en la biblioteca de la v1 y se declaran AQUÍ, a mano
- * (lo generado vive en `catalog.ts` y regenerarlo los borraría).
- *
- * Son tres variantes «en suelo» de los típicos de quien entrena sin banco: el
- * material es solo mancuerna (sin `banco_*`, que es lo que les bloqueaba) y los
- * rangos son los mismos que sus primos de banco en el catálogo.
- */
-export const USER_SEED_EXERCISES: readonly Exercise[] = [
-  E(
-    'Press de Piso con Mancuernas',
-    'pecho',
-    'mancuernas_fijas|mancuernas_ajustables',
-    'compuesto',
-    3,
-    6,
-    10,
-    120,
-    'Espalda baja apoyada y codos rozando el suelo: baja controlado y sube sin rebote.',
-  ),
-  E(
-    'Floor Press',
-    'pecho',
-    'mancuernas_fijas|mancuernas_ajustables',
-    'compuesto',
-    3,
-    6,
-    10,
-    120,
-    'Press de pecho desde el suelo: el recorrido corta en los codos apoyados.',
-  ),
-  E(
-    'Rompecráneos en Suelo',
-    'triceps',
-    'mancuernas_fijas|mancuernas_ajustables',
-    'aislado',
-    3,
-    8,
-    12,
-    60,
-    'Tumbado en el suelo, extiende la mancuerna sin mover los codos.',
-  ),
-];
-
-/**
- * Semilla COMPLETA de la biblioteca: el catálogo generado + los declarados a
- * mano arriba. Es lo que fusiona `state/store.ts` con lo guardado, así que un
- * ejercicio nuevo se puede añadir aquí sin regenerar nada.
- */
-export function seedExercises(): Exercise[] {
-  return [...SEED_EXERCISES, ...USER_SEED_EXERCISES];
-}

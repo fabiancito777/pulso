@@ -47,7 +47,7 @@ const store = await import('./store');
 const coach = await import('./coach');
 const create = await import('./exercise-create');
 
-const NOMBRE = 'Press de banca con barra';
+const NOMBRE = 'Press de Piso con Mancuernas';
 const FECHA_SESION = '2026-09-20';
 const INICIO_SEMANA = '2026-09-28';
 
@@ -79,7 +79,7 @@ const SESION: Session = {
   unit: 'kg',
   entries: [
     {
-      exId: 'press-de-banca-con-barra',
+      exId: 'press-de-piso-con-mancuernas',
       name: NOMBRE,
       group: 'pecho',
       sets: [
@@ -170,7 +170,7 @@ describe('runCoachTask', () => {
     const gen = makeGen([
       res(
         'Déjame mirar tu historial.\n' +
-          '```consulta\n{"ejercicio":"Press de banca con barra","tipo":"full"}\n```',
+          '```consulta\n{"ejercicio":"Press de Piso con Mancuernas","tipo":"full"}\n```',
       ),
       res('Con esos datos: mantén 80 kg y sube a 82,5 kg la próxima semana.'),
     ]);
@@ -282,7 +282,7 @@ describe('runCoachTask', () => {
     const gen = makeGen([
       res(
         '{"title":"Propuesta IA","focus":"Pecho","rationale":["por cierto"],' +
-          '"exercises":[{"name":"Press de banca con barra","sets":4,"repMin":6,"repMax":8,' +
+          '"exercises":[{"name":"Press de Piso con Mancuernas","sets":4,"repMin":6,"repMax":8,' +
           '"weight":80,"rest":180,"notes":""}]}',
       ),
     ]);
@@ -293,7 +293,7 @@ describe('runCoachTask', () => {
     expect((out.payload as { title: string }).title).toBe('Propuesta IA');
     expect(out.text).toBe(
       '{"title":"Propuesta IA","focus":"Pecho","rationale":["por cierto"],' +
-        '"exercises":[{"name":"Press de banca con barra","sets":4,"repMin":6,"repMax":8,' +
+        '"exercises":[{"name":"Press de Piso con Mancuernas","sets":4,"repMin":6,"repMax":8,' +
         '"weight":80,"rest":180,"notes":""}]}',
     );
   });
@@ -325,7 +325,7 @@ describe('runCoachTask', () => {
   it('consultRounds: 0 → ni una segunda llamada y el bloque sale del texto', async () => {
     seedSessions([SESION]);
     const gen = makeGen([
-      res('Miro tu historial.\n```consulta\n{"ejercicio":"Press de banca con barra"}\n```'),
+      res('Miro tu historial.\n```consulta\n{"ejercicio":"Press de Piso con Mancuernas"}\n```'),
     ]);
 
     const out = await coach.runCoachTask(
@@ -462,12 +462,12 @@ describe('applySuggestionAsRoutine', () => {
        umbral viejo (0,6) se reescribía y se perdía «inclinado» (spec §3.1). */
     const { routine, unresolved } = coach.applySuggestionAsRoutine({
       title: 'Inclinado',
-      exercises: [{ name: 'Press de banca con barra inclinado', sets: 3 }],
+      exercises: [{ name: 'Press de Piso con Mancuernas inclinado', sets: 3 }],
     });
 
     expect(routine).toBeNull();
     expect(unresolved).toHaveLength(1);
-    expect(unresolved[0]?.name).toBe('Press de banca con barra inclinado');
+    expect(unresolved[0]?.name).toBe('Press de Piso con Mancuernas inclinado');
     expect(unresolved[0]?.reason).toContain('no cumple');
     expect(unresolved[0]?.reason).toContain('inclinado');
     expect(unresolved[0]?.candidate?.name).toBe(NOMBRE);
@@ -477,7 +477,7 @@ describe('applySuggestionAsRoutine', () => {
   it('un nombre exacto sí se asocia y no queda nada sin resolver', () => {
     const { routine, unresolved } = coach.applySuggestionAsRoutine({
       title: 'Casi exacto',
-      exercises: [{ name: 'Press de banca con barra', sets: 3 }],
+      exercises: [{ name: 'Press de Piso con Mancuernas', sets: 3 }],
     });
     expect(unresolved).toEqual([]);
     expect(routine?.items).toHaveLength(1);
@@ -551,7 +551,7 @@ describe('applyWeek', () => {
           focus: 'Pecho',
           exercises: [
             { name: NOMBRE, sets: 4, repMin: 6, repMax: 8, weight: 80, rest: 180, notes: '' },
-            { name: 'Press de banca con barra inclinado', sets: 3 },
+            { name: 'Press de Piso con Mancuernas inclinado', sets: 3 },
           ],
         },
         {
@@ -568,7 +568,7 @@ describe('applyWeek', () => {
     /* solo el día 1 queda con rutina: el día 2 NO tenía ni un ejercicio reconocible */
     expect(aplicado.routines).toBe(1);
     expect(aplicado.unresolved.map((u) => u.name)).toEqual([
-      'Press de banca con barra inclinado',
+      'Press de Piso con Mancuernas inclinado',
       'Kroc Row unilateral con mancuerna',
     ]);
     expect(aplicado.unresolved[0]?.reason).toContain('inclinado');
@@ -602,7 +602,7 @@ describe('partitionUnresolved', () => {
         sets: 3,
         rest: 150,
       },
-      { name: 'Press de banca con barra inclinado', sets: 3 },
+      { name: 'Press de Piso con Mancuernas inclinado', sets: 3 },
     ],
   };
 
@@ -610,9 +610,9 @@ describe('partitionUnresolved', () => {
     const unresolved: UnresolvedName[] = [
       { name: 'Kroc Row unilateral con mancuerna', reason: coach.CREABLE_REASON },
       {
-        name: 'Press de banca con barra inclinado',
-        reason: '«Press de banca con barra» no cumple: inclinado',
-        candidate: { id: 'press-de-banca-con-barra', name: NOMBRE },
+        name: 'Press de Piso con Mancuernas inclinado',
+        reason: '«Press de Piso con Mancuernas» no cumple: inclinado',
+        candidate: { id: 'press-de-piso-con-mancuernas', name: NOMBRE },
       },
       { name: 'Remo que nadie conoce', reason: coach.CREABLE_REASON },
     ];
@@ -625,9 +625,9 @@ describe('partitionUnresolved', () => {
     ]);
     expect(warnings).toEqual([
       {
-        name: 'Press de banca con barra inclinado',
-        reason: '«Press de banca con barra» no cumple: inclinado',
-        candidate: { id: 'press-de-banca-con-barra', name: NOMBRE },
+        name: 'Press de Piso con Mancuernas inclinado',
+        reason: '«Press de Piso con Mancuernas» no cumple: inclinado',
+        candidate: { id: 'press-de-piso-con-mancuernas', name: NOMBRE },
       },
     ]);
 
@@ -739,35 +739,32 @@ describe('ajustes anidados (v1: `setSettingsPath`)', () => {
 
 describe('discos: el modo se recuerda por ejercicio (v1 `T.setPlateMode`)', () => {
   it('guarda el modo elegido para ESE ejercicio y lo deja tras refresh()', () => {
-    store.rememberPlateMode('press-de-banca-con-barra', 'db2');
+    store.rememberPlateMode('press-de-piso-con-mancuernas', 'db2');
 
-    expect(store.settings.value.plateModes['press-de-banca-con-barra']).toBe('db2');
+    expect(store.settings.value.plateModes['press-de-piso-con-mancuernas']).toBe('db2');
     expect(store.settings.value.plateModes['remo-con-mancuerna-a-una-mano']).toBeUndefined();
 
     store.refresh();
-    expect(store.settings.value.plateModes['press-de-banca-con-barra']).toBe('db2');
+    expect(store.settings.value.plateModes['press-de-piso-con-mancuernas']).toBe('db2');
   });
 });
 
 describe('material (v1: «equipo: detecta material faltante» / «disponible al activarlo»)', () => {
   it('apagar y encender el material cambia la disponibilidad y se persiste', () => {
     const press = store.exercises.value.find(
-      (e) => e.id === 'press-de-banca-con-barra',
+      (e) => e.id === 'press-de-piso-con-mancuernas',
     ) as Exercise;
     expect(press).toBeDefined();
 
-    store.setEquipment('barra_olimpica', false);
-    store.setEquipment('banco_plano', false);
-    store.setEquipment('banco_inclinable', false);
+    store.setEquipment('mancuernas_ajustables', false);
+    store.setEquipment('mancuernas_fijas', false);
     expect(isAvailable(press, store.equipment.value)).toBe(false);
 
-    store.setEquipment('barra_olimpica', true);
-    store.setEquipment('banco_plano', true);
+    store.setEquipment('mancuernas_ajustables', true);
     expect(isAvailable(press, store.equipment.value)).toBe(true);
 
     store.refresh();
-    expect(store.equipment.value.barra_olimpica).toBe(true);
-    expect(store.equipment.value.banco_plano).toBe(true);
-    expect(store.equipment.value.banco_inclinable).toBe(false);
+    expect(store.equipment.value.mancuernas_ajustables).toBe(true);
+    expect(store.equipment.value.mancuernas_fijas).toBe(false);
   });
 });

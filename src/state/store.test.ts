@@ -629,8 +629,8 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
       source: 'manual',
     });
     expect(typeof guardadas[0]?.createdAt).toBe('string');
-    /* los 11 ejercicios apuntan a la biblioteca REAL (si el catálogo cambia,
-       la semilla tendría que cambiar con él) */
+    /* los 11 ejercicios apuntan a la semilla REAL (si `seed.ts` cambia, la
+       rutina tendría que cambiar con él) */
     expect(guardadas[0]?.items).toHaveLength(11);
     const ids = store.exercises.value.map((e) => e.id);
     expect(guardadas[0]?.items.every((item) => ids.includes(item.exId))).toBe(true);

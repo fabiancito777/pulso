@@ -28,8 +28,8 @@ describe('ProgressView', () => {
   });
 
   it('la elección de ejercicio vive en la signal compartida', () => {
-    pickExercise('press-de-banca-con-barra');
-    expect(pickedExercise.value).toBe('press-de-banca-con-barra');
+    pickExercise('press-de-piso-con-mancuernas');
+    expect(pickedExercise.value).toBe('press-de-piso-con-mancuernas');
     pickExercise(null);
     expect(pickedExercise.value).toBe(null);
   });

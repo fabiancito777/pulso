@@ -10,8 +10,8 @@
  *   repMin y escribía su valor en repMax);
  * - `bw` (peso corporal) es simplemente `!equip`: el form solo expone material
  *   simple, así que un `a&b|c` de la biblioteca no se puede editar aquí;
- * - el id sale del slug del nombre y, si ya existe (¡incluso siendo de
- *   `SEED_EXERCISES`!), se sustituye por uno con `uid('ex')`. El id NUNCA se
+ * - el id sale del slug del nombre y, si ya existe (¡incluso siendo de la
+ *   semilla por defecto!), se sustituye por uno con `uid('ex')`. El id NUNCA se
  *   regenera al editar: rutinas y sesiones lo referencian.
  */
 import { clamp, int, uid } from './num';

@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SETTINGS } from './defaults';
-import { TEMPLATES } from './catalog';
+import { TEMPLATES, seedExercises } from './data';
 import {
   WEEK_LAYOUT,
   WEEK_ROTATION,
@@ -329,14 +329,16 @@ describe('itemsFromRecipe', () => {
 /* ---------- plantillas ---------- */
 
 describe('routineFromTemplate', () => {
-  it('construye el borrador de `push` con nombre, focus y sus 7 ejercicios', () => {
+  it('construye el borrador de `push` con nombre, focus y sus 6 ejercicios', () => {
     const draft = routineFromTemplate(input(), 'push');
     expect(draft).not.toBeNull();
     expect(draft?.name).toBe('Empuje · Push');
     expect(draft?.focus).toBe('Pecho · Hombros · Tríceps');
     expect(draft?.source).toBe('generador');
-    expect(draft?.items).toHaveLength(7);
-    expect(new Set(draft?.items.map((i) => i.exId)).size).toBe(7);
+    /* pecho 2 + hombros 2 + tríceps 2: la semilla pide 2 de pecho (la v1 pedía
+       3, pero solo hay 2 ejercicios de pecho y el día saldría igual corto) */
+    expect(draft?.items).toHaveLength(6);
+    expect(new Set(draft?.items.map((i) => i.exId)).size).toBe(6);
   });
 
   it('respeta el material dentro de la plantilla', () => {
@@ -355,10 +357,13 @@ describe('routineFromTemplate', () => {
   });
 });
 
-describe('catálogo de plantillas', () => {
-  /* La v1 las define en `legacy/js/data.js` ~343: si este test salta, cambió el
-     catálogo generado y hay que mirar `tools/port-catalog.mjs` (manda el catálogo). */
-  const V1: [string, [string, number][]][] = [
+describe('plantillas de la semilla', () => {
+  /* La v1 las define en `legacy/js/data.js` ~343; aquí se fija la semilla que
+     de verdad se le pone al usuario (`seed.ts`), que es la que usa la app y a la
+     que apunta `WEEK_ROTATION`. Cambió a propósito: la v1 traía 9 plantillas y
+     las recetas pedían `femoral`, `gluteos`, `cardio` y `movilidad`, grupos que
+     esta biblioteca de 24 ejercicios no trae. */
+  const SEMILLA: [string, [string, number][]][] = [
     [
       'full_a',
       [
@@ -371,7 +376,7 @@ describe('catálogo de plantillas', () => {
     [
       'full_b',
       [
-        ['femoral', 2],
+        ['cuadriceps', 2],
         ['espalda', 2],
         ['hombros', 2],
         ['core', 1],
@@ -380,7 +385,7 @@ describe('catálogo de plantillas', () => {
     [
       'push',
       [
-        ['pecho', 3],
+        ['pecho', 2],
         ['hombros', 2],
         ['triceps', 2],
       ],
@@ -397,8 +402,6 @@ describe('catálogo de plantillas', () => {
       'legs',
       [
         ['cuadriceps', 2],
-        ['femoral', 2],
-        ['gluteos', 1],
         ['gemelos', 1],
       ],
     ],
@@ -411,36 +414,34 @@ describe('catálogo de plantillas', () => {
         ['biceps', 1],
       ],
     ],
-    [
-      'lower',
-      [
-        ['cuadriceps', 2],
-        ['femoral', 2],
-        ['gluteos', 1],
-        ['core', 2],
-      ],
-    ],
-    [
-      'hiit',
-      [
-        ['cardio', 2],
-        ['core', 3],
-      ],
-    ],
-    ['mobility', [['movilidad', 5]]],
+    ['lower', [['cuadriceps', 2], ['core', 1]]],
   ];
 
-  it('las 9 plantillas de v2 son idénticas a las TEMPLATES de la v1', () => {
+  it('son exactamente 7 y con estas recetas', () => {
+    expect(TEMPLATES).toHaveLength(7);
     expect(TEMPLATES.map((tpl) => [tpl.id, tpl.recipe] as [string, [string, number][]])).toEqual(
-      V1,
+      SEMILLA,
     );
+  });
+
+  it('ninguna receta pide un grupo que la semilla no traiga', () => {
+    const semilla = seedExercises();
+    for (const tpl of TEMPLATES) {
+      for (const [grupo, n] of tpl.recipe) {
+        const hay = semilla.filter((ex) => ex.group === grupo).length;
+        expect(hay, `${tpl.id} pide ${n} de ${grupo} y solo hay ${hay}`).toBeGreaterThanOrEqual(
+          n,
+        );
+      }
+    }
   });
 });
 
 /* ---------- semana ---------- */
 
 describe('WEEK_LAYOUT y WEEK_ROTATION', () => {
-  /* `legacy/js/coach.js` ~360-365, literal. */
+  /* `legacy/js/coach.js` ~360-365, literal (salvo el domingo de 7 días, que era
+     `mobility` y la semilla ya no trae plantillas de movilidad). */
   const LAYOUT: Record<number, number[]> = {
     1: [2],
     2: [0, 3],
@@ -457,7 +458,7 @@ describe('WEEK_LAYOUT y WEEK_ROTATION', () => {
     4: ['push', 'pull', 'legs', 'upper'],
     5: ['push', 'pull', 'legs', 'upper', 'lower'],
     6: ['push', 'pull', 'legs', 'push', 'pull', 'legs'],
-    7: ['push', 'pull', 'legs', 'upper', 'lower', 'full_a', 'mobility'],
+    7: ['push', 'pull', 'legs', 'upper', 'lower', 'full_a', 'full_b'],
   };
 
   it('coinciden con la v1 y cada rotación cubre su reparto', () => {
@@ -501,7 +502,7 @@ describe('weekSlots', () => {
     ).toEqual([2]);
     const siete = weekSlots(7);
     expect(siete.every((s) => s.templateId !== null)).toBe(true);
-    expect(siete[6]).toMatchObject({ templateId: 'mobility', recovery: false });
+    expect(siete[6]).toMatchObject({ templateId: 'full_b', recovery: false });
     /* 6 días: el domingo sobra pero n < 6 es falso → descanso normal */
     expect(weekSlots(6)[6]).toMatchObject({ templateId: null, recovery: false });
   });

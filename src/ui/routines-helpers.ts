@@ -255,10 +255,10 @@ export const ROTATE_OPTIONS: readonly { value: string; label: string }[] = [
 export const DEFAULT_ROTATE = 3;
 
 /**
- * Datos que se pintan de una plantilla del catálogo: cuántos ejercicios trae y a
- * qué grupos toca (el «7 ejercicios · Pecho · Hombros · Tríceps» de la sección
- * Plantillas de la v1). El recuento es la suma de la receta, no lo que acabe
- * saliendo: con poco material pueden faltar ejercicios y eso se ve al generar.
+ * Datos que se pintan de una plantilla: cuántos ejercicios trae y a qué grupos
+ * toca (el «6 ejercicios · Pecho · Hombros · Tríceps» de la sección Plantillas).
+ * El recuento es la suma de la receta, no lo que acabe saliendo: con poco
+ * material pueden faltar ejercicios y eso se ve al generar.
  */
 export function templateSummary(tpl: RoutineTemplate): { count: number; groups: string } {
   let count = 0;

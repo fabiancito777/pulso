@@ -6,19 +6,21 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { SEED_EXERCISES, TEMPLATES } from './catalog';
-import { defaultEquipment, equipPreset, findExercise } from './data';
+import { TEMPLATES, defaultEquipment, equipPreset, findExercise, seedExercises } from './data';
 import { addDays, startOfWeek, today } from './dates';
 import { demoSessions } from './demo';
 import type { DemoOptions } from './demo';
 
 const HOY = '2026-09-28'; /* lunes: la semana en curso empieza ese mismo día */
 
+/* La semilla real (24 ejercicios), que es lo que la app le pasa a la demo */
+const SEED = seedExercises();
+
 function options(over: Partial<DemoOptions> = {}): DemoOptions {
   return {
     weeks: 8,
     unit: 'kg',
-    exercises: SEED_EXERCISES,
+    exercises: SEED,
     equipment: defaultEquipment(),
     sessions: [],
     todayIso: HOY,
@@ -47,13 +49,13 @@ describe('demoSessions', () => {
       for (const entry of s.entries) {
         expect(entry.sets.length).toBeGreaterThanOrEqual(3);
         expect(entry.exId).toBeTruthy();
-        expect(findExercise(SEED_EXERCISES, entry.exId)?.name).toBe(entry.name);
+        expect(findExercise(SEED, entry.exId)?.name).toBe(entry.name);
         for (const set of entry.sets) {
           expect(set.done).toBe(true);
           expect(set.reps).toBeGreaterThanOrEqual(1);
           expect(set.weight).toBeGreaterThanOrEqual(0);
           /* peso corporal → 0 kg, que es información real y no un vacío */
-          if (findExercise(SEED_EXERCISES, entry.exId)?.bw) expect(set.weight).toBe(0);
+          if (findExercise(SEED, entry.exId)?.bw) expect(set.weight).toBe(0);
         }
       }
     }
@@ -106,7 +108,7 @@ describe('demoSessions', () => {
     const list = demoSessions(options({ equipment: equipPreset('ninguno') }));
     expect(list.length).toBeGreaterThan(0);
     for (const entry of list.flatMap((s) => s.entries)) {
-      const ex = findExercise(SEED_EXERCISES, entry.exId);
+      const ex = findExercise(SEED, entry.exId);
       expect(ex?.bw).toBe(true);
       expect(entry.sets.every((x) => x.weight === 0)).toBe(true);
     }

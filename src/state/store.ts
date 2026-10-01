@@ -12,7 +12,7 @@
  */
 import { signal } from '@preact/signals';
 
-import { TEMPLATES } from '@/domain/catalog';
+import { TEMPLATES } from '@/domain/data';
 import { defaultEquipment, seedExercises, type EquipmentMap } from '@/domain/data';
 import { today } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
@@ -197,8 +197,10 @@ const KEEP_ON_RESET: readonly string[] = [SEED_KEY, SETUP_KEY];
 /**
  * Rutinas personales puntuales. NO son defaults ni plantillas de la app: son
  * rutinas concretas que el usuario pidió dejar cargadas una sola vez. Es el
- * `PERSONAL_ROUTINES` de `store.js:36` con los MISMOS ids y el mismo
- * contenido, para que las dos ramas lean la misma rutina.
+ * `PERSONAL_ROUTINES` de `store.js:36`, con el MISMO orden y el mismo contenido
+ * (series, reps, descansos y notas), pero los `exId` apuntan a la semilla de 24:
+ * los ids de la v1 (`remo-con-mancuerna-a-una-mano`…) dejaron de existir y un
+ * id huerfano se pintaría como «ejercicio desconocido» en la tarjeta.
  */
 const PERSONAL_ROUTINES: readonly Routine[] = [
   {
@@ -210,7 +212,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
       'Cargada a mano para una sesión. El peso de cada ejercicio va en el plan. En las superseries el primer ejercicio lleva 15 s de transición y el segundo el descanso real (45-60 s).',
     items: [
       {
-        exId: 'remo-con-mancuerna-a-una-mano',
+        exId: 'remo-unilateral-kroc-row-con-mancuerna',
         sets: 3,
         repMin: 10,
         repMax: 10,
@@ -220,7 +222,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
           'KROC ROW a una mano · 17 kg · 3x10 por lado · descanso 60 s al terminar los dos lados',
       },
       {
-        exId: 'press-de-banca-con-mancuernas',
+        exId: 'press-de-piso-con-mancuernas',
         sets: 3,
         repMin: 10,
         repMax: 10,
@@ -230,7 +232,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
           'PRESS DE PISO · 18 kg por mancuerna · pausa de 1 s con los codos tocando el suelo y subida explosiva',
       },
       {
-        exId: 'press-militar-con-mancuernas',
+        exId: 'press-militar-sentado-con-mancuernas',
         sets: 3,
         repMin: 8,
         repMax: 8,
@@ -240,7 +242,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
           'SUPERSERIE 1 (1/2) · 11 kg por mano x 8 · pasa sin descanso a las elevaciones laterales',
       },
       {
-        exId: 'elevaciones-laterales-con-mancuernas',
+        exId: 'elevaciones-laterales',
         sets: 3,
         repMin: 15,
         repMax: 15,
@@ -249,7 +251,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
         notes: 'SUPERSERIE 1 (2/2) · 4 kg por mano x 15 · descanso 45 s al terminar la superserie',
       },
       {
-        exId: 'extension-sobre-la-cabeza-con-mancuerna',
+        exId: 'rompecraneos-en-suelo',
         sets: 3,
         repMin: 10,
         repMax: 12,
@@ -277,7 +279,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
         notes: 'SUPERSERIE 3 (1/2) · 9 kg por mano x 10',
       },
       {
-        exId: 'encogimientos-con-barra',
+        exId: 'encogimientos-shrugs-con-barra',
         sets: 3,
         repMin: 12,
         repMax: 12,
@@ -296,7 +298,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
         notes: 'Deltoides posterior · 4 kg por mano x 15 · bajada controlada en 2 s',
       },
       {
-        exId: 'curl-de-muneca',
+        exId: 'curl-de-muneca-con-mancuerna-unilateral',
         sets: 2,
         repMin: 10,
         repMax: 10,
@@ -306,7 +308,7 @@ const PERSONAL_ROUTINES: readonly Routine[] = [
           'ANTEBRAZOS (1/2) · unilateral 11 kg x 10 por brazo · sin descanso pasa al otro brazo',
       },
       {
-        exId: 'curl-inverso-con-barra',
+        exId: 'curl-de-muneca-invertido-unilateral-con-mancuerna',
         sets: 2,
         repMin: 15,
         repMax: 15,
@@ -472,9 +474,10 @@ export function setEquipment(key: string, on: boolean): void {
 /* ---------- biblioteca de ejercicios ---------- */
 
 /**
- * Semilla completa de la biblioteca: el catálogo generado (`catalog.ts`) más los
- * ejercicios que se declaran a mano en `domain/data.ts` porque no están en la
- * v1. `mergeSeed` se aplica SIEMPRE sobre esta lista, no sobre `SEED_EXERCISES`.
+ * Semilla de la biblioteca por defecto: los 24 ejercicios curados de
+ * `domain/seed.ts`. El catálogo completo de `catalog.ts` (136) ya no se le pone
+ * al usuario: sigue ahí para las copias de la v1 y para los tests de integridad.
+ * `mergeSeed` se aplica SIEMPRE sobre esta lista, no sobre `SEED_EXERCISES`.
  */
 const SEED: readonly Exercise[] = seedExercises();
 

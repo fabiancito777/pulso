@@ -51,11 +51,11 @@ const MODEL = 'gemini-3.5-flash-lite';
 const TIMEOUT = 300_000;
 const MAX_CALLS = 20;
 
-const N_PRESS = 'Press de banca con barra';
-const N_REMO = 'Remo con barra';
-const N_MILITAR = 'Press militar con barra';
-const N_ELEV = 'Elevaciones laterales con mancuernas';
-const N_SUST = 'Jalón al pecho';
+const N_PRESS = 'Press de Piso con Mancuernas';
+const N_REMO = 'Remo con Barra';
+const N_MILITAR = 'Press Militar';
+const N_ELEV = 'Elevaciones Laterales';
+const N_SUST = 'Dominadas';
 
 /** `5 km` / `cinco kilómetros`: como el modelo pueda escribirlo. */
 const KM = /(?:5\s*(?:km|kil)|cinco\s+kil)/i;
@@ -334,7 +334,7 @@ suite('edge cases contra Gemini (API real)', () => {
 
       const out = await coach.runCoachTask(
         'chat',
-        { userText: '¿cómo ha sido mi evolución de Press banca y qué hice la última vez?' },
+        { userText: '¿cómo ha sido mi evolución de Press de Piso y qué hice la última vez?' },
         { generateFn: realGenerate },
       );
       console.log(
@@ -367,7 +367,7 @@ suite('edge cases contra Gemini (API real)', () => {
       const fechaVieja = addDays(HOY, -20);
       const detalle = await coach.runCoachTask(
         'chat',
-        { userText: `¿Con cuánto peso hice el Press banca en la sesión del ${fechaVieja}?` },
+        { userText: `¿Con cuánto peso hice el Press de Piso en la sesión del ${fechaVieja}?` },
         { generateFn: realGenerate },
       );
       console.log(
@@ -429,7 +429,7 @@ suite('edge cases contra Gemini (API real)', () => {
     '4 · JSON sucio envuelto en prosa → parseJSON lo rescata',
     async () => {
       const json =
-        '{"title":"Empuje A","exercises":[{"name":"Press de banca con barra","sets":4,' +
+        '{"title":"Empuje A","exercises":[{"name":"Press de Piso con Mancuernas","sets":4,' +
         '"repMin":6,"repMax":10,"weight":80,"rest":180}]}';
       const res = await realGenerate({
         apiKey: API_KEY,
@@ -513,7 +513,7 @@ suite('edge cases contra Gemini (API real)', () => {
 
       const out = await coach.runCoachTask(
         'chat',
-        { userText: '¿en cuántas libras hice el press banca la última vez?' },
+        { userText: '¿en cuántas libras hice el press de piso la última vez?' },
         { generateFn: realGenerate },
       );
       console.log(
@@ -581,7 +581,9 @@ describe('edge cases sin red', () => {
 
   it('9a · 300 sesiones sintéticas: el contexto cabe y el consolidado respeta maxLines', () => {
     const libreria = store.exercises.value.filter((ex) => ex.allowed);
-    expect(libreria.length).toBeGreaterThan(60);
+    expect(libreria.length, 'la biblioteca por defecto ya no supera el tope').toBeLessThan(
+      HISTORY_DEFAULT_LINES,
+    );
     const sesiones: Session[] = Array.from({ length: 300 }, (_, i) => {
       const ex = libreria[i % libreria.length];
       const date = addDays(HOY, -(i + 1));
@@ -613,9 +615,21 @@ describe('edge cases sin red', () => {
     expect(ctx.length, 'el contexto se dispara con 300 sesiones').toBeLessThan(60_000);
     expect(fichas.length).toBeLessThanOrEqual(HISTORY_DEFAULT_LINES);
 
-    /* y la función por sí sola también respeta el tope (aquí hay > 60 ejercicios) */
-    const directas = consolidatedHistory(sesiones, { exercises: store.exercises.value });
-    expect(directas.length).toBeLessThanOrEqual(HISTORY_DEFAULT_LINES);
+    /* el tope de 60 solo se ve con > 60 ejercicios distintos, y la semilla ya
+       no llega: `consolidatedHistory` agrupa por lo que traiga la sesión, así
+       que se le dan fichas sintéticas y se comprueba que corta en 60 */
+    const sinteticas: Session[] = Array.from({ length: 80 }, (_, i) =>
+      sessionOf(addDays(HOY, -(i + 1)), `sint-${i}`, [
+        {
+          exId: `sint-${i}`,
+          name: `Ejercicio sintético ${i}`,
+          group: 'pecho',
+          sets: mkSets(40, 8, 4),
+        },
+      ]),
+    );
+    const directas = consolidatedHistory(sinteticas, { exercises: store.exercises.value });
+    console.log(`[edge] 9a · fichas de 80 ejercicios sintéticos: ${directas.length}`);
     expect(directas.length).toBe(HISTORY_DEFAULT_LINES);
   });
 

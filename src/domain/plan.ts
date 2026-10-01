@@ -11,11 +11,11 @@
  *
  * ## Qué manda sobre la v1
  *
- * - **Plantillas**: `TEMPLATES` vive en `@/domain/catalog` (generado desde
- *   `legacy/js/data.js` con `tools/port-catalog.mjs`) y hoy es idéntico al de
- *   la v1: mismos 9 `id`, mismas recetas. Si algún día divergen, manda el
- *   catálogo, porque es lo que usa el resto de la app; `plan.test.ts` fija esa
- *   equivalencia para que un cambio accidental salga en la verificación.
+ * - **Plantillas**: `TEMPLATES` sale de `@/domain/seed` (la semilla de 7
+ *   plantillas que ve un usuario nuevo) y `@/domain/catalog` sigue trayendo las
+ *   9 de la v1. Manda la semilla, porque es la que se le pone al usuario; lo que
+ *   NO se puede hacer es que una rotación apunte a un `id` que la semilla no
+ *   traiga, y `plan.test.ts` fija tanto las recetas como ese cruce.
  * - **Material**: la v1 filtraba con `S.usable()` (permitidos Y disponibles)
  *   dentro del propio `pickForGroup`; aquí el mismo filtro se hace con
  *   `isAvailable(ex, equipment)` y el mapa de material llega por parámetro, como
@@ -361,9 +361,11 @@ export const WEEK_LAYOUT: Record<number, readonly number[]> = {
 };
 
 /**
- * Plantillas que tocan en cada posición de `WEEK_LAYOUT`, también de la v1.
- * `full_a`/`full_b` para 1-3 días (fuerza completa), splits de 4-7 (push/pull/
- * legs + torso/pierna) y movilidad al final de la semana de 7.
+ * Plantillas que tocan en cada posición de `WEEK_LAYOUT`, también de la v1
+ * (salvo el domingo de 7 días, que era `mobility` y la semilla ya no trae
+ * plantillas de movilidad: se queda en el reparto de `full_b`).
+ * `full_a`/`full_b` para 1-3 días (fuerza completa) y splits de 4-7 (push/pull/
+ * legs + torso/pierna).
  */
 export const WEEK_ROTATION: Record<number, readonly string[]> = {
   1: ['full_a'],
@@ -372,7 +374,7 @@ export const WEEK_ROTATION: Record<number, readonly string[]> = {
   4: ['push', 'pull', 'legs', 'upper'],
   5: ['push', 'pull', 'legs', 'upper', 'lower'],
   6: ['push', 'pull', 'legs', 'push', 'pull', 'legs'],
-  7: ['push', 'pull', 'legs', 'upper', 'lower', 'full_a', 'mobility'],
+  7: ['push', 'pull', 'legs', 'upper', 'lower', 'full_a', 'full_b'],
 };
 
 /** Qué toca en cada uno de los 7 días de la semana. */
