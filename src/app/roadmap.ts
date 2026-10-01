@@ -1,7 +1,7 @@
 /**
  * Estado de la migración v1 → v2, en un solo sitio y visible desde la app.
  * Sirve para saber qué se puede tocar ya con el stack nuevo y qué sigue
- * viviendo en `legacy/` sin tocar.
+ * pendiente de portar desde la v1 (tag `v1-final`).
  */
 export type PortState = 'portado' | 'en curso' | 'pendiente';
 

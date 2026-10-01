@@ -26,8 +26,8 @@ import { slug } from './text';
 import type { Exercise, ExerciseOpts, ExerciseType, RoutineTemplate } from './types';
 
 /**
- * Mismo patrón que el `E()` de `catalog.ts` (no exportado: ese fichero lo
- * genera `tools/port-catalog.mjs`). El id sale del nombre, igual que hace
+ * Mismo patrón que el `E()` de `catalog.ts` (no exportado: ese fichero es generado).
+ * El id sale del nombre, igual que hace
  * `S.addExercise` de la v1, así que no hay que mantener dos listas de ids.
  */
 function E(

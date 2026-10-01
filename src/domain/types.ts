@@ -36,7 +36,7 @@ export type Theme = 'amoled' | 'dark' | 'light';
 export type Level = 'principiante' | 'intermedio' | 'avanzado';
 export type ExerciseType = 'compuesto' | 'aislado' | 'cardio' | 'movilidad';
 
-/* ---------- catálogo (lo genera `tools/port-catalog.mjs` en `catalog.ts`) ---------- */
+/* ---------- catálogo (generado en `catalog.ts`) ---------- */
 
 /** Una pieza del catálogo de material. */
 export interface EquipmentItem {

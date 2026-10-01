@@ -1,8 +1,8 @@
 # AGENTS.md · Pulso **v2**
 
 Documento de contexto de esta app. Aquí no es HTML+JS vanilla: es
-**Vite + TypeScript + Preact**, con tests de verdad. La v1 congelada está en `legacy/` (y en el
-tag **`v1-final`**, que es su última versión con los fixes de audio) y su documentación completa
+**Vite + TypeScript + Preact**, con tests de verdad. La v1 congelada vive en el tag
+**`v1-final`** (su última versión, con los fixes de audio) y su documentación completa
 —decisiones de diseño, reglas de la sesión, timer de descanso, coach IA— está en
 **`AGENTS-v1.md`**: sigue siendo válida como referencia del _por qué_ de cada regla, así que si
 dudas, mira ahí primero.
@@ -23,8 +23,9 @@ dudas, mira ahí primero.
 | **hoy**        | **v2**: la app portada a Vite 8 + TypeScript 6 + Preact 10 + Vitest 5, con ESLint/Prettier.       | `npm run dev` (o `npm run build` + `npm run preview`) |
 | `v1-final`     | **v1** (HTML + CSS + JS vanilla, sin deps ni build), tal como quedó al cerrar la migración.       | sacar el tag y abrir `index.html`                     |
 
-- `legacy/` es la **v1 congelada** (fuente de la migración). No se toca, no se formatea y no
-  entra en el lint (`eslint.config.js` la ignora). Es el patrón de referencia.
+- La **v1 congelada** vive en el tag `v1-final` (y en el historial de `main`), no en el árbol de
+  trabajo: la carpeta `legacy/` se retiró al cerrar la migración para no arrastrar código muerto.
+  Se consulta cuando haga falta con `git show v1-final:index.html` o un `git worktree add`.
 - El estado sigue en `localStorage['pulso.state']` con el **mismo formato que la v1**: v2 lee y
   escribe lectura-modificación-escritura, así que los datos que ya tienes valen. Única salvedad:
   `settings.plates` se guarda en **unidades** (`discs`, con espejo `pairs` para que la v1 siga
@@ -44,8 +45,8 @@ dudas, mira ahí primero.
   que TS 7 dejaría el proyecto sin lint tipado. Cuando typescript-eslint lo soporte, subir a 7 es
   cambiar una versión.
 - **Vitest 5** — las comprobaciones que en la v1 vivían dentro del auto-test del navegador
-  (`legacy/js/app.js` → `selfTest()`) ahora son tests normales, sin navegador y con estado
-  explícito. El auto-test sigue existiendo en `legacy/`, pero su sitio natural es `src/**/*.test.ts`.
+  (el `selfTest()` de `legacy/js/app.js`) ahora son tests normales, sin navegador y con estado
+  explícito. Aquel auto-test sigue en el tag `v1-final`, pero su sitio natural es `src/**/*.test.ts`.
 - **ESLint 10 + `typescript-eslint` (tipado) + Prettier** — el lint usa información de tipos
   (`projectService`), por eso caza cosas que el lint clásico no ve.
 
@@ -66,9 +67,7 @@ npm run preview      # sirve el build
 | `npm run lint`                | ESLint con reglas tipadas (`recommendedTypeChecked`)                                                                      |
 | `npm run test`                | Vitest (hoy ≈ **915 tests**: dominio, estado y UI; ver las notas de abajo sobre los dos archivos de red del coach)        |
 | `npm run verify`              | typecheck + lint + test + build (lo que hay que dejar verde)                                                              |
-| `npm run format`              | Prettier sobre todo lo que no sea `legacy/`                                                                               |
-| `node tools/port-catalog.mjs` | **Regenera** `src/domain/catalog.ts` desde `legacy/js/data.js` (luego `npx prettier --write src/domain/catalog.ts`)       |
-| `node tools/port-icons.mjs`   | **Regenera** `src/ui/icons.ts` desde los `ico(...)` de `legacy/js/core.js` (luego `npx prettier --write src/ui/icons.ts`) |
+| `npm run format`              | Prettier sobre el proyecto                                                                                                |
 
 Notas de entorno:
 
@@ -120,8 +119,6 @@ src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx, ProgressCa
     icons.ts                                   catálogo de iconos GENERADO desde la v1 (no se edita)
 src/platform/       → lo que toca el navegador (audio.ts: pitidos y vibración)
 src/styles/         → base.css (heredada de la v1) + v2.css (shell)
-tools/              → scripts de migración (port-catalog.mjs, port-icons.mjs)
-legacy/             → v1 congelada (referencia y fuente de la migración)
 _specs/             → specs de trabajo de la migración (gitignored)
 .env.local          → API key del coach para los tests de red (gitignored, NUNCA commitear)
 ```
@@ -162,10 +159,10 @@ localStorage['pulso.state']  (mismo formato que la v1; placas en unidades, con e
 ## 4. Convenciones (respétalas al portar)
 
 - **Rutas y alias**: `@/…` apunta a `src/` (definido en `tsconfig.json` y en `vite.config.ts`).
-- **`catalog.ts` y `ui/icons.ts` son generados**: no se editan a mano. Se cambia la v1 (o el
-  generador) y se vuelve a lanzar `node tools/port-catalog.mjs` / `node tools/port-icons.mjs`. Lo que
-  se añade a mano va en `data.ts`, y `data.test.ts` vigila la integridad del catálogo (grupos o
-  material inexistentes, ids repetidos, rangos al revés).
+- **`catalog.ts` y `ui/icons.ts` se generaron una vez** desde la v1 (tag `v1-final`) y ahora están
+  congelados: no se regeneran ni se tocan a la ligera. Lo que se añade a mano (presets, ejercicios)
+  va en `data.ts` / `seed.ts`, y `data.test.ts` vigila la integridad del catálogo (grupos o material
+  inexistentes, ids repetidos, rangos al revés).
 - **Nada de estado que se repinte solo en exceso**: un componente que lee `restSeconds.value` se
   repinta cada segundo, así que eso vive en componentes pequeños (`RestBox`, `Clock`) y nunca en la
   tarjeta que contiene los inputs: si no, cada tic reescribiría el `value` de lo que estás
@@ -195,7 +192,7 @@ localStorage['pulso.state']  (mismo formato que la v1; placas en unidades, con e
    parámetro) y escribe el test en `xxx.test.ts`. Nada de UI todavía.
 2. **Estado después**: si necesita persistencia, añade el setter a `src/state/store.ts`.
 3. **UI al final**: crea el componente en `src/ui/`.
-4. **Borra la copia desde `legacy/` solo cuando el bloque esté cubierto por tests**, y actualiza
+4. **Da el bloque por cerrado solo cuando esté cubierto por tests**, y actualiza
    `src/app/roadmap.ts` (que es lo que se ve en la app: `portado` / `en curso` / `pendiente`).
 
 El estado de cada bloque está en **`src/app/roadmap.ts`** — una sola fuente, sin listas duplicadas
@@ -269,3 +266,4 @@ floor(discos/huecos)` con reparto **simétrico**, eligiendo la suma más cercana
 | 24-sep-2026 | Reglas de la sesión portadas a `src/domain/session.ts` (**39 tests**) con tipos `ActiveSet`/`ActiveEntry`/`ActiveSession`, `findExerciseByName` en `data.ts` y la operación combinada `editSetField`                                                                                                                                                                                                                                                   | Son las reglas que más se rompen sin querer (arrastre hacia abajo, peso vacío ≠ 0, cuándo arranca el descanso) y en la v1 solo se podían comprobar entrenando o con el auto-test del navegador. Las funciones no mutan nada (para que Preact repinte solo) y devuelven la decisión de descanso en vez de arrancar el timer.                                                                                                        |
 | 29-sep-2026 | Migración **prácticamente completa**: las 7 pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y Ajustes), coach IA (`src/features/coach/` + `src/state/coach.ts`) con memoria, consultas al historial y planificador local sin key (`src/domain/plan.ts`), extras de sesión (discos por serie, «Añadir rutina», picker multi, descanso editable), avisos con el móvil bloqueado, PWA e onboarding. `npm run test` ≈ **585 tests** | `src/app/roadmap.ts` queda en **16 de 16 bloques `portado`**, así que el estado se mira ahí y no en la doc. Los dos archivos de red del coach (`smoke.test.ts`, `edge.test.ts`) son los únicos que hablan con Gemini de verdad: van con la key de `.env.local` y se excluyen con `--exclude`.                                                                                                                                      |
 | 30-sep-2026 | Biblioteca por defecto recortada a **24 ejercicios**: nuevo `src/domain/seed.ts` (semilla curada + las 7 `TEMPLATES` que usa el planner, con `hiit` y `mobility` fuera y `WEEK_ROTATION[7] = full_b`), `data.ts` deja de exportar la semilla de los 136 y re-exporta la de `seed.ts`, más tests y docs al día (los `smoke`/`edge` del coach usan ya nombres de la semilla). `npm run test` ≈ **915 tests** | El usuario solo entrena con esos 24; el catálogo completo de 136 queda como fuente de integridad, de ejercicios propios y de lo que traiga una copia de la v1, así que sigue generado y sin tocar a mano.                    |
+| 01-oct-2026 | Limpieza de código muerto: fuera `legacy/` (la v1 congelada, 22 archivos) y los generadores `tools/port-{catalog,icons}.mjs`, ya cumplida la migración; la v1 queda solo en el tag `v1-final`. `.gitignore` ya ignora `*.log` | La v1 se conserva entera en git (tag `v1-final` + historial de `main`), así que mantener su copia en el árbol de trabajo solo engordaba cada clon; los dos generadores eran de un solo uso y se quedaban sin fuente que leer. |

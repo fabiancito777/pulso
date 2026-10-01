@@ -1,6 +1,6 @@
 /**
  * Las tarjetas de "migración" que convivían en `App.tsx`: la biblioteca/material,
- * el roadmap de la migración y la nota sobre `legacy/`.
+ * el roadmap de la migración y la nota sobre la v1.
  *
  * Siguen siendo útiles para ver POR QUÉ la app no está al 100 %, pero ya no
  * encabezan ninguna pestaña: en Hoy cuelgan de un `<details>` al final (spec
@@ -104,8 +104,8 @@ export function MigrationCards({ open = false }: { open?: boolean } = {}) {
         <RoadmapCard />
         <section class="card tight">
           <div class="tiny muted">
-            La v1 completa (HTML + JS vanilla) sigue congelada en <code>legacy/</code> y es la app
-            que corre en la rama <code>main</code>. Aquí se porta bloque a bloque.
+            La v1 completa (HTML + JS vanilla) quedó congelada en el tag <code>v1-final</code>.
+            La app que corre en <code>main</code> es esta (la v2), portada bloque a bloque.
           </div>
         </section>
       </div>

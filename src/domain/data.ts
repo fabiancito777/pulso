@@ -62,8 +62,8 @@ export type EquipPresetKind = 'todo' | 'gym' | 'kit' | 'basico' | 'ninguno';
 
 /**
  * Presets que NO salen del catálogo de la v1. Viven aquí y no en `catalog.ts`
- * porque ese fichero es generado (`node tools/port-catalog.mjs`) y regenerarlo
- * los borraría (AGENTS.md §4).
+ * porque ese fichero es generado (históricamente con `tools/port-catalog.mjs`) y
+ * volver a generarlo los borraría (AGENTS.md §4).
  *
  * `kit` es el «material real» de quien entrena en casa sin banco: mancuernas
  * ajustables (montadas como barra larga) y fijas, barra cargable, barra de

@@ -1,12 +1,10 @@
 /* ==========================================================================
    Pulso v2 · catalog.ts — catálogo base (grupos, material, ejercicios, plantillas)
 
-   ARCHIVO GENERADO: no lo edites a mano. Se produce desde la v1 con
-
-       node tools/port-catalog.mjs && npx prettier --write src/domain/catalog.ts
-
-   a partir de `legacy/js/data.js`. Las comprobaciones de integridad están en
-   `src/domain/data.test.ts`.
+   ARCHIVO GENERADO (histórico): se produjo una vez desde `legacy/js/data.js` de la v1
+   (tag `v1-final`) con el generador `tools/port-catalog.mjs`, ya retirado. Ahora es un
+   fichero base congelado: si hay que tocar datos, se edita aquí a mano con cuidado y lo
+   vigila `src/domain/data.test.ts`.
    ========================================================================== */
 import { slug } from './text';
 import type {

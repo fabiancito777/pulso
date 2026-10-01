@@ -15,6 +15,9 @@ dist/
 
 # cachés de herramientas
 eslintcache
+
+# logs de desarrollo (nunca se versionan)
+*.log
 *.tsbuildinfo
 .vite/
 

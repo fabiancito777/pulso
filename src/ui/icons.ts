@@ -1,12 +1,10 @@
 /* ==========================================================================
    Pulso v2 · icons.ts — catálogo de iconos (trazos SVG)
 
-   ARCHIVO GENERADO: no lo edites a mano. Se produce desde la v1 con
-
-       node tools/port-icons.mjs && npx prettier --write src/ui/icons.ts
-
-   a partir de los `ico(...)` de `legacy/js/core.js`. El componente que los pinta
-   (y que decide el tamaño y el color) es `src/ui/Icon.tsx`.
+   ARCHIVO GENERADO (histórico): se produjo una vez desde los `ico(...)` de
+   `legacy/js/core.js` (v1, tag `v1-final`) con el generador `tools/port-icons.mjs`, ya
+   retirado. Ahora es un fichero base congelado. El componente que los pinta (y que decide
+   el tamaño y el color) es `src/ui/Icon.tsx`.
    ========================================================================== */
 
 /** Un icono: sus trazos y, si la v1 los engordó, el grosor. */

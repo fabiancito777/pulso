@@ -6,8 +6,8 @@ y **todo funciona sin key** (el planificador local cubre sugerencias y plan sema
 
 **Web**: <https://fabiancito777.github.io/pulso/> (publicada por Actions desde `main`).
 
-> La **v1** (HTML + CSS + JS vanilla, sin build) quedó congelada en `legacy/` y en el tag
-> **`v1-final`**; su documentación de diseño está en **`AGENTS-v1.md`**. El contexto completo de
+> La **v1** (HTML + CSS + JS vanilla, sin build) quedó congelada en el tag **`v1-final`**;
+> su documentación de diseño está en **`AGENTS-v1.md`**. El contexto completo de
 > esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
 
 ---
@@ -216,8 +216,6 @@ src/ui/                 · componentes y vistas Preact (Hoy, Entrenar, Rutinas,
 src/platform/           · lo que toca el navegador (audio, keep-alive, SW, notify, theme)
 src/styles/             · base.css (heredado de la v1) + v2.css y estilos por vista
 public/                 · manifest, service worker e iconos de la PWA
-tools/                  · scripts de migración (port-catalog.mjs, port-icons.mjs)
-legacy/                 · la v1 congelada (referencia; no se toca ni se formatea)
 ```
 
 Regla de dependencias: `domain ← features ← state ← ui`. El dominio no importa nada de
@@ -234,7 +232,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run lint` | ESLint con reglas tipadas. |
 | `npm run test` | Vitest (dominio, estado y UI; ~915 tests). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
-| `npm run format` | Prettier sobre todo lo que no sea `legacy/`. |
+| `npm run format` | Prettier sobre el proyecto. |
 
 ---
 
@@ -245,9 +243,10 @@ fuera de sí mismo, así que se prueba sin navegador.
   que no se pueden probar así se verifican con Playwright.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y
   calendario. Se quitan desde *Ajustes → Datos*.
-- **Catálogo e iconos generados**: `src/domain/catalog.ts` y `src/ui/icons.ts` se generan desde la
-  v1 con `node tools/port-catalog.mjs` / `port-icons.mjs`; no se editan a mano.
-- **Añadir un ejercicio**: a la semilla del generador o desde *Ajustes → Ejercicios* (los propios
+- **Catálogo e iconos**: `src/domain/catalog.ts` y `src/ui/icons.ts` se generaron una vez desde la
+  v1 (tag `v1-final`); ahora son ficheros base congelados y, si hay que tocarlos, se editan a mano
+  con cuidado (la integridad del catálogo la vigila `src/domain/data.test.ts`).
+- **Añadir un ejercicio**: a la semilla (`src/domain/seed.ts`) o desde *Ajustes → Ejercicios* (los propios
   se fusionan con la semilla al recargar, conservando tus flags de permitido/prohibido).
 - **Añadir una pestaña**: amplía `TABS` en `src/app/router.ts` y añade la vista en `src/ui/`.
 - **Estado**: todo pasa por los setters de `src/state/store.ts` (lectura-modificación-escritura),

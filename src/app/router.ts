@@ -9,7 +9,7 @@ export interface Tab {
   key: string;
   label: string;
   icon: string;
-  /** Falso mientras la vista siga en `legacy/`: la pestaña se muestra pero avisa. */
+  /** Falso mientras la vista no esté portada: la pestaña se muestra pero avisa. */
   ported: boolean;
   hint: string;
 }

@@ -1,8 +1,7 @@
 # AGENTS-v1.md · Pulso (documentación de la v1)
 
 > **Nota**: este es el documento de contexto tal como quedó al cerrar la migración a la v2.
-> Describe la app **v1** (HTML + CSS + JS vanilla, congelada en `legacy/` y en el tag
-> `v1-final`). Para trabajar en la app actual (la v2) manda **`AGENTS.md`**; este archivo se
+> Describe la app **v1** (HTML + CSS + JS vanilla, congelada en el tag `v1-final`). Para trabajar en la app actual (la v2) manda **`AGENTS.md`**; este archivo se
 > conserva como referencia del _por qué_ de cada regla de diseño.
 
 Documento de contexto para trabajar en esta app. Si el hilo se alarga o se pierde el

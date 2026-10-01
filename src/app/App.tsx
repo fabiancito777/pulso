@@ -1,7 +1,7 @@
 /**
  * Shell de la v2: barra superior, **vista por pestaña** (rutas por hash, `router.ts`)
- * y la barra de abajo. Cada pestaña monta su vista portada; las que siguen en
- * `legacy/` muestran el aviso de "pendiente" (flag `ported` del router), que es el
+ * y la barra de abajo. Cada pestaña monta su vista portada; las que aún no lo estén
+ * muestran el aviso de "pendiente" (flag `ported` del router), que es el
  * estado real de la migración y no un error de la app.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -47,7 +47,7 @@ function SessionClock() {
   );
 }
 
-/** Vistas que siguen en `legacy/`: el `ported: false` del router, explicado. */
+/** Vistas que aún no están portadas: el `ported: false` del router, explicado. */
 function PendingTab({ tab }: { tab: Tab }) {
   return (
     <section class="card tight">
@@ -56,8 +56,8 @@ function PendingTab({ tab }: { tab: Tab }) {
         <span class="badge warn">pendiente</span>
       </div>
       <div class="tiny muted mb-s">
-        {tab.hint} · esta vista todavía vive en <code>legacy/</code> (la v1 de la rama{' '}
-        <code>main</code>).
+        {tab.hint} · esta vista todavía no está portada (vive en la v1 del tag{' '}
+        <code>v1-final</code>).
       </div>
       <div class="tiny muted">
         El roadmap de la pestaña Hoy dice en qué bloque entra. Mientras tanto, las pestañas con el

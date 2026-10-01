@@ -3,7 +3,7 @@
   "version": "2.0.0-alpha.1",
   "private": true,
   "type": "module",
-  "description": "Pulso v2 — la misma app de entrenamiento, con Vite + TypeScript + Preact. La v1 (HTML+JS vanilla) vive congelada en legacy/ y sigue siendo la app de la rama main.",
+  "description": "Pulso v2 — la misma app de entrenamiento, con Vite + TypeScript + Preact. La v1 (HTML+JS vanilla) quedó congelada en el tag v1-final del repo.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

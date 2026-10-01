@@ -5,8 +5,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    /* legacy/ es la v1 congelada: no se reformatea ni se lintea */
-    ignores: ['dist/**', 'legacy/**', 'node_modules/**', '_shots/**', '.playwright-mcp/**'],
+    ignores: ['dist/**', 'node_modules/**', '_shots/**', '.playwright-mcp/**'],
   },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
