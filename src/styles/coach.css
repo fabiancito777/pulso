@@ -148,6 +148,14 @@
   z-index: 20;
 }
 
+/* Carril de acciones rápidas: cuando hay chips fuera de la vista, el borde
+   derecho se difumina para que se lea como «desliza» y no como un chip cortado.
+   La clase `has-more` la pone la vista midiendo el desbordamiento real. */
+.coach-view .hr-fade.has-more {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent);
+}
+
 /* Tarjeta de estado: badge de ms/ok + «Probar» sin apretar el modelo. */
 .coach-view .coach-test {
   flex: 0 0 auto;

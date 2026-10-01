@@ -35,6 +35,27 @@ import '../styles/help.css';
 /** El id abierto, o `null` con el modal cerrado. Solo lo lee `HelpHost`. */
 export const helpId = signal<HelpId | null>(null);
 
+/**
+ * Pila de temas visitados DENTRO del modal: es lo que hace funcionar el «Volver».
+ * Al abrir el modal desde cero se vacía; al saltar de un tema a otro (chips «ver
+ * también», índice de la guía) se apila el que dejas atrás.
+ */
+const trail = signal<HelpId[]>([]);
+
+/**
+ * Secciones desplegadas del índice. Vive a nivel de módulo a propósito: al
+ * abrir un tema el índice se desmonta, y al volver debe seguir como lo dejaste
+ * (si no, cada «Volver» te devuelve todo plegado y pierdes el hilo).
+ */
+const openSections = signal<ReadonlySet<string>>(new Set<string>());
+
+function toggleSection(section: string, open: boolean): void {
+  const next = new Set(openSections.value);
+  if (open) next.add(section);
+  else next.delete(section);
+  openSections.value = next;
+}
+
 /** Para ignorar en runtime ids pasados a mano con un cast (los válidos los ve `tsc`). */
 const KNOWN = new Set<string>(HELP_IDS);
 
@@ -47,13 +68,28 @@ let host: HTMLElement | null = null;
  */
 export function openHelp(id: HelpId): void {
   if (!KNOWN.has(id)) return;
+  const current = helpId.value;
+  if (current === null) trail.value = [];
+  else if (current !== id) trail.value = [...trail.value, current];
   helpId.value = id;
   ensureHelpHost();
+}
+
+/** Retrocede al tema anterior; con la pila vacía, cierra el modal. */
+export function backHelp(): void {
+  const prev = trail.value;
+  if (!prev.length) {
+    closeHelp();
+    return;
+  }
+  helpId.value = prev[prev.length - 1];
+  trail.value = prev.slice(0, -1);
 }
 
 /** Cierra el modal (el scrim, la X y ESC llaman a esto vía `Modal`). */
 export function closeHelp(): void {
   helpId.value = null;
+  trail.value = [];
 }
 
 /**
@@ -126,19 +162,30 @@ export function GuideIndex() {
         </ul>
       ) : (
         <div>
-          {groups.map((g) => (
-            <details class="help-gloss" key={g.section}>
-              <summary>
-                <span class="grow">{SECTION_LABELS[g.section]}</span>
-                <span class="tiny muted">{g.topics.length}</span>
-              </summary>
-              <ul class="help-list">
-                {g.topics.map((t) => (
-                  <TopicRow key={t.id} t={t} />
-                ))}
-              </ul>
-            </details>
-          ))}
+          {groups.map((g) => {
+            const open = openSections.value.has(g.section);
+            return (
+              <details class="help-gloss" key={g.section} open={open}>
+                <summary
+                  onClick={(event) => {
+                    /* el desplegado lo manda el estado (así sobrevive al volver),
+                     no el navegador */
+                    event.preventDefault();
+                    toggleSection(g.section, !open);
+                  }}
+                >
+                  <Icon name="chev-r" class="gloss-caret" />
+                  <span class="grow">{SECTION_LABELS[g.section]}</span>
+                  <span class="gloss-count">{g.topics.length}</span>
+                </summary>
+                <ul class="help-list">
+                  {g.topics.map((t) => (
+                    <TopicRow key={t.id} t={t} />
+                  ))}
+                </ul>
+              </details>
+            );
+          })}
         </div>
       )}
     </div>
@@ -176,17 +223,28 @@ function TopicView({ id }: { id: HelpId }) {
 function HelpHost() {
   const id = helpId.value;
   if (id === null) return null;
+  const canBack = trail.value.length > 0;
   return (
     <Modal
       title={topic(id).title}
       onClose={closeHelp}
       foot={
-        id === 'guide' ? null : (
-          <button type="button" class="btn" onClick={() => openHelp('guide')}>
-            <Icon name="info" />
-            Guía completa de la app
-          </button>
-        )
+        canBack || id !== 'guide' ? (
+          <>
+            {canBack ? (
+              <button type="button" class="btn ghost" onClick={backHelp}>
+                <Icon name="chev-l" />
+                Volver
+              </button>
+            ) : null}
+            {id === 'guide' ? null : (
+              <button type="button" class="btn ghost" onClick={() => openHelp('guide')}>
+                <Icon name="info" />
+                Guía completa
+              </button>
+            )}
+          </>
+        ) : null
       }
     >
       <TopicView id={id} />

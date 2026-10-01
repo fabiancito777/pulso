@@ -820,6 +820,24 @@ export function CoachView() {
   const [draft, setDraft] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
+  /* Carril de acciones rápidas: el degradado del borde solo tiene sentido si de
+     verdad hay chips fuera de la vista, así que se mide el desbordamiento. */
+  const rail = useRef<HTMLDivElement>(null);
+  const [moreChips, setMoreChips] = useState(false);
+
+  useEffect(() => {
+    const el = rail.current;
+    if (!el) return;
+    const update = (): void => setMoreChips(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro.disconnect();
+    };
+  }, []);
 
   /* El historial puede cambiar FUERA de esta vista (import de datos, «Borrar
      todo»): al montar se vuelve a leer de `state.chat`. */
@@ -1010,8 +1028,14 @@ export function CoachView() {
     <section class="coach-view">
       <StatusCard />
 
-      <div class="between mt-s">
-        <div class="hr-scroll grow">
+      {/* El ⓘ va en la cabecera, no al lado del carril: si comparte fila con los
+          chips les roba ancho y el último queda cortado a media palabra. */}
+      <div class="mt-s">
+        <span class="label help-h3">
+          Acciones rápidas
+          <HelpBtn id="coach.quick" title="Acciones rápidas" />
+        </span>
+        <div class={`hr-scroll hr-fade mt-s${moreChips ? ' has-more' : ''}`} ref={rail}>
           {QUICK_ACTIONS.map((action) => (
             <button
               key={action.label}
@@ -1027,7 +1051,6 @@ export function CoachView() {
             </button>
           ))}
         </div>
-        <HelpBtn id="coach.quick" title="Acciones rápidas" />
       </div>
 
       <MemoryPanel />

@@ -122,18 +122,74 @@ div.help-row:last-child > button.list-item {
   padding: 11px 13px;
 }
 
-.help-gloss summary {
+/* Cada sección es una ficha con su banda de cabecera. La banda NO se parece a
+   un tema (mayúsculas, pequeña, en gris), así que al desplegarla se distingue de
+   un vistazo qué es título de sección y qué es una subsección. */
+.help-gloss {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.help-gloss + .help-gloss {
+  margin-top: 7px;
+}
+
+.help-gloss > summary {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   padding: 10px 12px;
-  font-size: 13.5px;
-  font-weight: 650;
-  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  list-style: none;
 }
 
+.help-gloss > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* La flecha gira al abrir: la sección abierta se reconoce sin leer el título. */
+.help-gloss > summary .gloss-caret {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted-2);
+  transition: transform 0.15s ease;
+}
+
+.help-gloss[open] > summary .gloss-caret {
+  transform: rotate(90deg);
+}
+
+/* Contador como pastilla, no número suelto: no se confunde con un subtítulo. */
+.gloss-count {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-4);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Los temas cuelgan de la sección: sangría + raíl a la izquierda. */
 .help-gloss .help-list {
-  border-top: 0;
-  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  border: 0;
+  border-left: 2px solid var(--border-soft);
+  border-radius: 0;
+  margin-left: 13px;
+}
+
+.help-gloss .help-list .list-item {
+  padding-left: 12px;
+  font-size: 13px;
 }
