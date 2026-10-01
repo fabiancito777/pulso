@@ -178,3 +178,88 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ---------- Ajustes → Ejercicios: la lista va agrupada por músculo ---------- */
+
+/* Ficha de un grupo. La cabecera es un BOTÓN y no un `<details>`: el desplegado
+   va controlado para que un repintado no vuelva a abrir los grupos cerrados. */
+.ex-group {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ex-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ex-group-caret {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted-2);
+  transition: transform 0.15s ease;
+}
+
+.ex-group-caret.on {
+  transform: rotate(90deg);
+}
+
+.ex-group-count {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-4);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* El borde lo pone la ficha del grupo, no la tarjeta de dentro. */
+.ex-group > .card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Modo selección: la fila entera marca/desmarca, no solo la casilla. */
+.ex-pick.sel {
+  cursor: pointer;
+}
+
+.ex-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: transparent;
+}
+
+.ex-check .ico {
+  width: 16px;
+  height: 16px;
+}
+
+.ex-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

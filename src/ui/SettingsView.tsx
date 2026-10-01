@@ -657,14 +657,21 @@ type ExSegment = (typeof EX_SEGMENTS)[number]['key'];
 
 function SecEjercicios() {
   const [q, setQ] = useState('');
-  const [group, setGroup] = useState('');
-  const [state, setState] = useState('all');
   /* Segmento inicial: ★ si ya hay alguno, si no el catálogo. Es una decisión de
      ESTA apertura (no se persiste): al recargar volverías a favoritos solo si
      sigues teniendo alguno. */
   const [segment, setSegment] = useState<ExSegment>(
     exercises.value.some((e) => e.fav === true) ? 'fav' : 'catalogo',
   );
+  /* Grupos desplegados. Van controlados (no como `<details open>` suelto) para
+     que un repintado —marcar una serie, tocar un filtro— no los vuelva a abrir. */
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(
+    () => new Set<string>(GROUPS.map((g) => g.key)),
+  );
+  /* Modo selección: las seis acciones masivas no ocupan sitio hasta que hacen
+     falta. Sin nada marcado actúan sobre lo filtrado (un clic para todo). */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set<string>());
   /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
   const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
   /* Modal del generador IA (spec `generador-ejercicios.md`): abrirlo NO hace
@@ -713,19 +720,17 @@ function SecEjercicios() {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
   const needle = norm(q.trim());
+  /* La lista solo se filtra por segmento y búsqueda: el grupo dejó de ser un
+     select y pasó a ser la ESTRUCTURA (ver `byGroup` abajo), y el estado se lee
+     en la propia fila (el pill permitido/prohibido). */
   const filtered = list
     .filter((e) => {
-      /* el segmento y el select de estado se combinan en AND */
       const hidden = e.hidden === true;
       if (segment === 'ocultos' ? !hidden : hidden) return false;
       if (segment === 'fav' && e.fav !== true) return false;
       if (segment === 'catalogo' && e.custom) return false;
       if (segment === 'custom' && !e.custom) return false;
       if (needle && !norm(e.name).includes(needle)) return false;
-      if (group && e.group !== group) return false;
-      if (state === 'allowed' && !e.allowed) return false;
-      if (state === 'blocked' && e.allowed) return false;
-      if (state === 'unavailable' && isAvailable(e, eq)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -739,8 +744,38 @@ function SecEjercicios() {
     });
   const shown = filtered.filter((e) => e.allowed).length;
   const filteredIds = filtered.map((e) => e.id);
-  const flagFiltered = (patch: Partial<Pick<Exercise, 'fav' | 'hidden'>>): void => {
-    bulkSetExerciseFlag(filteredIds, patch);
+
+  /* Agrupado por músculo, en el orden del catálogo: así se recorre la biblioteca
+     como en Rutinas y no hay que cruzar dos selects para encontrar algo. */
+  const byGroup = new Map<string, Exercise[]>();
+  for (const e of filtered) {
+    const bucket = byGroup.get(e.group);
+    if (bucket) bucket.push(e);
+    else byGroup.set(e.group, [e]);
+  }
+
+  /* En modo selección, las acciones van sobre lo marcado; si no hay nada marcado,
+     sobre lo filtrado (así «Permitir todo lo que he buscado» sigue a un clic). */
+  const target =
+    selecting && selected.size ? filteredIds.filter((id) => selected.has(id)) : filteredIds;
+  const flagTarget = (patch: Partial<Pick<Exercise, 'fav' | 'hidden'>>): void => {
+    bulkSetExerciseFlag(target, patch);
+  };
+  const toggleGroup = (key: string, open: boolean): void => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
+  const toggleSelected = (id: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   /* Atajo de la petición 1: ★ a los ejercicios con los que ya tienes récords.
@@ -768,10 +803,20 @@ function SecEjercicios() {
         <Kpi label="★ Favoritos" value={favCount} delta={`${hiddenCount} ocultos`} />
         <Kpi label="Con tu equipo" value={usable.length} delta="listos para sugerir" />
       </div>
-      {/* pegado bajo la barra superior: los segmentos y el buscador son lo que
-          más se toca y la lista mide 139 filas (spec §3.3.1) */}
+      {/* Pegado bajo la barra superior: el buscador y los segmentos son lo que
+          más se toca. Ya no hay select de grupo —el grupo es la estructura— ni
+          de estado: cada fila dice el suyo en su pill. */}
       <div class="card tight mt ex-toolbar">
-        <div class="seg">
+        <div class="search">
+          <Icon name="search" />
+          <input
+            class="input"
+            placeholder="Buscar ejercicio…"
+            value={q}
+            onInput={(e) => setQ(e.currentTarget.value)}
+          />
+        </div>
+        <div class="seg mt-s">
           {EX_SEGMENTS.map((s) => (
             <button
               key={s.key}
@@ -783,34 +828,19 @@ function SecEjercicios() {
             </button>
           ))}
         </div>
-        <div class="search mt-s">
-          <Icon name="search" />
-          <input
-            class="input"
-            placeholder="Buscar ejercicio…"
-            value={q}
-            onInput={(e) => setQ(e.currentTarget.value)}
-          />
-        </div>
-      </div>
-      <div class="card mt-s">
-        <div class="grid c2">
-          <select class="select" value={group} onChange={(e) => setGroup(e.currentTarget.value)}>
-            <option value="">Todos los grupos</option>
-            {GROUPS.map((g) => (
-              <option key={g.key} value={g.key}>
-                {g.label}
-              </option>
-            ))}
-          </select>
-          <select class="select" value={state} onChange={(e) => setState(e.currentTarget.value)}>
-            <option value="all">Todos</option>
-            <option value="allowed">Permitidos</option>
-            <option value="blocked">Prohibidos</option>
-            <option value="unavailable">Sin material</option>
-          </select>
-        </div>
-        <div class="row wrap mt-s" style="gap:8px">
+        <div class="row wrap mt-s" style="gap:8px;align-items:center">
+          <button
+            type="button"
+            class={`btn sm${selecting ? ' primary' : ' ghost'}`}
+            aria-pressed={selecting}
+            onClick={() => {
+              setSelecting((v) => !v);
+              setSelected(new Set<string>());
+            }}
+          >
+            <Icon name={selecting ? 'check' : 'check-circle'} />
+            {selecting ? 'Hecho' : 'Seleccionar'}
+          </button>
           <button type="button" class="btn sm" onClick={() => setEditor('new')}>
             <Icon name="plus" />
             Añadir propio
@@ -837,78 +867,109 @@ function SecEjercicios() {
               Falta API key
             </button>
           )}
-          <button
-            type="button"
-            class="btn sm ghost"
-            onClick={() => {
-              setQ('');
-              setGroup('');
-              setState('all');
-            }}
-          >
-            Limpiar filtros
-          </button>
           <span class="tiny muted grow">
-            {filtered.length} ejercicios · {shown} permitidos con estos filtros
+            {filtered.length} ejercicios · {shown} permitidos
           </span>
         </div>
       </div>
-      <div class="card tight mt-s">
-        <div class="row wrap" style="gap:8px">
-          <button
-            type="button"
-            class="btn sm ghost"
-            onClick={() => bulkSetAllowed(filteredIds, true)}
-          >
-            Permitir
-          </button>
-          <button
-            type="button"
-            class="btn sm ghost"
-            onClick={() => bulkSetAllowed(filteredIds, false)}
-          >
-            Prohibir
-          </button>
-          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ fav: true })}>
-            ★ Marcar
-          </button>
-          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ fav: false })}>
-            Quitar ★
-          </button>
-          <button type="button" class="btn sm ghost" onClick={() => flagFiltered({ hidden: true })}>
-            Ocultar
-          </button>
-          <button
-            type="button"
-            class="btn sm ghost"
-            onClick={() => flagFiltered({ hidden: false })}
-          >
-            Mostrar
-          </button>
+      {selecting ? (
+        <div class="card tight mt-s">
+          <div class="row wrap" style="gap:8px">
+            <button type="button" class="btn sm ghost" onClick={() => bulkSetAllowed(target, true)}>
+              Permitir
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => bulkSetAllowed(target, false)}
+            >
+              Prohibir
+            </button>
+            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ fav: true })}>
+              ★ Marcar
+            </button>
+            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ fav: false })}>
+              Quitar ★
+            </button>
+            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ hidden: true })}>
+              Ocultar
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => flagTarget({ hidden: false })}
+            >
+              Mostrar
+            </button>
+          </div>
+          <div class="row wrap mt-s" style="gap:8px;align-items:center">
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => setSelected(new Set(filteredIds))}
+            >
+              Marcar todo
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => setSelected(new Set<string>())}
+            >
+              Nada
+            </button>
+            <button type="button" class="btn sm ghost" onClick={favMyRecords}>
+              ★ Los de mis récords
+            </button>
+            <span class="tiny muted grow">
+              {selected.size
+                ? `acciones sobre ${selected.size} seleccionados`
+                : `acciones sobre los ${filteredIds.length} filtrados`}
+            </span>
+          </div>
         </div>
-        <div class="row mt-s" style="gap:8px">
-          <button type="button" class="btn sm ghost" onClick={favMyRecords}>
-            ★ Los de mis récords
-          </button>
-          <span class="tiny muted grow">acciones sobre los {filteredIds.length} filtrados</span>
-        </div>
-      </div>
-      <div class="card flush mt">
-        {filtered.length ? (
-          filtered.map((e) => (
-            <ExerciseRow
-              key={e.id}
-              ex={e}
-              stats={summary.get(e.id)}
-              showHidden={segment === 'ocultos' || e.hidden === true}
-              onEdit={() => setEditor(e)}
-              onDelete={() => confirmDelete(e)}
-            />
-          ))
-        ) : (
+      ) : null}
+      {filtered.length ? (
+        GROUPS.map((g) => {
+          const items = byGroup.get(g.key);
+          if (!items || !items.length) return null;
+          const open = openGroups.has(g.key);
+          return (
+            <div class="ex-group mt-s" key={g.key}>
+              <button
+                type="button"
+                class="ex-group-head"
+                aria-expanded={open}
+                onClick={() => toggleGroup(g.key, !open)}
+              >
+                <Icon name="chev-r" class={`ex-group-caret${open ? ' on' : ''}`} />
+                <span class="grow">{g.label}</span>
+                <span class="ex-group-count">{items.length}</span>
+              </button>
+              {open ? (
+                <div class="card flush">
+                  {items.map((e) => (
+                    <ExerciseRow
+                      key={e.id}
+                      ex={e}
+                      stats={summary.get(e.id)}
+                      showHidden={segment === 'ocultos' || e.hidden === true}
+                      selecting={selecting}
+                      selected={selected.has(e.id)}
+                      onSelect={() => toggleSelected(e.id)}
+                      onEdit={() => setEditor(e)}
+                      onDelete={() => confirmDelete(e)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          );
+        })
+      ) : (
+        <div class="card mt-s">
           <div class="empty">Sin resultados con estos filtros</div>
-        )}
-      </div>
+        </div>
+      )}
       <InfoCard>
         <b>★ Favorito</b> es prioridad, no exclusión: los marcados salen primeros en los buscadores,
         en los generadores y en los consejos del coach. <b>Oculto</b> es solo presentación (lo saca
@@ -1093,6 +1154,9 @@ function ExerciseRow({
   ex,
   stats,
   showHidden,
+  selecting,
+  selected,
+  onSelect,
   onEdit,
   onDelete,
 }: {
@@ -1101,6 +1165,10 @@ function ExerciseRow({
   stats?: ExerciseSummary;
   /** el pill de ocultar/mostrar solo se muestra en «Ocultos» o si ya está oculto */
   showHidden: boolean;
+  /** modo selección: el ★ cede su sitio a la casilla y la fila entera marca */
+  selecting: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -1115,20 +1183,40 @@ function ExerciseRow({
   const fav = ex.fav === true;
   const hidden = ex.hidden === true;
   return (
-    <div class="ex-pick" style={ex.allowed ? '' : 'opacity:.55'}>
-      <button
-        type="button"
-        class={`ex-fav${fav ? ' on' : ''}`}
-        title={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
-        aria-pressed={fav}
-        aria-label={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
-        onClick={() => bulkSetExerciseFlag([ex.id], { fav: !fav })}
-      >
-        ★
-      </button>
+    <div
+      class={`ex-pick${selected ? ' on' : ''}${selecting ? ' sel' : ''}`}
+      style={ex.allowed ? '' : 'opacity:.55'}
+      onClick={selecting ? onSelect : undefined}
+    >
+      {selecting ? (
+        <button
+          type="button"
+          class={`ex-check${selected ? ' on' : ''}`}
+          aria-pressed={selected}
+          aria-label={selected ? `Quitar «${ex.name}» de la selección` : `Seleccionar «${ex.name}»`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect();
+          }}
+        >
+          <Icon name="check" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          class={`ex-fav${fav ? ' on' : ''}`}
+          title={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+          aria-pressed={fav}
+          aria-label={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+          onClick={() => bulkSetExerciseFlag([ex.id], { fav: !fav })}
+        >
+          ★
+        </button>
+      )}
       <div class="grow" style="min-width:0">
         <div class="row" style="gap:6px">
           <span class="li-title ellipsis">{ex.name}</span>
+          {selecting && fav ? <span class="ex-star">★</span> : null}
           {ex.custom ? <span class="badge">propio</span> : null}
           {ex.bw ? <span class="badge">PC</span> : null}
         </div>
@@ -1149,7 +1237,10 @@ function ExerciseRow({
           class="toggle-pill"
           title={hidden ? 'Volver a mostrar' : 'Sacar de la vista'}
           aria-pressed={hidden}
-          onClick={() => bulkSetExerciseFlag([ex.id], { hidden: !hidden })}
+          onClick={(event) => {
+            event.stopPropagation();
+            bulkSetExerciseFlag([ex.id], { hidden: !hidden });
+          }}
         >
           <Icon name={hidden ? 'eye' : 'eye-off'} />
           {hidden ? 'mostrar' : 'ocultar'}
@@ -1159,16 +1250,35 @@ function ExerciseRow({
         type="button"
         class={`toggle-pill ${ex.allowed ? 'on' : 'off'}`}
         title="Permitir o prohibir"
-        onClick={() => bulkSetAllowed([ex.id], !ex.allowed)}
+        onClick={(event) => {
+          event.stopPropagation();
+          bulkSetAllowed([ex.id], !ex.allowed);
+        }}
       >
         {ex.allowed ? 'permitido' : 'prohibido'}
       </button>
       {ex.custom ? (
         <>
-          <button type="button" class="icon-btn" title="Editar" onClick={onEdit}>
+          <button
+            type="button"
+            class="icon-btn"
+            title="Editar"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+          >
             <Icon name="pencil" />
           </button>
-          <button type="button" class="icon-btn" title="Eliminar" onClick={onDelete}>
+          <button
+            type="button"
+            class="icon-btn"
+            title="Eliminar"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
             <Icon name="trash" />
           </button>
         </>
