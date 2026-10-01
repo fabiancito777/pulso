@@ -2,10 +2,20 @@
  * `parseJSON`: el puerto tolerante de la v1. El modelo a veces enmarca la
  * respuesta, a veces la rodea de prosa y a veces deja una coma final: todas esas
  * manías están fijadas aquí.
+ *
+ * Al final, lo que saca de la respuesta los ejercicios NUEVOS propuestos: el
+ * bloque ```crear``` del chat y el `isNew: true` inline de `suggest`/`plan`.
  */
 import { describe, expect, it } from 'vitest';
 
-import { extractBlocks, parseJSON } from './parse';
+import {
+  creationsFromPayload,
+  extractBlocks,
+  extractCreations,
+  parseCreations,
+  parseJSON,
+  payloadItems,
+} from './parse';
 
 describe('parseJSON', () => {
   it('devuelve el JSON limpio tal cual', () => {
@@ -126,5 +136,150 @@ describe('extractBlocks', () => {
       rest: 'Listo.\n',
       blocks: [''],
     });
+  });
+});
+
+/* ---------- ejercicios nuevos: bloque ```crear``` ---------- */
+
+describe('extractCreations', () => {
+  it('saca el bloque ```crear``` del texto y devuelve sus propuestas', () => {
+    const text =
+      'Te propongo uno nuevo.\n\n```crear\n[{"name":"Remo Kroc a una mano","group":"espalda",' +
+      '"equip":"mancuernas_fijas","type":"compuesto","sets":3,"rest":120,"repMin":8,"repMax":12,' +
+      '"unilateral":true,"desc":"Remo unilateral con apoyo."}]\n```\n\nDime si lo creas.';
+
+    const { rest, creations } = extractCreations(text);
+
+    expect(creations).toHaveLength(1);
+    expect(creations[0]).toEqual({
+      name: 'Remo Kroc a una mano',
+      group: 'espalda',
+      equip: 'mancuernas_fijas',
+      type: 'compuesto',
+      sets: 3,
+      rest: 120,
+      repMin: 8,
+      repMax: 12,
+      unilateral: true,
+      desc: 'Remo unilateral con apoyo.',
+    });
+    expect(rest).not.toContain('```crear');
+    expect(rest).toContain('Te propongo uno nuevo.');
+    expect(rest).toContain('Dime si lo creas.');
+  });
+
+  it('sin bloque devuelve creations vacías y el texto intacto', () => {
+    expect(extractCreations('Aquí no hay nada nuevo.')).toEqual({
+      rest: 'Aquí no hay nada nuevo.',
+      creations: [],
+    });
+  });
+
+  it('un bloque ilegible no rompe la tarea (se ignora, como la memoria)', () => {
+    const { rest, creations } = extractCreations('Va.\n```crear\nesto no es json\n```');
+    expect(creations).toEqual([]);
+    expect(rest).not.toContain('```crear');
+  });
+
+  it('varios bloques y prosa se barren de una pasada, deduplicando nombres', () => {
+    const text =
+      '```crear\n[{"name":"Curl martillo"}]\n```\nmedio\n```crear\n[{"name":"curl martillo"},' +
+      '{"group":"espalda"}]\n```';
+
+    const { creations } = extractCreations(text);
+    expect(creations.map((item) => item.name)).toEqual(['Curl martillo']);
+  });
+});
+
+describe('parseCreations', () => {
+  it('acepta array u objeto con lista y descarta lo que no tiene nombre', () => {
+    expect(
+      parseCreations([{ name: ' Press ' }, { name: '' }, { group: 'pecho' }, 'texto', 42]),
+    ).toEqual([{ name: 'Press' }]);
+    expect(parseCreations({ exercises: [{ name: 'Remo', sets: 3 }] })).toEqual([
+      { name: 'Remo', sets: 3 },
+    ]);
+    expect(parseCreations(null)).toEqual([]);
+    expect(parseCreations('un texto')).toEqual([]);
+  });
+
+  it('copia los opcionales SOLO en su tipo (un JSON raro no se cuela)', () => {
+    const [proposal] = parseCreations([
+      {
+        name: 'Plancha lateral',
+        group: 7,
+        equip: '  suelo  ',
+        type: 'core',
+        sets: '2',
+        rest: 60,
+        unilateral: 'sí',
+      },
+    ]);
+    expect(proposal).toEqual({ name: 'Plancha lateral', equip: 'suelo', type: 'core', rest: 60 });
+  });
+});
+
+/* ---------- ejercicios nuevos: `isNew` dentro del payload ---------- */
+
+describe('payloadItems', () => {
+  it('recorre exercises, items y los días del plan, saltando lo que no sea objeto', () => {
+    const items = payloadItems({
+      exercises: [{ name: 'A' }, 'no', null],
+      days: [{ exercises: [{ name: 'B' }] }, { items: [{ name: 'C' }] }, 'raro'],
+    });
+    expect(items.map((item) => item.name)).toEqual(['A', 'B', 'C']);
+    expect(payloadItems(null)).toEqual([]);
+    expect(payloadItems([1, 2])).toEqual([]);
+  });
+});
+
+describe('creationsFromPayload', () => {
+  it('recoge SOLO los ejercicios con isNew: true, con sus atributos', () => {
+    const payload = {
+      title: 'Empuje',
+      exercises: [
+        { name: 'Press de banca con barra' },
+        {
+          name: 'Press con mancuerna en suelo',
+          isNew: true,
+          group: 'pecho',
+          equip: 'mancuernas_fijas',
+          type: 'compuesto',
+          sets: 4,
+        },
+      ],
+    };
+    expect(creationsFromPayload(payload)).toEqual([
+      {
+        name: 'Press con mancuerna en suelo',
+        group: 'pecho',
+        equip: 'mancuernas_fijas',
+        type: 'compuesto',
+        sets: 4,
+      },
+    ]);
+  });
+
+  it('sin isNew no hay propuestas (un nombre desconocido no basta)', () => {
+    expect(creationsFromPayload({ exercises: [{ name: 'Curl martillo' }] })).toEqual([]);
+    expect(creationsFromPayload({ exercises: [{ name: 'X', isNew: false }] })).toEqual([]);
+    expect(creationsFromPayload(null)).toEqual([]);
+  });
+
+  it('camina también los días del plan y el array `newExercises` de arriba', () => {
+    const payload = {
+      days: [
+        {
+          date: '2026-09-28',
+          exercises: [{ name: 'Remo a una mano', isNew: true, group: 'espalda' }],
+        },
+        { date: '2026-09-29', exercises: [{ name: 'Sentadilla' }] },
+      ],
+      newExercises: [{ name: 'Curl femoral con banda', equip: 'bandas' }],
+    };
+    expect(creationsFromPayload(payload).map((item) => item.name)).toEqual([
+      'Curl femoral con banda',
+      'Remo a una mano',
+    ]);
   });
 });

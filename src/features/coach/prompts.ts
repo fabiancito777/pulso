@@ -12,7 +12,8 @@
  * - el contexto del usuario se inyecta SIEMPRE detrás de
  *   `system + "\n\nCONTEXTO DEL USUARIO:\n" + ctx`.
  */
-import { goalLabel } from '@/domain/data';
+import { AI_EXERCISE_SCHEMA } from '@/domain/ai-exercise';
+import { EXERCISE_TYPES, GROUPS, goalLabel } from '@/domain/data';
 import { int } from '@/domain/num';
 import type { BuildRequestOpts, CoachRequest, CoachTask } from './types';
 
@@ -21,7 +22,8 @@ export const DEFAULT_SYSTEM = [
   'Eres Pulso Coach, entrenador personal y planificador de entrenamiento basado en evidencia.',
   'Reglas:',
   '- Responde siempre en español, con tono directo, profesional y cercano. Nada de relleno.',
-  '- Usa EXCLUSIVAMENTE ejercicios de la lista de ejercicios permitidos que recibes en el contexto (respeta el nombre exacto).',
+  '- Usa preferentemente ejercicios de la lista de ejercicios permitidos que recibes en el contexto (respeta el nombre exacto de los que ya existen).',
+  '- También puedes proponer ejercicios NUEVOS, pero solo si se ajustan a su material y a los grupos musculares del catálogo; nunca copies, reformules ni te acerques a los PROHIBIDOS de la lista.',
   '- Respeta el equipamiento e inventario del usuario: no propongas material que no tenga ni pesos imposibles de cargar.',
   '- Aplica sobrecarga progresiva usando el historial y los récords; indica un peso objetivo concreto por ejercicio.',
   '- Decide tú el descanso óptimo entre series de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s) y devuélvelo en el campo rest; el usuario no configura los descansos.',
@@ -50,6 +52,28 @@ export const MEMORY_INSTRUCTION = [
 export const CHAT_HISTORY_LIMIT = 12;
 
 /**
+ * Se añade al system SOLO de `chat` para que el modelo pueda proponer ejercicios
+ * NUEVOS que no están en la biblioteca: los emite en un bloque ```crear``` (mismo
+ * mecanismo que ```memoria```/```consulta```) y `extractCreations` lo separa de la
+ * respuesta. La creación NUNCA es automática: la propuesta espera la
+ * confirmación del usuario en su tarjeta (`CoachView.CreationCard`).
+ *
+ * El esquema es `AI_EXERCISE_SCHEMA` (compartido con el generador de Ajustes) y
+ * los grupos salen del catálogo, así que la instrucción no se desincroniza.
+ */
+export const CREATION_INSTRUCTION = [
+  'Puedes proponer ejercicios NUEVOS que no estén en la lista, SIEMPRE que se ajusten al EQUIPAMIENTO del usuario y a los grupos musculares, y nunca a uno de los PROHIBIDOS.',
+  'Cuando propongas uno, cierra EXACTAMENTE tu respuesta con UN bloque de creación en este formato:',
+  '```crear',
+  `[${AI_EXERCISE_SCHEMA}]`,
+  '```',
+  `Campos: "name" (obligatorio, no repetir ninguno de la lista); "group" (una de: ${GROUPS.map((g) => g.key).join(', ')}); "equip" (una clave simple del EQUIPAMIENTO del usuario, o "" si es peso corporal); "type" (${EXERCISE_TYPES.join('|')}); "sets"/"rest"/"repMin"/"repMax" (por defecto 3/120/8/12); "unilateral" (true si es a una mano o por lado) y "desc" (una frase corta).`,
+  'Un ejercicio nuevo se propone SIEMPRE con sus atributos completos: sin grupo y material no se puede crear.',
+  'Si el ejercicio que quieres proponer YA está en la lista, NO uses el bloque: nómbralo con su nombre exacto.',
+  'El bloque describe la propuesta; la app NO la crea hasta que el usuario lo confirme. Si no hay nada nuevo, no pongas el bloque.',
+].join('\n');
+
+/**
  * Se añade al system de `chat` y `analyze` para que el modelo pueda PEDIR datos
  * históricos en vez de inventarlos: emite un bloque ```consulta``` y la app le
  * responde con `queryHistory` antes de que conteste. Va después de
@@ -75,7 +99,8 @@ function suggestPrompt(opts: BuildRequestOpts): string {
     'Genera el entrenamiento de HOY para este usuario.',
     'Devuelve SOLO un JSON con esta forma exacta:',
     '{"title":"titulo corto","focus":"grupos principales","rationale":["motivo 1","motivo 2"],"exercises":[{"name":"nombre EXACTO de la lista permitida","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":"breve tip"}]}',
-    'Restricciones: entre 4 y 7 ejercicios; usa solo nombres de la lista de ejercicios permitidos;',
+    'Restricciones: entre 4 y 7 ejercicios; usa nombres de la lista de ejercicios permitidos siempre que encajen;',
+    'si NINGUNO encaja con su material, puedes inventar uno: márcalo con "isNew":true en ese mismo objeto y llévale "group", "equip", "type" (y opcionalmente "unilateral"/"desc"); el resto de nombres siguen teniendo que ser de la lista;',
     `weight en ${unit} (0 si es peso corporal) y debe ser cargable con su inventario;`,
     'ordena de compuesto a aislado; incluye 1 bloque de core;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
@@ -96,7 +121,7 @@ function planPrompt(opts: BuildRequestOpts): string {
     `Objetivo del usuario: ${goalLabel(opts.goal ?? 'hipertrofia')} | días de entreno deseados: ${int(opts.daysPerWeek, 4)}.`,
     'Devuelve SOLO este JSON:',
     '{"rationale":"explicación breve del reparto","days":[{"date":"YYYY-MM-DD","type":"entreno|cardio|movilidad|descanso","title":"...","focus":"...","exercises":[{"name":"nombre EXACTO","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":""}]}]}',
-    'Reglas: respeta exactamente las fechas; usa solo ejercicios permitidos; deja al menos 48 h antes de repetir el mismo grupo muscular;',
+    'Reglas: respeta exactamente las fechas; usa ejercicios permitidos y, solo si alguno no encaja con el material, inventa uno con "isNew":true + "group"/"equip"/"type" en su objeto; deja al menos 48 h antes de repetir el mismo grupo muscular;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];
@@ -125,15 +150,20 @@ function analyzePrompt(opts: BuildRequestOpts): string {
 }
 
 /**
- * Monta la petición completa para una tarea: `system` (con la memoria, la
- * instrucción de consulta y el contexto ya inyectados), `prompt`, si se espera
- * JSON (`json`) y, en el chat, los últimos 12 mensajes de historial.
+ * Monta la petición completa para una tarea: `system` (con la memoria, las
+ * instrucciones de consulta y de creación y el contexto ya inyectados),
+ * `prompt`, si se espera JSON (`json`) y, en el chat, los últimos 12 mensajes de
+ * historial.
  */
 export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): CoachRequest {
   const base = opts.system?.trim() || DEFAULT_SYSTEM;
   let system = opts.memory === false ? base : `${base}\n\n${MEMORY_INSTRUCTION}`;
   const consult = opts.consult !== false && (task === 'chat' || task === 'analyze');
   if (consult) system += `\n\n${CONSULT_INSTRUCTION}`;
+  /* SOLO en chat: en suggest/plan manda el JSON (el bloque ```crear``` no cabría
+     y los nuevos se piden con "isNew":true dentro del propio ejercicio) y en
+     analyze no se propone nada. */
+  if (opts.create !== false && task === 'chat') system += `\n\n${CREATION_INSTRUCTION}`;
   if (opts.context) system += `\n\nCONTEXTO DEL USUARIO:\n${opts.context}`;
 
   switch (task) {

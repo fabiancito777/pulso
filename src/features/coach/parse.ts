@@ -12,7 +12,14 @@
  * final. En vez de reintentar la petición (caro y lento), se recorta el trozo
  * que parece JSON — balanceando desde el PRIMER carácter que abre — y se
  * reintenta una vez.
+ *
+ * Al final vive también lo que saca de la respuesta los ejercicios NUEVOS que
+ * el modelo propone: por un lado el bloque ```crear``` del chat (mismo mecanismo
+ * que ```memoria```/```consulta```) y por otro el flag `isNew: true` que llevan
+ * inline los ejercicios de `suggest`/`plan`.
  */
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
+import { norm } from '@/domain/text';
 
 /**
  * Extrae TODOS los bloques cercillados ```` ```tag … ``` ```` del texto y
@@ -192,4 +199,138 @@ export function parseJSON<T>(raw: string): T {
   }
 
   throw new Error('no pude interpretar el JSON');
+}
+
+/* ---------- ejercicios NUEVOS propuestos (bloque ```crear``` · `isNew`) ---------- */
+
+/**
+ * ¿Tiene forma de propuesta de ejercicio nuevo? Solo `name` es obligatorio y no
+ * vacío: el resto se copia SOLO si viene en su tipo, porque `proposalToDraft`
+ * ya se encarga de inferir y de por-defectear lo que falte.
+ */
+export function asProposal(value: unknown): AIExerciseProposal | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+  if (!name) return null;
+
+  const proposal: AIExerciseProposal = { name };
+  for (const key of ['group', 'equip', 'type', 'desc'] as const) {
+    const field = raw[key];
+    if (typeof field === 'string' && field.trim()) proposal[key] = field.trim();
+  }
+  for (const key of ['sets', 'rest', 'repMin', 'repMax'] as const) {
+    const field = raw[key];
+    if (typeof field === 'number' && Number.isFinite(field)) proposal[key] = field;
+  }
+  if (raw.unilateral === true) proposal.unilateral = true;
+  return proposal;
+}
+
+/** Claves bajo las que el modelo puede agrupar una lista de propuestas. */
+const CREATION_LIST_KEYS = ['exercises', 'items', 'creations', 'newExercises'] as const;
+
+/** Primera lista de `keys` que traiga un objeto crudo, o `null`. */
+function listIn(value: unknown, keys: readonly string[]): unknown[] | null {
+  if (Array.isArray(value)) return value as unknown[];
+  if (typeof value !== 'object' || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  for (const key of keys) if (Array.isArray(raw[key])) return raw[key] as unknown[];
+  return null;
+}
+
+/**
+ * Propuestas válidas de un valor crudo (el interior de un bloque ```crear``` o
+ * el `newExercises` de un payload): lo que no tenga nombre se descarta y los
+ * nombres repetidos se dejan fuera. Nunca lanza: un JSON raro no tira la tarea.
+ */
+export function parseCreations(raw: unknown): AIExerciseProposal[] {
+  const list = listIn(raw, CREATION_LIST_KEYS);
+  if (!list) return [];
+  const out: AIExerciseProposal[] = [];
+  for (const item of list) {
+    const proposal = asProposal(item);
+    if (!proposal) continue;
+    if (out.some((kept) => norm(kept.name) === norm(proposal.name))) continue;
+    out.push(proposal);
+  }
+  return out;
+}
+
+/**
+ * Bloques ```crear``` del texto → propuestas, CON EL BLOQUE YA QUITADO del
+ * texto: la respuesta que ve el usuario nunca enseña el JSON crudo, igual que
+ * pasa con ```memoria``` y ```consulta```.
+ */
+export function extractCreations(text: string): {
+  rest: string;
+  creations: AIExerciseProposal[];
+} {
+  const { rest, blocks } = extractBlocks(text, 'crear');
+  const creations: AIExerciseProposal[] = [];
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    let raw: unknown;
+    try {
+      raw = parseJSON<unknown>(block);
+    } catch {
+      continue; /* un bloque ilegible no rompe la tarea */
+    }
+    for (const proposal of parseCreations(raw)) {
+      if (creations.some((kept) => norm(kept.name) === norm(proposal.name))) continue;
+      creations.push(proposal);
+    }
+  }
+  return { rest, creations };
+}
+
+/**
+ * Ejercicios crudos de un payload de `suggest`/`plan`, incluidos los de cada
+ * día (`days[].exercises[]`): es lo que recorre la UI para leer `isNew` y lo
+ * que `partitionUnresolved` usa para dar con los atributos de un nombre.
+ */
+export function payloadItems(payload: unknown): Record<string, unknown>[] {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return [];
+  const raw = payload as Record<string, unknown>;
+  const out: Record<string, unknown>[] = [];
+  const push = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
+        out.push(item as Record<string, unknown>);
+      }
+    }
+  };
+  push(raw.exercises);
+  push(raw.items);
+  if (Array.isArray(raw.days)) {
+    for (const day of raw.days) {
+      if (typeof day !== 'object' || day === null || Array.isArray(day)) continue;
+      const rec = day as Record<string, unknown>;
+      push(rec.exercises ?? rec.items);
+    }
+  }
+  return out;
+}
+
+/**
+ * Propuestas de un payload de `suggest`/`plan`: las que llevan `isNew: true`
+ * inline en su propio ejercicio (lo que piden los dos prompts) y las del array
+ * `newExercises` de arriba del todo (ese formato NO se pide, pero si el modelo
+ * lo manda se recoge: nada de esto se anuncia salvo el inline).
+ */
+export function creationsFromPayload(payload: unknown): AIExerciseProposal[] {
+  const raw = (typeof payload === 'object' && payload !== null ? payload : {}) as Record<
+    string,
+    unknown
+  >;
+  const out = parseCreations(raw.newExercises);
+  for (const item of payloadItems(payload)) {
+    if (item.isNew !== true) continue;
+    const proposal = asProposal(item);
+    if (!proposal) continue;
+    if (out.some((kept) => norm(kept.name) === norm(proposal.name))) continue;
+    out.push(proposal);
+  }
+  return out;
 }

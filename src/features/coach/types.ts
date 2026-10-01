@@ -208,6 +208,11 @@ export interface BuildRequestOpts {
    * efecto en `chat` y `analyze`, que son los que no piden JSON)
    */
   consult?: boolean;
+  /**
+   * añadir `CREATION_INSTRUCTION` al system (por defecto true, y solo tiene
+   * efecto en `chat`: ahí los ejercicios nuevos viajan en un bloque ```crear```)
+   */
+  create?: boolean;
   /** mensaje del usuario (analyze y chat) */
   question?: string;
   /** unidad del usuario, para los prompts de JSON */

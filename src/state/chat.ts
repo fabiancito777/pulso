@@ -19,7 +19,10 @@
  */
 import { signal } from '@preact/signals';
 
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
+import { norm } from '@/domain/text';
 import type { ChatMsg } from '@/features/coach/client';
+import { asProposal } from '@/features/coach/parse';
 
 import { readState, setChat } from './store';
 
@@ -28,6 +31,15 @@ export interface ChatAction {
   label: string;
   tab: string;
   sub?: string;
+}
+
+/**
+ * Ejercicio nuevo propuesto por el modelo con su estado de confirmación:
+ * `undefined` = pendiente (la tarjeta con sus botones), `created`/`discarded` =
+ * resuelta. Se persiste con la línea, así que «Descartar» sobrevive a F5.
+ */
+export interface CreationState extends AIExerciseProposal {
+  status?: 'created' | 'discarded';
 }
 
 /** Un mensaje del historial. `role` amplía el de la v1 con los avisos `sys`. */
@@ -44,6 +56,8 @@ export interface ChatLine {
   payload?: unknown;
   /** ejercicios que el modelo pidió consultar (transparencia) */
   consulted?: string[];
+  /** ejercicios NUEVOS propuestos: tarjeta de confirmación en el chat */
+  creations?: CreationState[];
   /** aviso de sistema con acción enlazable */
   action?: ChatAction;
 }
@@ -68,6 +82,16 @@ function asAction(value: unknown): ChatAction | undefined {
   return sub ? { label, tab, sub } : { label, tab };
 }
 
+/** Una propuesta guardada con tolerancia: sin `name` no es propuesta. */
+function asCreation(value: unknown): CreationState | null {
+  const proposal = asProposal(value);
+  if (!proposal) return null;
+  const status = isPlain(value) ? value.status : undefined;
+  const out: CreationState = proposal;
+  if (status === 'created' || status === 'discarded') out.status = status;
+  return out;
+}
+
 /**
  * Lee `state.chat` con tolerancia: lo que no tenga forma de mensaje (rol
  * desconocido, texto que no es string) se descarta en vez de romper la vista,
@@ -90,6 +114,12 @@ export function asChatLines(value: unknown): ChatLine[] {
     if (Array.isArray(raw.consulted)) {
       const list = raw.consulted.filter((item): item is string => typeof item === 'string');
       if (list.length) line.consulted = list;
+    }
+    if (Array.isArray(raw.creations)) {
+      const list = raw.creations
+        .map(asCreation)
+        .filter((item): item is CreationState => item !== null);
+      if (list.length) line.creations = list;
     }
     const action = asAction(raw.action);
     if (action) line.action = action;
@@ -140,6 +170,55 @@ export function markApplied(index: number): void {
   commit(
     chat.value.map((line, i) =>
       i === index ? { ...line, payload: { ...payload, done: true } } : line,
+    ),
+  );
+}
+
+/**
+ * Marca la propuesta `creation` de la línea `index` como creada o descartada
+ * (el `status` se persiste, así que la tarjeta no vuelve a ofrecerse tras un
+ * F5). Fuera de rango no hace nada.
+ */
+export function markCreation(
+  index: number,
+  creation: number,
+  status: 'created' | 'discarded',
+): void {
+  const list = chat.value[index]?.creations;
+  if (!list || !list[creation]) return;
+  commit(
+    chat.value.map((line, i) =>
+      i === index
+        ? {
+            ...line,
+            creations: list.map((item, j) => (j === creation ? { ...item, status } : item)),
+          }
+        : line,
+    ),
+  );
+}
+
+/**
+ * Añade propuestas de ejercicio nuevo a la línea `index` SIN repetir las que ya
+ * trae: es lo que hace «Aplicar» cuando unresolved trae nombres creables (el
+ * usuario aplicó el plan ANTES de crear los ejercicios nuevos).
+ */
+export function appendCreations(index: number, proposals: readonly AIExerciseProposal[]): void {
+  const line = chat.value[index];
+  if (!line || !proposals.length) return;
+  const current = line.creations ?? [];
+  const taken = new Set(current.map((kept) => norm(kept.name)));
+  const extra: AIExerciseProposal[] = [];
+  for (const proposal of proposals) {
+    const key = norm(proposal.name);
+    if (taken.has(key)) continue; /* ya está en la línea (o repetido aquí mismo) */
+    taken.add(key);
+    extra.push(proposal);
+  }
+  if (!extra.length) return;
+  commit(
+    chat.value.map((item, i) =>
+      i === index ? { ...item, creations: [...current, ...extra] } : item,
     ),
   );
 }

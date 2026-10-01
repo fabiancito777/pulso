@@ -10,7 +10,7 @@
  * Preact es el evento `change` del navegador), igual que hacía la v1.
  */
 import type { ComponentChildren } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { EQUIPMENT } from '@/domain/catalog';
 import { daysSince, exerciseSummary, prs, type ExerciseSummary } from '@/domain/analytics';
@@ -49,6 +49,8 @@ import { downloadJSON, pickTextFile } from '@/platform/files';
 import { hasSW, install, installable, installed } from '@/platform/install';
 import { requestNotifyPermission } from '@/platform/notify';
 import { applyTheme } from '@/platform/theme';
+import { hasApiKey } from '@/state/coach';
+import { pendingEditId, takePendingEdit } from '@/state/exercise-create';
 import {
   addPlate,
   applyEquipment,
@@ -75,6 +77,7 @@ import {
   updatePlate,
 } from '@/state/store';
 import { TEST_NOTICE_SEC, testRestNotice } from '@/state/session';
+import { ExerciseGenModal } from '@/ui/ExerciseGenModal';
 import { Icon } from '@/ui/Icon';
 import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
 import {
@@ -664,6 +667,21 @@ function SecEjercicios() {
   );
   /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
   const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
+  /* Modal del generador IA (spec `generador-ejercicios.md`): abrirlo NO hace
+     ninguna petición, eso lo decide su botón «Generar» dentro del modal. */
+  const [gen, setGen] = useState(false);
+  /* «Crear y editar» (coach y generador, Fase 0): la petición vive en
+     `state/exercise-create.ts` y aquí se consume UNA vez. Leer la señal en el
+     cuerpo del componente es lo que suscribe esta sección a `requestEdit`, que
+     puede llegar desde OTRA pestaña (el chat) o con el modal ya montado. */
+  const pendingEdit = pendingEditId.value;
+  useEffect(() => {
+    if (!pendingEdit) return;
+    const id = takePendingEdit();
+    if (!id) return;
+    const found = exercises.value.find((e) => e.id === id) ?? null;
+    if (found) setEditor(found);
+  }, [editor, pendingEdit]);
   const list = exercises.value;
   const eq = equipment.value;
   const blocked = list.filter((e) => !e.allowed).length;
@@ -792,11 +810,33 @@ function SecEjercicios() {
             <option value="unavailable">Sin material</option>
           </select>
         </div>
-        <div class="row mt-s" style="gap:8px">
+        <div class="row wrap mt-s" style="gap:8px">
           <button type="button" class="btn sm" onClick={() => setEditor('new')}>
             <Icon name="plus" />
             Añadir propio
           </button>
+          {/* Generador IA: el modal se abre aquí (cero peticiones); sin key el
+              aviso lleva directo a Ajustes → Coach AI (patrón `CoachView`) */}
+          <button
+            type="button"
+            class="btn sm"
+            title="Inventa ejercicios nuevos con la IA y los creas solo si los confirmas"
+            onClick={() => setGen(true)}
+          >
+            <Icon name="sparkles" />
+            Generar con IA
+          </button>
+          {hasApiKey() ? null : (
+            <button
+              type="button"
+              class="btn sm ghost"
+              title="El generador necesita la API key del coach"
+              onClick={() => go('ajustes', 'coach')}
+            >
+              <Icon name="key" />
+              Falta API key
+            </button>
+          )}
           <button
             type="button"
             class="btn sm ghost"
@@ -882,6 +922,7 @@ function SecEjercicios() {
           onClose={() => setEditor(null)}
         />
       )}
+      {gen ? <ExerciseGenModal onClose={() => setGen(false)} /> : null}
     </>
   );
 }

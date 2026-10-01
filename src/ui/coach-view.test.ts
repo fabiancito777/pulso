@@ -11,8 +11,18 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { proposalToDraft } from '@/domain/ai-exercise';
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
+import type { CoachOutcome } from '@/state/coach';
 import { ICONS } from '@/ui/icons';
-import { QUICK_ACTIONS, testBadge, turnOpts } from './CoachView';
+import {
+  QUICK_ACTIONS,
+  creationButtons,
+  creationSummary,
+  resultLine,
+  testBadge,
+  turnOpts,
+} from './CoachView';
 
 describe('turno de la vista (`turnOpts` → runCoachTask)', () => {
   it('en chat la pregunta viaja en userText y el historial detrás', () => {
@@ -95,5 +105,128 @@ describe('tarjeta de estado (v1 `coach:test`)', () => {
     expect(testBadge(null)).toBe('listo');
     expect(testBadge({ ok: true, ms: 812 })).toBe('ok · 0.8 s');
     expect(testBadge({ ok: false, ms: 2100 })).toBe('error · 2.1 s');
+  });
+});
+
+/* ---------- ejercicios nuevos ---------- */
+
+/** Outcome mínimo para `resultLine`: todo lo que no se prueba se queda vacío. */
+function out(over: Partial<CoachOutcome> = {}): CoachOutcome {
+  return { text: '', memoryAdded: [], consulted: [], creations: [], ms: 120, ...over };
+}
+
+const NUEVA: AIExerciseProposal = {
+  name: 'Remo Kroc a una mano',
+  group: 'espalda',
+  equip: 'mancuernas_fijas',
+  type: 'compuesto',
+  sets: 3,
+  rest: 120,
+  repMin: 8,
+  repMax: 12,
+  unilateral: true,
+};
+
+describe('resultLine (propuestas de ejercicio nuevo)', () => {
+  it('en chat adjunta out.creations y deja el texto tal cual (sin bloque)', () => {
+    const line = resultLine(
+      'chat',
+      out({ text: 'Te propongo uno nuevo.', creations: [NUEVA] }),
+      'g',
+    );
+    expect(line.creations).toEqual([NUEVA]);
+    expect(line.text).toBe('Te propongo uno nuevo.');
+    expect(line.payload).toBeUndefined();
+  });
+
+  it('sin propuestas la línea NO lleva creations (no se pinta tarjeta vacía)', () => {
+    expect(resultLine('chat', out({ text: 'hola' }), 'g').creations).toBeUndefined();
+  });
+
+  it('en suggest saca del payload SOLO lo marcado con isNew: true', () => {
+    const text = JSON.stringify({
+      title: 'Tracción',
+      rationale: 'Día de tracción.',
+      exercises: [
+        { name: 'Dominadas' },
+        { name: 'Remo Kroc a una mano', isNew: true, group: 'espalda', equip: 'mancuernas_fijas' },
+      ],
+    });
+
+    const line = resultLine('suggest', out({ text }), 'g');
+
+    expect(line.payload).toBeTruthy();
+    expect(line.creations).toEqual([
+      { name: 'Remo Kroc a una mano', group: 'espalda', equip: 'mancuernas_fijas' },
+    ]);
+    expect(line.text).toBe('Día de tracción.');
+  });
+
+  it('un nombre que no está en la lista pero SIN isNew no abre tarjeta (es veto)', () => {
+    const text = JSON.stringify({
+      title: 'Tracción',
+      exercises: [{ name: 'Remo Kroc a una mano', sets: 3 }],
+    });
+
+    const line = resultLine('suggest', out({ text }), 'g');
+
+    expect(line.payload).toBeTruthy();
+    expect(line.creations).toBeUndefined();
+    expect(line.text).toBe('Propuesta de entreno lista.');
+  });
+
+  it('en plan sin rationale usa el texto por defecto', () => {
+    const text = JSON.stringify({ days: [] });
+    const line = resultLine('plan', out({ text }), 'g');
+    expect(line.text).toBe('Plan semanal listo.');
+    expect(line.creations).toBeUndefined();
+  });
+
+  it('un payload ilegible se nota en el pie en vez de romper el mensaje', () => {
+    const line = resultLine('suggest', out({ text: 'no es json' }), 'g');
+    expect(line.payload).toBeUndefined();
+    expect(line.notes).toContain('no pude interpretar el JSON');
+  });
+});
+
+describe('botones de la tarjeta (`creationButtons`)', () => {
+  it('pendiente: Crear / Crear y editar / Descartar, los tres activos', () => {
+    expect(creationButtons(undefined)).toEqual([
+      { key: 'create', label: 'Crear', enabled: true },
+      { key: 'edit', label: 'Crear y editar', enabled: true },
+      { key: 'discard', label: 'Descartar', enabled: true },
+    ]);
+  });
+
+  it('ya creada o descartada: los tres desactivados (nada se crea dos veces)', () => {
+    for (const status of ['created', 'discarded'] as const) {
+      expect(
+        creationButtons(status).every((button) => button.enabled),
+        status,
+      ).toBe(false);
+    }
+  });
+
+  it('los iconos de los botones existen en el catálogo generado', () => {
+    for (const button of creationButtons()) {
+      const icon = button.key === 'discard' ? 'x' : 'plus';
+      expect(ICONS[icon], `icono «${icon}» de «${button.label}»`).toBeDefined();
+    }
+  });
+});
+
+describe('línea de atributos (`creationSummary`)', () => {
+  it('con el borrador válido pinta grupo · material · lado · tipo · prescripción', () => {
+    const draft = proposalToDraft(NUEVA, [], { mancuernas_fijas: true });
+    expect(draft.ok).toBe(true);
+    expect(creationSummary(NUEVA, draft)).toBe(
+      'Espalda · Mancuernas fijas · unilateral · compuesto · 3×8-12 · 120 s',
+    );
+  });
+
+  it('si el borrador NO valida solo queda lo que la propuesta ya declara', () => {
+    const draft = proposalToDraft(NUEVA, [], {}); /* sin material: no se puede crear */
+    expect(draft.ok).toBe(false);
+    expect(creationSummary(NUEVA, draft)).toBe('unilateral');
   });
 });

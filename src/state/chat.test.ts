@@ -146,6 +146,72 @@ describe('persistencia', () => {
   });
 });
 
+/* ---------- propuestas de ejercicios nuevos ---------- */
+
+describe('creations', () => {
+  it('lee las propuestas con tolerancia, como el payload', () => {
+    const lines = chat.asChatLines([
+      {
+        role: 'model',
+        text: 'mira este nuevo',
+        creations: [
+          { name: 'Remo Kroc a una mano', group: 'espalda', status: 'created' },
+          { name: '' },
+          { group: 'pecho' },
+          'texto suelto',
+          { name: 'Curl martillo', status: 'volando' },
+        ],
+      },
+      { role: 'model', text: 'sin propuestas', creations: 'basura' },
+    ]);
+
+    expect(lines[0].creations).toEqual([
+      { name: 'Remo Kroc a una mano', group: 'espalda', status: 'created' },
+      { name: 'Curl martillo' },
+    ]);
+    expect(lines[1].creations).toBeUndefined();
+  });
+
+  it('markCreation cambia SOLO esa propuesta de SOLO esa línea y persiste', () => {
+    chat.addChat({
+      role: 'model',
+      text: 'nuevo',
+      creations: [{ name: 'A' }, { name: 'B' }],
+    });
+    chat.addChat({ role: 'model', text: 'otra', creations: [{ name: 'C' }] });
+
+    chat.markCreation(0, 1, 'discarded');
+
+    expect(chat.chat.value[0].creations?.[0]).toEqual({ name: 'A' });
+    expect(chat.chat.value[0].creations?.[1]).toEqual({ name: 'B', status: 'discarded' });
+    expect(chat.chat.value[1].creations).toEqual([{ name: 'C' }]);
+    const stored = storedChat()[0] as { creations: { name: string; status?: string }[] };
+    expect(stored.creations[1].status).toBe('discarded');
+  });
+
+  it('markCreation fuera de rango o sin propuestas no rompe nada', () => {
+    chat.addChat({ role: 'model', text: 'sin' });
+    chat.markCreation(0, 0, 'created');
+    chat.markCreation(9, 0, 'created');
+    expect(chat.chat.value[0].creations).toBeUndefined();
+  });
+
+  it('appendCreations añade las nuevas SIN repetir las que ya trae la línea', () => {
+    chat.addChat({ role: 'model', text: 'plan', creations: [{ name: 'A', status: 'created' }] });
+
+    chat.appendCreations(0, [{ name: 'B' }, { name: 'b' }, { name: 'C' }]);
+    chat.appendCreations(0, [{ name: 'c' }]); /* ya está (misma forma): nada que añadir */
+    chat.appendCreations(5, [{ name: 'Z' }]); /* línea inexistente */
+
+    expect(chat.chat.value[0].creations).toEqual([
+      { name: 'A', status: 'created' },
+      { name: 'B' },
+      { name: 'C' },
+    ]);
+    expect((storedChat()[0] as { creations: unknown[] }).creations).toHaveLength(3);
+  });
+});
+
 /* ---------- lo que ve el modelo ---------- */
 
 describe('promptHistory', () => {

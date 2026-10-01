@@ -33,11 +33,13 @@
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import { addDays, dowLong, iso, label as dateLabel, nowTs, startOfWeek } from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
+import { norm } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
 import { GeminiError, generate } from '@/features/coach/client';
 import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
@@ -47,7 +49,7 @@ import type { HistoryQuery } from '@/features/coach/history';
 import { localSuggest, localWeek, summarizeLocal } from '@/features/coach/local';
 import type { LocalParams, PlanJSON, SuggestJSON } from '@/features/coach/local';
 import { applyMemoryEntries } from '@/features/coach/memory';
-import { extractBlocks, parseJSON } from '@/features/coach/parse';
+import { extractBlocks, extractCreations, parseJSON, payloadItems } from '@/features/coach/parse';
 import { buildRequest } from '@/features/coach/prompts';
 import type { BuildRequestOpts, CoachRequest, CoachTask } from '@/features/coach/types';
 import {
@@ -103,9 +105,23 @@ export interface CoachOutcome {
   memoryAdded: string[];
   /** consultas que el modelo pidió y se respondieron */
   consulted: string[];
+  /**
+   * ejercicios NUEVOS propuestos por el modelo: los del bloque ```crear``` del
+   * chat (el bloque ya NO está en `text`). En `suggest`/`plan` no se rellena
+   * aquí: van inline con `isNew: true` dentro del `payload` y de ahí los saca
+   * la vista (`creationsFromPayload`).
+   */
+  creations: AIExerciseProposal[];
   /** milisegundos de la tarea entera (según `deps.now`) */
   ms: number;
 }
+
+/**
+ * Razón de `unresolvedName` que marca un nombre como **creable**: el matcher no
+ * lo ha vetado por atributos, simplemente no existe en la biblioteca. Es el
+ * criterio de `partitionUnresolved` (tarjeta de confirmación en vez de aviso).
+ */
+export const CREABLE_REASON = 'no está en tu biblioteca';
 
 /* ---------- constantes ---------- */
 
@@ -319,8 +335,15 @@ function weeklyBrief(list: readonly Session[], weeks: number, todayIso: string):
     .join('\n');
 }
 
-/** Copia de `settings.ai` con los ajustes que `GenOpts` entiende. */
-function genOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
+/**
+ * Copia de `settings.ai` con los ajustes que `GenOpts` entiende.
+ *
+ * Exportado como `aiGenOptions` (contrato de Fase 0, spec
+ * `_specs/creacion-ejercicios-plan.md` §3.3): el generador de ejercicios arma
+ * sus `GenOpts` con la MISMA key, modelo, temperatura y thinking que el coach
+ * sin duplicar estas líneas ni tocar `features/coach/client.ts`.
+ */
+export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
   const opts: GenOpts = {
     apiKey: String(ai.apiKey ?? ''),
     model: String(ai.model ?? ''),
@@ -385,6 +408,7 @@ function localOutcome(payload: SuggestJSON | PlanJSON, ms: number, cause?: unkno
     payload,
     memoryAdded: [],
     consulted: [],
+    creations: [],
     ms,
   };
 }
@@ -451,7 +475,13 @@ export async function runCoachTask(
     if (isLocalTask(task)) {
       return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0);
     }
-    return { text: NO_KEY_TEXT, memoryAdded: [], consulted: [], ms: clock() - t0 };
+    return {
+      text: NO_KEY_TEXT,
+      memoryAdded: [],
+      consulted: [],
+      creations: [],
+      ms: clock() - t0,
+    };
   }
   const ctx = buildContext({
     settings: st,
@@ -486,7 +516,7 @@ export async function runCoachTask(
     reqOpts.weeklyBrief = weeklyBrief(sessions.value, ANALYZE_WEEKS, todayIso);
   }
   const req = buildRequest(task, reqOpts);
-  const base = genOptions(ai, req);
+  const base = aiGenOptions(ai, req);
 
   /* 3 · llamada (sin key no se llega aquí; el fallo de la PRIMERA llamada en
      suggest/plan se resuelve con el plan local, ver cabecera del módulo) */
@@ -554,14 +584,20 @@ export async function runCoachTask(
     }
   }
 
+  /* 6 · ejercicios nuevos: el bloque ```crear``` sale del texto (mismo truco que
+     la memoria) y viaja aparte, para que la vista pinte su tarjeta de
+     confirmación — aquí NUNCA se crea nada, eso es un clic del usuario */
+  const { rest: finalText, creations } = extractCreations(clean);
+
   return {
-    text: clean.trim(),
+    text: finalText.trim(),
     payload: extractPayload(task, clean),
     thoughts: res.thoughts,
     finish: res.finish,
     usage: res.usage,
     memoryAdded,
     consulted,
+    creations,
     ms: clock() - t0,
   };
 }
@@ -675,6 +711,68 @@ export function applyWeek(plan: unknown): {
 
   setMeta({ lastPlanAt: nowTs() });
   return out;
+}
+
+/* ---------- propuestas de ejercicios nuevos al aplicar ---------- */
+
+/**
+ * Propuesta de ejercicio nuevo montada con los atributos que traía el propio
+ * payload (si el nombre está en él): lo que no venga se infiere después, en
+ * `proposalToDraft`. Solo `name` es obligatorio, igual que en el resto del
+ * circuito de creación.
+ */
+function proposalFrom(name: string, items: readonly Record<string, unknown>[]): AIExerciseProposal {
+  const proposal: AIExerciseProposal = { name };
+  const raw = items.find(
+    (item) => typeof item.name === 'string' && norm(item.name.trim()) === norm(name),
+  );
+  if (!raw) return proposal;
+  for (const key of ['group', 'equip', 'type', 'desc'] as const) {
+    const field = raw[key];
+    if (typeof field === 'string' && field.trim()) proposal[key] = field.trim();
+  }
+  for (const key of ['sets', 'rest', 'repMin', 'repMax'] as const) {
+    const field = raw[key];
+    if (typeof field === 'number' && Number.isFinite(field)) proposal[key] = field;
+  }
+  if (raw.unilateral === true) proposal.unilateral = true;
+  return proposal;
+}
+
+/**
+ * Parte lo que no se resolvió al aplicar una propuesta:
+ *
+ * - **creable**: `reason === 'no está en tu biblioteca'` → la vista pinta la
+ *   tarjeta de confirmación con los atributos que traía el payload (o los que
+ *   se infieran del nombre);
+ * - **warnings**: el veto por conflicto de atributos («… inclinado») sigue
+ *   siendo SOLO un aviso, como hasta ahora: es un nombre mal dicho, no un
+ *   ejercicio nuevo.
+ *
+ * Pura y aparte a propósito: `resolveItems`/`applySuggestionAsRoutine`/
+ * `applyWeek` conservan SU forma (`{items, unresolved}`, `{routine, unresolved}`
+ * y `{days, routines, unresolved}`), que es la que fijan sus tests.
+ */
+export function partitionUnresolved(
+  unresolved: readonly UnresolvedName[],
+  payload: unknown,
+): { creatable: AIExerciseProposal[]; warnings: UnresolvedName[] } {
+  const items = payloadItems(payload);
+  const creatable: AIExerciseProposal[] = [];
+  const warnings: UnresolvedName[] = [];
+  const seen = new Set<string>();
+
+  for (const item of unresolved) {
+    if (item.reason !== CREABLE_REASON) {
+      warnings.push(item);
+      continue;
+    }
+    const key = norm(item.name);
+    if (seen.has(key)) continue; /* el mismo nombre dos veces = UNA tarjeta */
+    seen.add(key);
+    creatable.push(proposalFrom(item.name, items));
+  }
+  return { creatable, warnings };
 }
 
 /** ¿Hay API key configurada? (la mira en `settings.ai.apiKey`, como `C.hasKey`). */

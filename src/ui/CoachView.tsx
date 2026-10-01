@@ -28,27 +28,39 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
+import { proposalToDraft } from '@/domain/ai-exercise';
+import type { AIExerciseProposal, ProposalDraftResult } from '@/domain/ai-exercise';
 import { nowTs } from '@/domain/dates';
+import { equipLabel, groupLabel } from '@/domain/data';
 import { unresolvedNames } from '@/domain/match';
 import { int } from '@/domain/num';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
 import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
-import { parseJSON } from '@/features/coach/parse';
+import { creationsFromPayload, parseJSON } from '@/features/coach/parse';
 import type { CoachTask } from '@/features/coach/types';
-import { applySuggestionAsRoutine, applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
+import {
+  applySuggestionAsRoutine,
+  applyWeek,
+  hasApiKey,
+  partitionUnresolved,
+  runCoachTask,
+} from '@/state/coach';
 import type { CoachOutcome, CoachTaskOpts } from '@/state/coach';
 import {
   addChat,
+  appendCreations,
   chat,
   clearChat,
   markApplied,
+  markCreation,
   parseMd,
   promptHistory,
   reloadChat,
 } from '@/state/chat';
-import type { ChatLine, MdSpan } from '@/state/chat';
-import { patchSettings, settings } from '@/state/store';
+import type { ChatLine, CreationState, MdSpan } from '@/state/chat';
+import { createExerciseFromAI, requestEdit } from '@/state/exercise-create';
+import { equipment, exercises, patchSettings, settings } from '@/state/store';
 import { HelpBtn } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { toast } from '@/ui/toast';
@@ -99,8 +111,15 @@ function rationaleOf(payload: Record<string, unknown>): string {
   return '';
 }
 
-/** Mensaje del modelo a partir del resultado de `runCoachTask`. */
-function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine {
+/**
+ * Mensaje del modelo a partir del resultado de `runCoachTask`.
+ *
+ * Adjunta las propuestas de ejercicio NUEVO: en `chat` las que venían en el
+ * bloque ```crear``` (`out.creations`) y en `suggest`/`plan` las que el payload
+ * marca con `isNew: true` inline. En ningún caso se crea nada aquí: la tarjeta
+ * espera su clic.
+ */
+export function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine {
   const notes = footerOf(out, model);
   const line: ChatLine = {
     role: 'model',
@@ -110,6 +129,7 @@ function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine
   };
   if (out.thoughts) line.thoughts = out.thoughts;
   if (out.consulted.length) line.consulted = out.consulted;
+  if (out.creations.length) line.creations = out.creations.map((item) => ({ ...item }));
 
   if (task === 'suggest' || task === 'plan') {
     const payload = payloadOf(out.text);
@@ -118,11 +138,132 @@ function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine
       return line;
     }
     line.payload = payload;
+    const nuevas = creationsFromPayload(payload);
+    if (nuevas.length) line.creations = nuevas.map((item) => ({ ...item }));
     line.text =
       rationaleOf(payload) ||
       (task === 'plan' ? 'Plan semanal listo.' : 'Propuesta de entreno lista.');
   }
   return line;
+}
+
+/* ---------- tarjeta de ejercicio nuevo ---------- */
+
+/** Lo que se le puede pedir a la tarjeta de un ejercicio nuevo. */
+export type CreationAction = 'create' | 'edit' | 'discard';
+
+/** Un botón de esa tarjeta, ya con su estado habilitado/deshabilitado. */
+export interface CreationButton {
+  key: CreationAction;
+  label: string;
+  enabled: boolean;
+}
+
+/**
+ * Botones de la tarjeta: activos SOLO mientras la propuesta está pendiente
+ * (mismo criterio que el `done` de `PayloadCard`). La creación es siempre un
+ * clic del usuario, nunca automática.
+ */
+export function creationButtons(status?: CreationState['status']): CreationButton[] {
+  const enabled = status === undefined;
+  return [
+    { key: 'create', label: 'Crear', enabled },
+    { key: 'edit', label: 'Crear y editar', enabled },
+    { key: 'discard', label: 'Descartar', enabled },
+  ];
+}
+
+/**
+ * Línea de atributos de la tarjeta, con lo que `proposalToDraft` YA dedujo del
+ * nombre y del candidato: grupo, material, unilateral, tipo y prescripción.
+ */
+export function creationSummary(proposal: AIExerciseProposal, draft: ProposalDraftResult): string {
+  const value = draft.ok ? draft.draft : null;
+  const unilateral = draft.ok ? draft.info.unilateral : proposal.unilateral === true;
+  const bits = [
+    value ? groupLabel(value.group) : '',
+    value ? (value.equip ? equipLabel(value.equip) : 'peso corporal') : '',
+    unilateral ? 'unilateral' : '',
+    value?.type ?? '',
+    value ? `${value.sets}×${value.repMin}-${value.repMax}` : '',
+    value ? `${value.rest} s` : '',
+  ];
+  return bits.filter(Boolean).join(' · ');
+}
+
+/** Nombres entrecomillados, con el mismo formato que `unresolvedNames`. */
+function quoted(list: readonly { name: string }[]): string {
+  return list.map((item) => `«${item.name}»`).join(', ');
+}
+
+/**
+ * Tarjeta de confirmación de un ejercicio NUEVO: lo que el modelo propuso, con
+ * sus atributos ya inferidos y los tres botones (Crear / Crear y editar /
+ * Descartar). Las descartadas no se pintan; las creadas quedan como constancia.
+ *
+ * Si el borrador no valida (p. ej. material que el usuario no tiene) se enseña
+ * el motivo y SOLO queda «Descartar»: se avisa, nunca se crea algo que no puede
+ * hacerse.
+ */
+function CreationCard({
+  line,
+  index,
+  onAction,
+}: {
+  line: ChatLine;
+  index: number;
+  onAction: (index: number, creation: number, action: CreationAction) => void;
+}) {
+  const creations = line.creations ?? [];
+  const shown = creations
+    .map((creation, i) => ({ creation, i }))
+    .filter(({ creation }) => creation.status !== 'discarded');
+  if (!shown.length) return null;
+
+  return (
+    <div class="coach-card coach-create">
+      <div class="row between">
+        <b class="grow">Ejercicio nuevo propuesto</b>
+        <span class="badge a">{shown.length}</span>
+      </div>
+      {shown.map(({ creation, i }) => {
+        const draft = proposalToDraft(creation, exercises.value, equipment.value);
+        const pending = creation.status === undefined;
+        const buttons = creationButtons(creation.status).filter(
+          (button) => button.key === 'discard' || (pending && draft.ok),
+        );
+        return (
+          <div class="coach-create-item" key={`${i}-${creation.name}`}>
+            <b>{creation.name}</b>
+            <div class="tiny muted">{creationSummary(creation, draft)}</div>
+            {creation.desc ? <div class="tiny">{creation.desc}</div> : null}
+            {draft.ok ? null : <div class="tiny warn">{draft.error}</div>}
+            {draft.ok && draft.info.notes.length ? (
+              <div class="tiny muted">{draft.info.notes.join(' · ')}</div>
+            ) : null}
+            {creation.status === 'created' ? (
+              <div class="tiny ok">Creado · ya está en tu biblioteca</div>
+            ) : null}
+            {buttons.length ? (
+              <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
+                {buttons.map((button) => (
+                  <button
+                    key={button.key}
+                    type="button"
+                    class={`btn sm ${button.key === 'discard' ? 'ghost' : 'primary'}`}
+                    onClick={() => onAction(index, i, button.key)}
+                  >
+                    <Icon name={button.key === 'discard' ? 'x' : 'plus'} />
+                    {button.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Mensaje amable para cualquier fallo (los `GeminiError` van por `kind`). */
@@ -342,10 +483,12 @@ function Bubble({
   line,
   index,
   onApply,
+  onCreate,
 }: {
   line: ChatLine;
   index: number;
   onApply: (index: number, kind: ApplyKind) => void;
+  onCreate: (index: number, creation: number, action: CreationAction) => void;
 }) {
   if (line.role === 'user') return <div class="msg me">{line.text}</div>;
 
@@ -381,6 +524,7 @@ function Bubble({
       ) : null}
       <div class="msg ai">{renderMd(line.text)}</div>
       <PayloadCard payload={line.payload} index={index} onApply={onApply} />
+      <CreationCard line={line} index={index} onAction={onCreate} />
       {line.consulted && line.consulted.length ? (
         <div class="coach-meta tiny muted">consultó: {line.consulted.join(' · ')}</div>
       ) : null}
@@ -739,31 +883,89 @@ export function CoachView() {
     void run('chat', text);
   }
 
-  /** Aplica la tarjeta de una propuesta/plan y avisa en el chat del resultado. */
+  /**
+   * Acciones de la tarjeta de ejercicio nuevo. NINGUNA creación es automática:
+   * esto solo se invoca desde `onClick`.
+   *
+   * `create` → `createExerciseFromAI` (duplicado o material que falta vuelven en
+   * `error`, que se avisa y NO marca la tarjeta). `edit` → lo mismo más
+   * `requestEdit(id)`, que `SecEjercicios` recoge con su hook de Fase 0.
+   * `discard` → solo estado en el chat, cero escrituras en `pulso.state`.
+   */
+  function create(index: number, creation: number, action: CreationAction): void {
+    if (action === 'discard') {
+      markCreation(index, creation, 'discarded');
+      return;
+    }
+    const proposal = chat.value[index]?.creations?.[creation];
+    if (!proposal) return;
+
+    const result = createExerciseFromAI(proposal);
+    if (!result.ok) {
+      toast(result.error, { kind: 'err', ms: 8000 });
+      return;
+    }
+    /* `markCreation` ANTES de `addChat`: si el historial está lleno, apilar el
+       aviso recorta por el PRINCIPIO y el índice de la línea cambiaría. */
+    markCreation(index, creation, 'created');
+    toast(`Ejercicio creado: «${result.exercise.name}»`, { kind: 'ok' });
+    addChat({
+      role: 'sys',
+      text: `Ejercicio creado: «${result.exercise.name}» · ya aparece en tu biblioteca`,
+      ts: nowTs(),
+    });
+    if (action === 'edit') {
+      requestEdit(result.exercise.id);
+      go('ajustes', 'ejercicios');
+    }
+  }
+
+  /**
+   * Aplica la tarjeta de una propuesta/plan y avisa en el chat del resultado.
+   *
+   * Lo que no resuelve se parte con `partitionUnresolved`: el conflicto de
+   * atributos sigue siendo el aviso de siempre, y lo que solo falla porque el
+   * ejercicio NO EXISTE se ofrece como tarjeta de creación (aunque se haya
+   * aplicado ya) — así «crear y volver a aplicar» completa la rutina sin tocar
+   * `applySuggestionAsRoutine`/`applyWeek`.
+   */
   function apply(index: number, kind: ApplyKind): void {
     const line = chat.value[index];
     if (!line) return;
 
     if (kind === 'routine') {
       const { routine, unresolved } = applySuggestionAsRoutine(line.payload);
+      const { creatable, warnings } = partitionUnresolved(unresolved, line.payload);
+      if (creatable.length) appendCreations(index, creatable);
       if (!routine) {
+        const detail = warnings.length
+          ? `${unresolvedNames(warnings)} ${warnings.length === 1 ? 'no está' : 'no están'} en tu biblioteca`
+          : creatable.length
+            ? 'todos sus ejercicios son propuestas nuevas'
+            : '';
         addChat({
           role: 'sys',
-          text: unresolved.length
-            ? `No pude convertir la propuesta en rutina: ${unresolvedNames(unresolved)} ${
-                unresolved.length === 1 ? 'no está' : 'no están'
-              } en tu biblioteca.`
+          text: detail
+            ? `No pude convertir la propuesta en rutina: ${detail}.${
+                creatable.length
+                  ? ' Crea los nuevos desde la tarjeta y vuelve a pulsar «Aplicar».'
+                  : ''
+              }`
             : 'No pude convertir la propuesta en rutina: no traía ejercicios reconocidos.',
           ts: nowTs(),
         });
         return;
       }
-      markApplied(index);
+      /* Mientras queden creables pendientes NO se marca «Aplicada», para que se
+         pueda volver a pulsar tras crear los ejercicios nuevos. */
+      if (!creatable.length) markApplied(index);
+      const bits: string[] = [];
+      if (creatable.length)
+        bits.push(`nuevos por crear (${creatable.length}): ${quoted(creatable)}`);
+      if (warnings.length) bits.push(`sin usar (${warnings.length}): ${unresolvedNames(warnings)}`);
       addChat({
         role: 'sys',
-        text: unresolved.length
-          ? `Rutina creada: ${routine.name} · sin usar (${unresolved.length}): ${unresolvedNames(unresolved)}`
-          : `Rutina creada: ${routine.name}`,
+        text: `Rutina creada: ${routine.name}${bits.length ? ` · ${bits.join(' · ')}` : ''}`,
         ts: nowTs(),
       });
       return;
@@ -778,20 +980,28 @@ export function CoachView() {
       });
       return;
     }
-    markApplied(index);
-    const skipped = out.unresolved.length
-      ? ` · sin usar (${out.unresolved.length}): ${unresolvedNames(out.unresolved)}`
-      : '';
+    const { creatable, warnings } = partitionUnresolved(out.unresolved, line.payload);
+    if (creatable.length) appendCreations(index, creatable);
+    if (!creatable.length) markApplied(index);
+    const bits: string[] = [];
+    if (creatable.length) bits.push(`nuevos por crear (${creatable.length}): ${quoted(creatable)}`);
+    if (warnings.length) bits.push(`sin usar (${warnings.length}): ${unresolvedNames(warnings)}`);
+    const skipped = bits.length ? ` · ${bits.join(' · ')}` : '';
     addChat({
       role: 'sys',
       text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas creadas` : ''}${skipped}`,
       ts: nowTs(),
     });
     /* El plan YA está en el calendario: se salta a verlo, igual que acababa la
-       v1 (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). */
+       v1 (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). Si
+       quedan creables, NO se salta: la tarjeta está en esta pestaña. */
     toast(`Semana agendada: ${out.days} días, ${out.routines} rutinas creadas`, { kind: 'ok' });
-    if (out.unresolved.length) {
-      toast(`Sin usar: ${unresolvedNames(out.unresolved)}`, { kind: 'warn' });
+    if (warnings.length) {
+      toast(`Sin usar: ${unresolvedNames(warnings)}`, { kind: 'warn' });
+    }
+    if (creatable.length) {
+      toast(`Ejercicios nuevos por crear: ${quoted(creatable)}`, { kind: 'warn' });
+      return;
     }
     go('calendario');
   }
@@ -849,7 +1059,13 @@ export function CoachView() {
       <div class="chat" ref={scroller}>
         {msgs.length ? (
           msgs.map((line, i) => (
-            <Bubble key={`${line.ts ?? ''}-${i}`} line={line} index={i} onApply={apply} />
+            <Bubble
+              key={`${line.ts ?? ''}-${i}`}
+              line={line}
+              index={i}
+              onApply={apply}
+              onCreate={create}
+            />
           ))
         ) : (
           <div class="empty">

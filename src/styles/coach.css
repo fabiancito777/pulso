@@ -82,6 +82,31 @@
   border-bottom: 0;
 }
 
+/* Tarjeta de ejercicio NUEVO propuesto por el modelo (confirmación manual). */
+.coach-create {
+  border-color: color-mix(in srgb, var(--ok, var(--accent)) 45%, var(--border));
+  background:
+    linear-gradient(180deg, var(--ok-soft, var(--accent-soft)), transparent 70%), var(--surface);
+}
+
+.coach-create .coach-create-item {
+  padding: 9px 0 3px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.coach-create .coach-create-item:first-of-type {
+  margin-top: 9px;
+}
+
+.coach-create .coach-create-item > b {
+  display: block;
+  font-size: 14px;
+}
+
+.coach-create .coach-create-item > .tiny {
+  margin-top: 3px;
+}
+
 .coach-card .coach-list li > span:first-child {
   min-width: 0;
   overflow: hidden;

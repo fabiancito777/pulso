@@ -4,9 +4,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { AI_EXERCISE_SCHEMA } from '@/domain/ai-exercise';
 import {
   CHAT_HISTORY_LIMIT,
   CONSULT_INSTRUCTION,
+  CREATION_INSTRUCTION,
   DEFAULT_SYSTEM,
   MEMORY_INSTRUCTION,
   buildRequest,
@@ -25,6 +27,16 @@ describe('DEFAULT_SYSTEM', () => {
     expect(DEFAULT_SYSTEM).toContain('justifica brevemente');
     expect(DEFAULT_SYSTEM).toContain('ÚNICAMENTE el JSON');
     expect(DEFAULT_SYSTEM).toContain('no eres un médico');
+  });
+
+  it('ya no exige la lista EN EXCLUSIVA: prefiere la lista y permite proponer nuevos', () => {
+    expect(DEFAULT_SYSTEM).not.toContain('EXCLUSIVAMENTE ejercicios');
+    expect(DEFAULT_SYSTEM).toContain('Usa preferentemente ejercicios de la lista');
+    expect(DEFAULT_SYSTEM).toContain('nombre exacto');
+    expect(DEFAULT_SYSTEM).toContain('ejercicios NUEVOS');
+    /* el material y los PROHIBIDOS siguen siendo línea a parte */
+    expect(DEFAULT_SYSTEM).toContain('PROHIBIDOS');
+    expect(DEFAULT_SYSTEM).toContain('grupos musculares del catálogo');
   });
 });
 
@@ -51,6 +63,27 @@ describe('CONSULT_INSTRUCTION', () => {
     expect(CONSULT_INSTRUCTION).toContain('NUNCA inventes');
     expect(CONSULT_INSTRUCTION).toContain('HISTORIAL CONSOLIDADO');
     expect(CONSULT_INSTRUCTION).toContain('UN bloque');
+  });
+});
+
+describe('CREATION_INSTRUCTION', () => {
+  it('pide el bloque ```crear``` con el esquema compartido y sus campos', () => {
+    expect(CREATION_INSTRUCTION).toContain('```crear');
+    expect(CREATION_INSTRUCTION).toContain(AI_EXERCISE_SCHEMA);
+    expect(CREATION_INSTRUCTION).toContain('"name"');
+    expect(CREATION_INSTRUCTION).toContain('"group"');
+    expect(CREATION_INSTRUCTION).toContain('"equip"');
+    expect(CREATION_INSTRUCTION).toContain('"type"');
+    expect(CREATION_INSTRUCTION).toContain('espalda'); /* grupos interpolados del catálogo */
+    expect(CREATION_INSTRUCTION).toContain('unilateral');
+  });
+
+  it('acota el material, los PROHIBIDOS y recuerda que NADA se crea solo', () => {
+    expect(CREATION_INSTRUCTION).toContain('PROHIBIDOS');
+    expect(CREATION_INSTRUCTION).toContain('EQUIPAMIENTO');
+    expect(CREATION_INSTRUCTION).toContain('nombre exacto');
+    expect(CREATION_INSTRUCTION).toContain('NO la crea hasta que el usuario lo confirme');
+    expect(CREATION_INSTRUCTION).toContain('no pongas el bloque');
   });
 });
 
@@ -86,6 +119,20 @@ describe('buildRequest', () => {
     expect(sinConsulta).toContain(MEMORY_INSTRUCTION);
   });
 
+  it('inyecta CREATION_INSTRUCTION SOLO en chat (espejo de CONSULT_INSTRUCTION)', () => {
+    expect(buildRequest('chat', { question: 'hola' }).system).toContain(CREATION_INSTRUCTION);
+    expect(buildRequest('analyze', { question: 'hola' }).system).not.toContain(
+      CREATION_INSTRUCTION,
+    );
+    expect(buildRequest('suggest').system).not.toContain(CREATION_INSTRUCTION);
+    expect(buildRequest('plan').system).not.toContain(CREATION_INSTRUCTION);
+
+    const sinCrear = buildRequest('chat', { question: 'hola', create: false }).system;
+    expect(sinCrear).not.toContain(CREATION_INSTRUCTION);
+    expect(sinCrear).toContain(MEMORY_INSTRUCTION);
+    expect(sinCrear).toContain(CONSULT_INSTRUCTION);
+  });
+
   it('suggest pide JSON con el esquema de la v1', () => {
     const req = buildRequest('suggest', {
       context,
@@ -98,6 +145,13 @@ describe('buildRequest', () => {
     expect(req.prompt).toContain('1 bloque de core');
     expect(req.prompt).toContain('Propuesta generada en el dispositivo');
     expect(req.prompt).toContain('Press de banca');
+  });
+
+  it('suggest permite inventar SOLO marcando "isNew" con sus atributos', () => {
+    const prompt = buildRequest('suggest').prompt;
+    expect(prompt).toContain('"isNew":true');
+    expect(prompt).toContain('"group", "equip", "type"');
+    expect(prompt).toContain('el resto de nombres siguen teniendo que ser de la lista');
   });
 
   it('plan pide JSON con fechas y reglas de 48 h', () => {
@@ -114,6 +168,13 @@ describe('buildRequest', () => {
     expect(req.prompt).toContain('días de entreno deseados: 3');
     expect(req.prompt).toContain('48 h');
     expect(req.prompt).toContain('Base generada en el dispositivo');
+  });
+
+  it('plan permite inventar SOLO marcando "isNew" con sus atributos', () => {
+    const prompt = buildRequest('plan', { from: '2026-09-21', to: '2026-09-27' }).prompt;
+    expect(prompt).toContain('"isNew":true');
+    expect(prompt).toContain('"group"/"equip"/"type"');
+    expect(prompt).toContain('48 h');
   });
 
   it('analyze pide markdown corto y no JSON', () => {

@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { findExerciseByName, isAvailable } from '@/domain/data';
 import { addDays } from '@/domain/dates';
+import type { UnresolvedName } from '@/domain/match';
 import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
 import type { GenOpts, GenResult } from '@/features/coach/client';
@@ -44,6 +45,7 @@ vi.stubGlobal('localStorage', {
 
 const store = await import('./store');
 const coach = await import('./coach');
+const create = await import('./exercise-create');
 
 const NOMBRE = 'Press de banca con barra';
 const FECHA_SESION = '2026-09-20';
@@ -348,6 +350,47 @@ describe('runCoachTask', () => {
     expect(out.text).toContain('Respuesta final.');
     expect(out.text).not.toContain('```consulta');
   });
+
+  it('bloque ```crear``` → out.creations con la propuesta y el bloque sale del texto', async () => {
+    const gen = makeGen([
+      res(
+        'Te propongo uno nuevo.\n\n```crear\n[{"name":"Remo Kroc a una mano",' +
+          '"group":"espalda","equip":"mancuernas_fijas","type":"compuesto","sets":3,' +
+          '"rest":120,"repMin":8,"repMax":12,"unilateral":true,"desc":"Con apoyo en banco."}]\n```',
+      ),
+    ]);
+
+    const out = await coach.runCoachTask('chat', { userText: 'inventa' }, { generateFn: gen });
+
+    expect(out.creations).toEqual([
+      {
+        name: 'Remo Kroc a una mano',
+        group: 'espalda',
+        equip: 'mancuernas_fijas',
+        type: 'compuesto',
+        sets: 3,
+        rest: 120,
+        repMin: 8,
+        repMax: 12,
+        unilateral: true,
+        desc: 'Con apoyo en banco.',
+      },
+    ]);
+    expect(out.text).toContain('Te propongo uno nuevo.');
+    expect(out.text).not.toContain('```crear');
+    expect(out.payload).toBeUndefined();
+  });
+
+  it('sin bloque ```crear``` → creations vacías (y también sin key ni en el local)', async () => {
+    const gen = makeGen([res('Aquí no propongo nada nuevo.')]);
+    const out = await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(out.creations).toEqual([]);
+
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: '' } });
+    const local = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    expect(local.creations).toEqual([]);
+    expect(gen).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('applySuggestionAsRoutine', () => {
@@ -542,6 +585,115 @@ describe('applyWeek', () => {
     });
     expect(store.schedule.value).toEqual({});
     expect(store.meta.value.lastPlanAt).toBeNull();
+  });
+});
+
+describe('partitionUnresolved', () => {
+  const PAYLOAD = {
+    title: 'Empuje con uno nuevo',
+    exercises: [
+      { name: NOMBRE, sets: 4 },
+      {
+        name: 'Kroc Row unilateral con mancuerna',
+        isNew: true,
+        group: 'espalda',
+        equip: 'mancuernas_ajustables',
+        type: 'compuesto',
+        sets: 3,
+        rest: 150,
+      },
+      { name: 'Press de banca con barra inclinado', sets: 3 },
+    ],
+  };
+
+  it('separa lo creable («no está en tu biblioteca») de lo vetado (conflicto)', () => {
+    const unresolved: UnresolvedName[] = [
+      { name: 'Kroc Row unilateral con mancuerna', reason: coach.CREABLE_REASON },
+      {
+        name: 'Press de banca con barra inclinado',
+        reason: '«Press de banca con barra» no cumple: inclinado',
+        candidate: { id: 'press-de-banca-con-barra', name: NOMBRE },
+      },
+      { name: 'Remo que nadie conoce', reason: coach.CREABLE_REASON },
+    ];
+
+    const { creatable, warnings } = coach.partitionUnresolved(unresolved, PAYLOAD);
+
+    expect(creatable.map((item) => item.name)).toEqual([
+      'Kroc Row unilateral con mancuerna',
+      'Remo que nadie conoce',
+    ]);
+    expect(warnings).toEqual([
+      {
+        name: 'Press de banca con barra inclinado',
+        reason: '«Press de banca con barra» no cumple: inclinado',
+        candidate: { id: 'press-de-banca-con-barra', name: NOMBRE },
+      },
+    ]);
+
+    /* los atributos salen del MISMO payload, no se inventan */
+    expect(creatable[0]).toEqual({
+      name: 'Kroc Row unilateral con mancuerna',
+      group: 'espalda',
+      equip: 'mancuernas_ajustables',
+      type: 'compuesto',
+      sets: 3,
+      rest: 150,
+    });
+    /* y un nombre sin atributos en el payload sigue siendo creable (solo el
+       nombre: `proposalToDraft` infiere el resto) */
+    expect(creatable[1]).toEqual({ name: 'Remo que nadie conoce' });
+  });
+
+  it('sin payload o sin unresolved devuelve lo mínimo', () => {
+    expect(coach.partitionUnresolved([], PAYLOAD)).toEqual({ creatable: [], warnings: [] });
+    expect(coach.partitionUnresolved([{ name: 'X', reason: coach.CREABLE_REASON }], null)).toEqual({
+      creatable: [{ name: 'X' }],
+      warnings: [],
+    });
+  });
+
+  it('un mismo nombre repetido (dos días) es UNA sola tarjeta', () => {
+    const { creatable, warnings } = coach.partitionUnresolved(
+      [
+        { name: 'Remo que nadie conoce', reason: coach.CREABLE_REASON },
+        { name: 'remo que nadie conoce', reason: coach.CREABLE_REASON },
+      ],
+      null,
+    );
+    expect(creatable).toEqual([{ name: 'Remo que nadie conoce' }]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('e2e: aplicar → crear → volver a aplicar ya resuelve el exId nuevo', () => {
+    const payload = { title: 'Nuevo', exercises: [{ name: 'Kroc Row unilateral con mancuerna' }] };
+
+    /* 1 · aplicar ANTES de crear: el nombre no resuelve (es lo que hoy era
+       solo un aviso «sin usar») */
+    const primero = coach.applySuggestionAsRoutine(payload);
+    expect(primero.routine).toBeNull();
+    expect(primero.unresolved).toHaveLength(1);
+    expect(primero.unresolved[0]?.reason).toBe('no está en tu biblioteca');
+
+    /* 2 · la partición lo ofrece como creable, nunca como veto */
+    const { creatable, warnings } = coach.partitionUnresolved(primero.unresolved, payload);
+    expect(warnings).toEqual([]);
+    expect(creatable).toHaveLength(1);
+
+    /* 3 · crearlo (el clic de la tarjeta) y volver a aplicar */
+    const result = create.createExerciseFromAI({
+      ...creatable[0],
+      group: 'espalda',
+      equip: 'mancuernas_ajustables',
+      type: 'compuesto',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const segundo = coach.applySuggestionAsRoutine(payload);
+    expect(segundo.unresolved).toEqual([]);
+    expect(segundo.routine?.items).toHaveLength(1);
+    expect(segundo.routine?.items[0]?.exId).toBe(result.exercise.id);
   });
 });
 

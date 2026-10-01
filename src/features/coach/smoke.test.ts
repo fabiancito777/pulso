@@ -331,10 +331,18 @@ suite('coach IA contra Gemini (smoke)', () => {
       for (const item of list) {
         const name = str(item.name).trim();
         expect(name, 'ejercicio sin name').not.toBe('');
-        expect(
-          findExerciseByName(PERMITIDOS, name),
-          `«${name}» no está en la biblioteca permitida`,
-        ).not.toBeNull();
+        if (item.isNew === true) {
+          /* inventado A PROPÓSITO: tiene que venir con los atributos de la
+             tarjeta, o `partitionUnresolved` no sabe qué proponer */
+          expect(str(item.group), `group de «${name}» (ejercicio nuevo)`).not.toBe('');
+          expect(typeof item.equip, `equip de «${name}» (ejercicio nuevo)`).toBe('string');
+          expect(str(item.type), `type de «${name}» (ejercicio nuevo)`).not.toBe('');
+        } else {
+          expect(
+            findExerciseByName(PERMITIDOS, name),
+            `«${name}» no está en la biblioteca permitida (y no lleva isNew)`,
+          ).not.toBeNull();
+        }
         expect(numOf(item.sets), `sets de «${name}»`).toBeGreaterThanOrEqual(1);
         expect(numOf(item.sets), `sets de «${name}»`).toBeLessThanOrEqual(10);
         expect(numOf(item.weight), `weight de «${name}»`).toBeGreaterThanOrEqual(0);

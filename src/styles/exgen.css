@@ -1,0 +1,106 @@
+/* ==========================================================================
+   Pulso v2 · generador IA de ejercicios (`src/ui/ExerciseGenModal.tsx`)
+
+   Solo clases `exgen-*`: todo lo demás (`.card`, `.btn`, `.badge`, `.empty`,
+   `.toggle-pill`, `.modal-*`) viene de `base.css`, que aquí NO se toca, y
+   `v2.css` tampoco: esta hoja se importa desde el modal, así que solo paga
+   quien abre Ajustes → Ejercicios.
+   ========================================================================== */
+
+/* ---------- avisos ---------- */
+
+.exgen-error {
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.exgen-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---------- lista de propuestas ---------- */
+
+.exgen-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.exgen-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+/* creada: la tarjeta queda como constancia mientras el modal siga abierto */
+.exgen-item.created {
+  opacity: 0.62;
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
+}
+
+.exgen-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.exgen-head input[type='checkbox'] {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+
+.exgen-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.1px;
+  overflow-wrap: anywhere;
+}
+
+.exgen-item.created .exgen-name {
+  text-decoration: line-through;
+}
+
+.exgen-meta {
+  overflow-wrap: anywhere;
+}
+
+.exgen-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.exgen-warn {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}
+
+.exgen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 3px;
+}
