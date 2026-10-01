@@ -4,6 +4,8 @@ App de entrenamiento personal hecha con **Vite + TypeScript + Preact**. Todos lo
 tu dispositivo (`localStorage`). El coach con IA es opcional y usa **tu propia API key de Gemini**,
 y **todo funciona sin key** (el planificador local cubre sugerencias y plan semanal).
 
+**Web**: <https://fabiancito777.github.io/pulso/> (publicada por Actions desde `main`).
+
 > La **v1** (HTML + CSS + JS vanilla, sin build) quedó congelada en `legacy/` y en el tag
 > **`v1-final`**; su documentación de diseño está en **`AGENTS-v1.md`**. El contexto completo de
 > esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
