@@ -18,7 +18,7 @@
  */
 import { useState } from 'preact/hooks';
 
-import { GROUPS, groupLabel, missingEquipment } from '@/domain/data';
+import { GROUPS, groupKeysInUse, groupLabel, missingEquipment } from '@/domain/data';
 import { fmtN } from '@/domain/format';
 import { norm, trunc } from '@/domain/text';
 import { equipment, exercises, sessions } from '@/state/store';
@@ -68,6 +68,11 @@ export function ExercisePickerModal({
     { fam, equip },
   ).filter((ex) => (!group || ex.group === group) && (!needle || norm(ex.name).includes(needle)));
 
+  /* Solo los grupos que TIENES: los del catálogo sin ejercicios (cardio,
+     movilidad y los añadidos a mano) serían chips que no filtran nada. */
+  const inUse = groupKeysInUse(exercises.value);
+  const groups = GROUPS.filter((g) => inUse.has(g.key));
+
   const toggle = (id: string): void =>
     setSelected((current) =>
       current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
@@ -109,7 +114,7 @@ export function ExercisePickerModal({
         <button type="button" class={group ? '' : 'on'} onClick={() => setGroup('')}>
           Todos
         </button>
-        {GROUPS.map((g) => (
+        {groups.map((g) => (
           <button
             key={g.key}
             type="button"

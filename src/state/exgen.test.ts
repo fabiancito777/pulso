@@ -131,7 +131,7 @@ describe('generateExercises', () => {
     expect(opts.json).toBe(true);
     expect(opts.system).toBe(GENERATOR_SYSTEM);
     expect(opts.prompt).toContain('SOLICITUD DEL USUARIO: algo para dorsal');
-    expect(opts.prompt).toContain('Genera 4 ejercicios nuevos');
+    expect(opts.prompt).toContain('Propón hasta 4 ejercicios nuevos');
     expect(promptLine(gen, 'PROHIBIDOS')).toBe(
       `PROHIBIDOS (no los propongas ni pareados): ${prohibido.name}`,
     );
@@ -160,24 +160,23 @@ describe('generateExercises', () => {
     expect(claves).not.toContain('banco_plano');
   });
 
-  it('el atajo de huecos añade el brief HUECOS (sin él no aparece)', async () => {
-    const conAtajo = makeGen([res(PROPUESTAS)]);
-    await exgen.generateExercises({ prompt: 'x', gaps: true }, { generateFn: conAtajo });
-    expect(promptLine(conAtajo, 'HUECOS DEL HISTORIAL')).toBe(
-      'HUECOS DEL HISTORIAL (grupos subestimados y variedad):',
-    );
-    expect(conAtajo.mock.calls[0]?.[0].prompt).toContain('sin datos');
+  it('el brief del historial va SIEMPRE en la petición (sin gastar una request extra)', async () => {
+    const gen = makeGen([res(PROPUESTAS)]);
+    await exgen.generateExercises({ prompt: 'x' }, { generateFn: gen });
 
-    const sinAtajo = makeGen([res(PROPUESTAS)]);
-    await exgen.generateExercises({ prompt: 'x' }, { generateFn: sinAtajo });
-    expect(sinAtajo.mock.calls[0]?.[0].prompt).not.toContain('HUECOS DEL HISTORIAL');
+    expect(gen).toHaveBeenCalledTimes(1);
+    expect(promptLine(gen, 'HISTORIAL Y HUECOS DEL USUARIO')).toBe(
+      'HISTORIAL Y HUECOS DEL USUARIO (míralo para decidir qué falta de verdad):',
+    );
+    /* Usuario nuevo: el brief lo dice en vez de inventarse un progreso. */
+    expect(gen.mock.calls[0]?.[0].prompt).toContain('SIN HISTORIAL');
   });
 
   it('respeta el recuento pedido', async () => {
     const gen = makeGen([res(PROPUESTAS)]);
     await exgen.generateExercises({ prompt: 'x', count: 6 }, { generateFn: gen });
     expect(promptLine(gen, 'SOLICITUD DEL USUARIO')).toBe('SOLICITUD DEL USUARIO: x');
-    expect(gen.mock.calls[0]?.[0].prompt).toContain('Genera 6 ejercicios nuevos');
+    expect(gen.mock.calls[0]?.[0].prompt).toContain('Propón hasta 6 ejercicios nuevos');
   });
 
   it('sin API key → auth y CERO llamadas (ni al generateFn mockeado)', async () => {
@@ -218,6 +217,20 @@ describe('generateExercises', () => {
     );
     expect(conAvisos.kind).toBe('empty');
     expect(conAvisos.message).toContain('El nombre es obligatorio');
+  });
+
+  it('respuesta solo con advice NO es error: es franqueza, y se devuelve', async () => {
+    const soloConsejo = makeGen([
+      res(JSON.stringify({ exercises: [], advice: 'Eso ya lo cubres con tu remo actual.' })),
+    ]);
+    const out = await exgen.generateExercises(
+      { prompt: 'algo para dorsal' },
+      { generateFn: soloConsejo },
+    );
+
+    expect(out.proposals).toEqual([]);
+    expect(out.advice).toBe('Eso ya lo cubres con tu remo actual.');
+    expect(soloConsejo).toHaveBeenCalledTimes(1);
   });
 
   it('la foto se toma al empezar: lo que cambia en vuelo no entra en el parseo', async () => {

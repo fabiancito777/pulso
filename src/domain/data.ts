@@ -33,6 +33,20 @@ export function groupColor(key: string): string {
   return GROUPS.find((g) => g.key === key)?.color ?? '#8e8e8e';
 }
 
+/**
+ * Claves de grupo que TIENEN al menos un ejercicio en la biblioteca dada.
+ *
+ * En el catálogo hay grupos sin ningún ejercicio (cardio y movilidad de serie, y
+ * los 6 añadidos a mano): la biblioteca los lista a propósito —así se ve qué
+ * falta—, pero el planner, «Último estímulo» y los filtros solo deben mirar los
+ * que de verdad se pueden entrenar.
+ */
+export function groupKeysInUse(exercises: readonly Pick<Exercise, 'group'>[]): Set<string> {
+  const out = new Set<string>();
+  for (const ex of exercises) out.add(ex.group);
+  return out;
+}
+
 /* ---------- material ---------- */
 
 export const equipmentKeys: readonly string[] = EQUIPMENT.map((e) => e.key);

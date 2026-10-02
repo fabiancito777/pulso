@@ -30,6 +30,7 @@ import {
   equipPreset,
   equipPresetList,
   goalLabel,
+  groupKeysInUse,
   groupLabel,
   isAvailable,
   missingEquipment,
@@ -675,8 +676,9 @@ function SecEjercicios() {
   /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
   const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
   /* Modal del generador IA (spec `generador-ejercicios.md`): abrirlo NO hace
-     ninguna petición, eso lo decide su botón «Generar» dentro del modal. */
-  const [gen, setGen] = useState(false);
+     ninguna petición, eso lo decide su botón «Generar» dentro del modal. Guarda
+     el texto con el que arranca el campo libre, o `null` si está cerrado. */
+  const [gen, setGen] = useState<string | null>(null);
   /* «Crear y editar» (coach y generador, Fase 0): la petición vive en
      `state/exercise-create.ts` y aquí se consume UNA vez. Leer la señal en el
      cuerpo del componente es lo que suscribe esta sección a `requestEdit`, que
@@ -744,6 +746,12 @@ function SecEjercicios() {
     });
   const shown = filtered.filter((e) => e.allowed).length;
   const filteredIds = filtered.map((e) => e.id);
+
+  /* Grupos del catálogo SIN ningún ejercicio (cardio y movilidad de serie, y los
+     añadidos a mano). No se esconden: son justo la lista de lo que te falta, y
+     cada uno lleva su atajo para pedirle ejercicios a la IA. */
+  const inUse = groupKeysInUse(list);
+  const emptyGroups = GROUPS.filter((g) => !inUse.has(g.key));
 
   /* Agrupado por músculo, en el orden del catálogo: así se recorre la biblioteca
      como en Rutinas y no hay que cruzar dos selects para encontrar algo. */
@@ -851,7 +859,7 @@ function SecEjercicios() {
             type="button"
             class="btn sm"
             title="Inventa ejercicios nuevos con la IA y los creas solo si los confirmas"
-            onClick={() => setGen(true)}
+            onClick={() => setGen('')}
           >
             <Icon name="sparkles" />
             Generar con IA
@@ -970,6 +978,39 @@ function SecEjercicios() {
           <div class="empty">Sin resultados con estos filtros</div>
         </div>
       )}
+      {!needle && emptyGroups.length ? (
+        <div class="ex-group mt-s">
+          <div class="ex-group-head">
+            <Icon name="sparkles" class="ex-group-caret" />
+            <span class="grow">Sin ejercicios todavía</span>
+            <span class="ex-group-count">{emptyGroups.length}</span>
+          </div>
+          <div class="card flush">
+            {emptyGroups.map((g) => (
+              <div class="ex-pick" key={g.key}>
+                <span class="ex-fav" aria-hidden="true" style="color:var(--muted-2)">
+                  +
+                </span>
+                <div class="grow" style="min-width:0">
+                  <div class="row" style="gap:6px">
+                    <span class="li-title ellipsis">{g.label}</span>
+                  </div>
+                  <div class="li-sub">Ningún ejercicio tuyo de este grupo todavía.</div>
+                </div>
+                <button
+                  type="button"
+                  class="btn sm"
+                  title={`Generar ejercicios de ${g.label} con la IA`}
+                  onClick={() => setGen(`Ejercicios nuevos para ${g.label}`)}
+                >
+                  <Icon name="sparkles" />
+                  Generar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <InfoCard>
         <b>★ Favorito</b> es prioridad, no exclusión: los marcados salen primeros en los buscadores,
         en los generadores y en los consejos del coach. <b>Oculto</b> es solo presentación (lo saca
@@ -983,7 +1024,7 @@ function SecEjercicios() {
           onClose={() => setEditor(null)}
         />
       )}
-      {gen ? <ExerciseGenModal onClose={() => setGen(false)} /> : null}
+      {gen === null ? null : <ExerciseGenModal initialPrompt={gen} onClose={() => setGen(null)} />}
     </>
   );
 }

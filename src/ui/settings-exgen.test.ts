@@ -123,12 +123,12 @@ describe('modal · la petición vive en un handler, no en el render', () => {
     expect(MODAL).toContain('Generando…');
   });
 
-  it('el chip de huecos solo rellena el textarea: cero peticiones', () => {
-    const onGaps = MODAL.slice(MODAL.indexOf('const onGaps'), MODAL.indexOf('const run'));
-    expect(onGaps).toContain('setGaps');
-    expect(onGaps).toContain('setText(GAPS_HINT)');
-    expect(onGaps).not.toContain('generateExercises');
-    expect(onGaps).not.toContain('await');
+  it('el consejo (advice) se pinta, pero no dispara nada por sí solo', () => {
+    const bloque = MODAL.slice(MODAL.indexOf('{advice ?'), MODAL.indexOf('{issues.length ?'));
+    expect(bloque).toContain('Te lo digo antes de inventar');
+    expect(bloque).not.toContain('generateExercises');
+    /* y el empty-state distingue «no hay propuestas» de «aún no has pedido» */
+    expect(MODAL).toContain('Sin propuestas nuevas');
   });
 });
 
@@ -201,9 +201,15 @@ describe('modal · sin API key → cero llamadas y atajo a Coach AI', () => {
 describe('Ajustes · botón, aviso y montaje del modal', () => {
   it('«Generar con IA» abre el modal (sin tocar la red aquí)', () => {
     expect(SETTINGS).toContain('Generar con IA');
-    expect(SETTINGS).toContain('onClick={() => setGen(true)}');
-    expect(SETTINGS).toContain('{gen ? <ExerciseGenModal onClose={() => setGen(false)} /> : null}');
+    expect(SETTINGS).toContain("onClick={() => setGen('')}");
+    expect(SETTINGS).toContain('{gen === null ? null : <ExerciseGenModal');
+    expect(SETTINGS).toContain('initialPrompt={gen}');
     expect(SETTINGS).not.toContain('generateExercises');
+  });
+
+  it('los grupos sin ejercicios se pueden generar desde la biblioteca', () => {
+    expect(SETTINGS).toContain('Sin ejercicios todavía');
+    expect(SETTINGS).toContain('setGen(`Ejercicios nuevos para ${g.label}`)');
   });
 
   it('sin API key se enseña el acceso directo a Ajustes → Coach AI', () => {

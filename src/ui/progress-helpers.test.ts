@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { e1rm } from '@/domain/analytics';
-import { GROUPS } from '@/domain/data';
+import { groupKeysInUse } from '@/domain/data';
 import type { Exercise, Session, SessionEntry, SetLog, Unit } from '@/domain/types';
 
 import {
@@ -95,6 +95,7 @@ const BIBLIO: Exercise[] = [
   ejercicio('curl', 'biceps', 'Curl de bíceps'),
   ejercicio('cycling', 'cardio', 'Bicicleta'),
   ejercicio('estirar', 'movilidad', 'Estiramiento'),
+  ejercicio('militar', 'hombros', 'Press militar'),
 ];
 
 const exIds = (list: readonly Exercise[]): string[] => list.map((e) => e.id);
@@ -200,8 +201,11 @@ describe('lastStimulusRows', () => {
 
   const rows = lastStimulusRows(lista, BIBLIO, hoy);
 
-  it('excluye cardio y movilidad (se miden en minutos, no en días)', () => {
-    expect(rows).toHaveLength(GROUPS.length - 2);
+  it('solo saca los grupos que tienes, y sin cardio ni movilidad (van en minutos)', () => {
+    const esperados = [...groupKeysInUse(BIBLIO)].filter(
+      (k) => k !== 'cardio' && k !== 'movilidad',
+    );
+    expect(rows.map((r) => r.key).sort()).toEqual(esperados.sort());
     expect(rows.some((r) => r.key === 'cardio' || r.key === 'movilidad')).toBe(false);
   });
 

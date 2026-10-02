@@ -111,6 +111,15 @@ export type ProposalDraftResult =
  * «gemelos» antes que «elevación», «press militar» antes que «press»).
  */
 const GROUP_KEYWORDS: readonly (readonly [RegExp, string])[] = [
+  /* Los 6 grupos que no venían en la v1 van PRIMERO: comparten palabras con los
+     de siempre («encogimiento» no es hombros, «extensión de espalda» no es
+     tríceps) y el catálogo los recorre en este orden. */
+  [/cuello|cervical/, 'cuello'],
+  [/trapecio|encogimiento|shrug/, 'trapecio'],
+  [/lumbar|espalda baja|hiperextension|extension de espalda|buenos dias/, 'lumbares'],
+  [/oblicuo|russian twist|lenador|hacha/, 'oblicuos'],
+  [/aductor|aduccion|aductores/, 'aductores'],
+  [/serrato|serratus|push up plus|plus push/, 'serrato'],
   [/antebrazo|muneca/, 'antebrazo'],
   [/curl femoral|isquio|femoral/, 'femoral'],
   [/curl|biceps/, 'biceps'],
@@ -119,7 +128,7 @@ const GROUP_KEYWORDS: readonly (readonly [RegExp, string])[] = [
   [/sentadilla|cuadriceps|zancada|prensa/, 'cuadriceps'],
   [/gemelo|pantorrilla/, 'gemelos'],
   [/abdom|plancha|core|crunch|sit up/, 'core'],
-  [/face pull|hombro|press militar|trapez|elevacion lateral/, 'hombros'],
+  [/face pull|hombro|press militar|elevacion lateral/, 'hombros'],
   [/elevac|hip thrust|gluteo|puente/, 'gluteos'],
   [/flexion|pecho|press|banca|apertur|fondos/, 'pecho'],
   [/cardio|carrera|trote|bici|eliptica|saltar/, 'cardio'],

@@ -37,7 +37,9 @@ const byId = (id: string): Exercise => {
 
 describe('catálogo', () => {
   it('trae los grupos, el material y las plantillas de la v1', () => {
-    expect(GROUPS).toHaveLength(13);
+    /* 13 de la v1 + 6 añadidos a mano (trapecio, lumbares, oblicuos, aductores,
+       cuello, serrato): la v1 no los tenía y el generador IA sí los propone */
+    expect(GROUPS).toHaveLength(19);
     /* 48 de la lista + 'paralelas', que la v1 inserta con splice */
     expect(EQUIPMENT).toHaveLength(49);
     expect(equipmentKeys).toContain('paralelas');

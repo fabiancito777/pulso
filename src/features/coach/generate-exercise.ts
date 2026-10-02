@@ -29,7 +29,7 @@ import {
   recentExercises,
   sessionsSince,
 } from '@/domain/analytics';
-import { GROUPS } from '@/domain/data';
+import { GROUPS, groupKeysInUse } from '@/domain/data';
 import type { EquipmentMap } from '@/domain/data';
 import { fmtVol } from '@/domain/format';
 import { UNILATERAL_RX } from '@/domain/match';
@@ -39,7 +39,7 @@ import type { Exercise, Session } from '@/domain/types';
 import { parseJSON } from './parse';
 import type { CoachRequest } from './types';
 
-/** Las 13 claves de `GROUPS`, en el orden del catálogo (nunca se escriben a mano). */
+/** Todas las claves de `GROUPS`, en el orden del catálogo (nunca se escriben a mano). */
 const GROUP_KEYS = GROUPS.map((g) => g.key).join(', ');
 
 /**
@@ -47,11 +47,11 @@ const GROUP_KEYS = GROUPS.map((g) => g.key).join(', ');
  * regla de «EXCLUSIVAMENTE ejercicios de la lista» (`prompts.ts`), porque aquí
  * la lista es justo lo contrario: lo pedido son ejercicios que NO existen.
  * Contiene el esquema literal de cada objeto (compartido con el chat del coach)
- * y las 13 claves de grupo, así el modelo no puede devolver un grupo
- * inexistente.
+ * y TODAS las claves de grupo del catálogo, así el modelo no puede devolver un
+ * grupo inexistente.
  */
 export const GENERATOR_SYSTEM = [
-  'Eres el generador de ejercicios de Pulso. Inventas ejercicios NUEVOS para la biblioteca del usuario (no variantes de los que ya tiene, ni copias de los existentes).',
+  'Eres el generador de ejercicios de Pulso. Propones ejercicios NUEVOS para la biblioteca del usuario (no variantes de los que ya tiene, ni copias de los existentes).',
   'Reglas:',
   '- Responde SOLO con el JSON pedido: sin markdown, sin texto fuera del JSON, sin bloques ```consulta ni ```memoria.',
   `- "group" debe ser EXACTAMENTE uno de: ${GROUP_KEYS}.`,
@@ -59,18 +59,18 @@ export const GENERATOR_SYSTEM = [
   '- "type" ∈ compuesto | aislado | cardio | movilidad; "sets" 1-12, "rest" 0-600 s, "repMin" y "repMax" 1-100 con repMin <= repMax.',
   '- Si "unilateral" es true, el "name" DEBE contener «unilateral» / «a una mano» / «por brazo» (o «por pierna»); si es false, no lo lleve.',
   '- "desc": UNA frase en español con la clave técnica de la ejecución.',
-  '- Nada de ejercicios que lastimen la espalda baja con cargas imposibles; prioriza el material que el usuario tiene activo y los grupos que aparecen en HUECOS.',
-  '- Ejemplo de la forma exacta de cada elemento del array:',
+  '- Nada de ejercicios que lastimen la espalda baja con cargas imposibles; prioriza el material que el usuario tiene activo.',
+  '',
+  'SÉ SINCERO: no le des la razón por defecto ni rellenes para cumplir. Usa el historial y la biblioteca que te paso para decidir si de verdad hace falta algo:',
+  '- Si lo que pide YA está cubierto por su biblioteca (mismo patrón de movimiento con el mismo material y músculo), NO inventes un duplicado: devuelve "exercises": [] y explícalo en "advice".',
+  '- Si no tienes datos que justifiquen lo que pide (por ejemplo «para mi punto débil» sin historial), dilo en "advice" en vez de inventarte un análisis.',
+  '- Si el historial contradice la petición (dice que necesita X pero lleva semanas entrenando X y le falta Y), dilo en "advice" y propón lo que de verdad falta.',
+  '- Nunca inventes cifras suyas: las únicas que valen son las que aparecen en la petición.',
+  '- "advice": UNA frase corta y concreta en español (o cadena vacía). Es lo que verá el usuario encima de tus propuestas.',
+  '',
+  'Forma exacta de la respuesta (y de cada elemento del array):',
   AI_EXERCISE_SCHEMA,
 ].join('\n');
-
-/**
- * Texto corto con el que el chip «Según mis huecos del historial» rellena el
- * campo libre. El brief CON cifras lo calcula `gapsBrief` dentro de
- * `generateExercises`, en el momento del clic: pulsar el chip no cuesta ni una
- * request (spec §4).
- */
-export const GAPS_HINT = 'según mis huecos del historial: grupos subestimados y variedad';
 
 /** Cuántos ejercicios se piden por defecto y tope de la petición (spec §2). */
 const COUNT_DEFAULT = 4;
@@ -97,8 +97,12 @@ export interface GeneratorCtx {
   favorites: string[];
   /** nombres existentes, tope `EXISTING_MAX`, para que no repita */
   existing: string[];
-  /** brief de huecos del historial ya montado (`gapsBrief`); solo con el atajo */
-  gaps?: string;
+  /**
+   * brief del historial ya montado (`gapsBrief`). Va SIEMPRE: es la misma
+   * petición, así que no cuesta una llamada extra. Contempla el caso de usuario
+   * sin sesiones, en el que el brief dice justamente eso.
+   */
+  gaps: string;
   /** cuántos ejercicios se piden */
   count: number;
 }
@@ -123,13 +127,16 @@ export function buildGeneratorRequest(userText: string, ctx: GeneratorCtx): Coac
   if (ctx.existing.length) {
     lines.push(`YA EXISTEN (no copies ni variaciones cercanas): ${ctx.existing.join(', ')}`);
   }
-  if (ctx.gaps?.trim()) {
-    lines.push('HUECOS DEL HISTORIAL (grupos subestimados y variedad):', ctx.gaps.trim());
+  if (ctx.gaps.trim()) {
+    lines.push(
+      'HISTORIAL Y HUECOS DEL USUARIO (míralo para decidir qué falta de verdad):',
+      ctx.gaps.trim(),
+    );
   }
   lines.push(
     `SOLICITUD DEL USUARIO: ${userText.trim() || 'sorpréndeme con ejercicios nuevos'}`,
-    `Genera ${count} ejercicios nuevos. Devuelve SOLO este JSON:`,
-    `{"exercises":[${AI_EXERCISE_SCHEMA}]}`,
+    `Propón hasta ${count} ejercicios nuevos, y solo si aportan algo. Si no hace falta ninguno, deja el array vacío y explícalo en "advice". Devuelve SOLO este JSON:`,
+    `{"exercises":[${AI_EXERCISE_SCHEMA}],"advice":"una frase corta o cadena vacía"}`,
   );
   return { system: GENERATOR_SYSTEM, prompt: lines.join('\n'), json: true };
 }
@@ -150,6 +157,22 @@ export function gapsBrief(
   exercises: readonly Exercise[],
   todayIso: string,
 ): string {
+  const inUse = groupKeysInUse(exercises);
+  const sinNinguno = GROUPS.filter((g) => !inUse.has(g.key));
+  const sinNingunoLinea = sinNinguno.length
+    ? `- Grupos SIN NINGÚN ejercicio en su biblioteca: ${sinNinguno.map((g) => g.label).join(', ')}.`
+    : '';
+
+  /* Edge case: usuario que acaba de empezar. Sin sesiones no hay huecos que
+     calcular, y el modelo tiene que saberlo para no inventarse un progreso. */
+  if (!sessions.length) {
+    return [
+      '- SIN HISTORIAL: no hay ninguna sesión registrada todavía, así que no hay progreso ni huecos que analizar. No inventes cifras suyas.',
+      `- Su biblioteca tiene ${exercises.length} ejercicios.`,
+      ...(sinNingunoLinea ? [sinNingunoLinea] : []),
+    ].join('\n');
+  }
+
   const week = sessionsSince(sessions, 7, todayIso);
   const vol = groupVolume(week, exercises);
   const sets = groupSets(week, exercises);
@@ -163,6 +186,10 @@ export function gapsBrief(
     const days = daysSince(trained, todayIso);
     return `- ${g.label}: ${days ?? 0} d desde el último estímulo · ${n} series / ${fmtVol(kg)} kg en 7 días`;
   });
+
+  /* Un grupo sin ejercicios es el hueco más claro que hay: no hay con qué
+     entrenarlo, así que hay que llenarlo. */
+  if (sinNingunoLinea) lines.push(sinNingunoLinea);
 
   const recent = recentExercises(sessions, exercises, 8);
   if (recent.length) {
@@ -201,6 +228,11 @@ export interface ParseOutcome {
   proposals: ExerciseProposal[];
   /** problemas concretos («no tienes ese material», «propuesta 2 ilegible»…) */
   issues: string[];
+  /**
+   * Lo que el modelo dice SIN proponer nada (franqueza): «esto ya lo cubres»,
+   * «no tienes historial para justificarlo»… Vacío si no dijo nada.
+   */
+  advice?: string;
   /** la respuesta no era JSON interpretable ni traía ejercicios */
   parseError?: string;
 }
@@ -238,11 +270,16 @@ export function parseProposals(text: string, ctx: ParseContext): ParseOutcome {
     return { proposals, issues, parseError: 'no pude interpretar la respuesta' };
   }
 
+  /* El modelo puede responder SOLO con `advice` (sin `exercises`): eso no es un
+     error de parseo, es franqueza, así que no se pierde. */
+  const advice = isPlain(payload) ? asText(payload.advice).trim() : '';
   const list: unknown[] | null = Array.isArray(payload)
     ? (payload as unknown[])
     : isPlain(payload) && Array.isArray(payload.exercises)
       ? (payload.exercises as unknown[])
-      : null;
+      : isPlain(payload) && advice
+        ? []
+        : null;
   if (!list) {
     return { proposals, issues, parseError: 'la respuesta no traía ningún ejercicio' };
   }
@@ -309,5 +346,5 @@ export function parseProposals(text: string, ctx: ParseContext): ParseOutcome {
     });
   });
 
-  return { proposals, issues };
+  return { proposals, issues, ...(advice ? { advice } : {}) };
 }

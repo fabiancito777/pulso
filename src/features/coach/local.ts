@@ -23,7 +23,7 @@
  *   `generador`, que es como la v1 etiquetaba la rutina nacida aquí.
  */
 import { daysSince, groupSets, lastTrained, sessionsSince } from '@/domain/analytics';
-import { GOAL_REPS, GOAL_SETS, GROUPS, goalLabel, groupLabel } from '@/domain/data';
+import { GOAL_REPS, GOAL_SETS, GROUPS, goalLabel, groupKeysInUse, groupLabel } from '@/domain/data';
 import { addDays, startOfWeek } from '@/domain/dates';
 import { clamp, int, num } from '@/domain/num';
 import type { PlanExercise, PlanInput, SuggestFn } from '@/domain/plan';
@@ -157,11 +157,14 @@ export function localSuggest(params: LocalParams): SuggestJSON {
   const sets7 = groupSets(week, exercises);
   const sinHistorial = sessions.length === 0;
 
-  /* cardio y movilidad se miden en minutos: aquí no puntúan (v1) */
+  /* cardio y movilidad se miden en minutos: aquí no puntúan (v1). Y los grupos
+     sin ningún ejercicio (cardio/movilidad de serie y los añadidos a mano) no
+     son candidatos: puntuarlos haría que un grupo vacío gastara un hueco. */
   const skip = new Set(['cardio', 'movilidad']);
+  const inUse = groupKeysInUse(exercises);
   const scored: ScoredGroup[] = sinHistorial
     ? []
-    : GROUPS.filter((g) => !skip.has(g.key))
+    : GROUPS.filter((g) => !skip.has(g.key) && inUse.has(g.key))
         .map((g) => {
           const isoLast = last[g.key] ?? null;
           const days = daysSince(isoLast, todayIso);

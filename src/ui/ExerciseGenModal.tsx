@@ -28,7 +28,6 @@ import { useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { equipLabel, groupLabel } from '@/domain/data';
-import { GAPS_HINT } from '@/features/coach/generate-exercise';
 import type { ExerciseProposal } from '@/features/coach/generate-exercise';
 import { hasApiKey } from '@/state/coach';
 import { createExerciseFromAI, requestEdit } from '@/state/exercise-create';
@@ -50,24 +49,27 @@ interface GenItem {
   error: string;
 }
 
-export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
-  const [text, setText] = useState('');
-  const [gaps, setGaps] = useState(false);
+/**
+ * @param initialPrompt texto con el que arranca el campo libre. Lo usa la
+ *   biblioteca para el atajo de un grupo vacío («Generar ejercicios de X»).
+ */
+export function ExerciseGenModal({
+  onClose,
+  initialPrompt = '',
+}: {
+  onClose: () => void;
+  initialPrompt?: string;
+}) {
+  const [text, setText] = useState(initialPrompt);
   const [count, setCount] = useState(4);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [advice, setAdvice] = useState('');
   const [issues, setIssues] = useState<readonly string[]>([]);
   const [items, setItems] = useState<GenItem[]>([]);
   const hasKey = hasApiKey();
 
   const pending = items.filter((item) => item.selected && !item.created).length;
-
-  /** El atajo de huecos SOLO rellena el campo y la flag: ni una petición. */
-  const onGaps = (): void => {
-    const next = !gaps;
-    setGaps(next);
-    if (next && !text.trim()) setText(GAPS_HINT);
-  };
 
   /** Único punto del modal que pide una petición: 1 clic = 1 llamada, sin retry. */
   const run = async (): Promise<void> => {
@@ -75,9 +77,11 @@ export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
     if (busy || !hasKey || !prompt) return;
     setBusy(true);
     setError('');
+    setAdvice('');
     setIssues([]);
     try {
-      const out = await generateExercises({ prompt, gaps, count });
+      const out = await generateExercises({ prompt, count });
+      setAdvice(out.advice ?? '');
       setIssues(out.issues);
       setItems(
         out.proposals.map((proposal) => ({
@@ -206,6 +210,10 @@ export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
       <div class="tiny muted">
         Nada se escribe hasta que lo confirmas: aquí solo se previsualizan.
       </div>
+      <div class="tiny muted mt-s">
+        Mira siempre tu historial y tu material. Si lo que pides ya lo cubres, o no encaja con tus
+        datos, te lo dirá en vez de inventarse ejercicios.
+      </div>
 
       <label class="field mt-s">
         <span class="label">Describe qué buscas</span>
@@ -219,15 +227,6 @@ export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
       </label>
 
       <div class="row wrap mt-s" style="gap:8px">
-        <button
-          type="button"
-          class={`toggle-pill ${gaps ? 'on' : 'off'}`}
-          aria-pressed={gaps}
-          onClick={onGaps}
-        >
-          <Icon name="chart" />
-          Según mis huecos del historial
-        </button>
         <select
           class="select"
           style="width:auto;max-width:160px"
@@ -251,6 +250,20 @@ export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
       </div>
 
       {error ? <div class="exgen-error mt-s">{error}</div> : null}
+
+      {advice ? (
+        <section class="card accent mt-s">
+          <div class="row" style="gap:9px;align-items:flex-start">
+            <span class="ico" style="color:var(--accent)">
+              <Icon name="sparkles" />
+            </span>
+            <div class="grow">
+              <div class="h3">Te lo digo antes de inventar</div>
+              <div class="sub">{advice}</div>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {issues.length ? (
         <div class="exgen-issues mt-s">
@@ -334,8 +347,12 @@ export function ExerciseGenModal({ onClose }: { onClose: () => void }) {
           })
         ) : (
           <div class="empty">
-            <Icon name="sparkles" />
-            <div>Escribe qué buscas y pulsa «Generar»: cada clic hace una petición.</div>
+            <Icon name={advice ? 'check-circle' : 'sparkles'} />
+            <div>
+              {advice
+                ? 'Sin propuestas nuevas: el aviso de arriba lo explica.'
+                : 'Escribe qué buscas y pulsa «Generar»: cada clic hace una petición.'}
+            </div>
           </div>
         )}
       </div>

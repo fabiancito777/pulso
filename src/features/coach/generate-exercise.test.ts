@@ -12,7 +12,6 @@ import type { Exercise, Session } from '@/domain/types';
 
 import {
   GENERATOR_SYSTEM,
-  GAPS_HINT,
   buildGeneratorRequest,
   gapsBrief,
   parseProposals,
@@ -31,6 +30,7 @@ function ctx(over: Partial<GeneratorCtx> = {}): GeneratorCtx {
     favorites: ['Dominadas'],
     existing: ['Press de banca con barra', 'Dominadas'],
     count: 4,
+    gaps: '',
     ...over,
   };
 }
@@ -83,8 +83,8 @@ describe('GENERATOR_SYSTEM', () => {
     expect(GENERATOR_SYSTEM).toContain(AI_EXERCISE_SCHEMA);
   });
 
-  it('enumera las 13 claves de grupo del catálogo', () => {
-    expect(GROUPS).toHaveLength(13);
+  it('enumera TODAS las claves de grupo (13 de la v1 + 6 añadidas a mano)', () => {
+    expect(GROUPS).toHaveLength(19);
     for (const g of GROUPS) expect(GENERATOR_SYSTEM).toContain(g.key);
   });
 
@@ -93,8 +93,10 @@ describe('GENERATOR_SYSTEM', () => {
     expect(GENERATOR_SYSTEM).toContain('ejercicios NUEVOS');
   });
 
-  it('el texto del chip de huecos sigue siendo el que espera el modal', () => {
-    expect(GAPS_HINT).toMatch(/huecos del historial/i);
+  it('pide franqueza: poder no proponer nada y explicarlo en «advice»', () => {
+    expect(GENERATOR_SYSTEM).toContain('SÉ SINCERO');
+    expect(GENERATOR_SYSTEM).toContain('"advice"');
+    expect(GENERATOR_SYSTEM).toContain('"exercises": []');
   });
 });
 
@@ -104,8 +106,10 @@ describe('buildGeneratorRequest', () => {
     expect(req.json).toBe(true);
     expect(req.system).toBe(GENERATOR_SYSTEM);
     expect(req.prompt).toContain('SOLICITUD DEL USUARIO: remo para dorsal');
-    expect(req.prompt).toContain('Genera 4 ejercicios nuevos');
-    expect(req.prompt).toContain(`{"exercises":[${AI_EXERCISE_SCHEMA}]}`);
+    expect(req.prompt).toContain('Propón hasta 4 ejercicios nuevos');
+    expect(req.prompt).toContain(
+      `{"exercises":[${AI_EXERCISE_SCHEMA}],"advice":"una frase corta o cadena vacía"}`,
+    );
   });
 
   it('imprime tal cual el material que recibe (nada se le añade por su cuenta)', () => {
@@ -126,24 +130,26 @@ describe('buildGeneratorRequest', () => {
     expect(req.prompt).toContain('SOLICITUD DEL USUARIO: algo para tríceps');
   });
 
-  it('el brief de huecos solo viaja cuando se usó el atajo', () => {
-    const withGaps = buildGeneratorRequest('x', ctx({ gaps: '- Pecho: 0 d' })).prompt;
-    const without = buildGeneratorRequest('x', ctx()).prompt;
-    expect(withGaps).toContain('HUECOS DEL HISTORIAL (grupos subestimados y variedad):');
-    expect(withGaps).toContain('- Pecho: 0 d');
-    expect(without).not.toContain('HUECOS DEL HISTORIAL');
+  it('el historial viaja SIEMPRE (es la misma petición, no cuesta una llamada más)', () => {
+    const con = buildGeneratorRequest('x', ctx({ gaps: '- Pecho: 0 d' })).prompt;
+    expect(con).toContain('HISTORIAL Y HUECOS DEL USUARIO');
+    expect(con).toContain('- Pecho: 0 d');
+    /* sin brief no se cuela una sección vacía */
+    expect(buildGeneratorRequest('x', ctx({ gaps: '   ' })).prompt).not.toContain(
+      'HISTORIAL Y HUECOS DEL USUARIO',
+    );
   });
 
   it('clampa el recuento (1..8, default 4 con valores rotos)', () => {
     const n = (count: number): string => {
       const req = buildGeneratorRequest('x', ctx({ count }));
-      return req.prompt.match(/Genera \d+ ejercicios/)?.[0] ?? '';
+      return req.prompt.match(/Propón hasta \d+ ejercicios/)?.[0] ?? '';
     };
-    expect(n(4)).toBe('Genera 4 ejercicios');
-    expect(n(99)).toBe('Genera 8 ejercicios');
-    expect(n(0)).toBe('Genera 4 ejercicios');
-    expect(n(-3)).toBe('Genera 1 ejercicios');
-    expect(n(7.6)).toBe('Genera 7 ejercicios');
+    expect(n(4)).toBe('Propón hasta 4 ejercicios');
+    expect(n(99)).toBe('Propón hasta 8 ejercicios');
+    expect(n(0)).toBe('Propón hasta 4 ejercicios');
+    expect(n(-3)).toBe('Propón hasta 1 ejercicios');
+    expect(n(7.6)).toBe('Propón hasta 7 ejercicios');
   });
 
   it('una biblioteca vacía o un material sin activar no rompe la petición', () => {
@@ -168,12 +174,29 @@ describe('gapsBrief', () => {
   ];
   const hoy = '2026-09-30';
 
-  it('sin historial dice «sin datos» en los 13 grupos y no inventa repetición', () => {
-    const brief = gapsBrief([], [], hoy);
-    const lines = brief.split('\n');
-    expect(lines).toHaveLength(13);
-    for (const line of lines) expect(line).toMatch(/: sin datos$/);
+  it('usuario nuevo (sin sesiones): lo dice claro y no inventa historial', () => {
+    const brief = gapsBrief([], library, hoy);
+    expect(brief).toContain('SIN HISTORIAL');
+    expect(brief).toContain('no hay ninguna sesión registrada');
+    expect(brief).toContain(`Su biblioteca tiene ${library.length} ejercicios`);
     expect(brief).not.toContain('Repetición');
+  });
+
+  it('con sesiones pero con una biblioteca sin ejercicios: «sin datos» en todos', () => {
+    const brief = gapsBrief([session(hoy, [])], [], hoy);
+    const sinDatos = brief.split('\n').filter((l) => l.endsWith(': sin datos'));
+    expect(sinDatos).toHaveLength(GROUPS.length);
+  });
+
+  it('señala los grupos SIN ningún ejercicio (el hueco más claro que hay)', () => {
+    const sessions = [
+      session(hoy, [
+        { exId: 'ex-press', group: 'pecho', sets: [{ weight: 60, reps: 5, done: true }] },
+      ]),
+    ];
+    const brief = gapsBrief(sessions, library, hoy);
+    expect(brief).toContain('SIN NINGÚN ejercicio en su biblioteca');
+    expect(brief).toContain(label('cuello'));
   });
 
   it('suma volumen y series de 7 días, días desde el último estímulo y repetidos', () => {
@@ -358,6 +381,34 @@ describe('parseProposals', () => {
     const out = parseProposals(JSON.stringify({ nada: 1 }), parseCtx());
     expect(out.parseError).toBe('la respuesta no traía ningún ejercicio');
     expect(out.proposals).toEqual([]);
+  });
+
+  it('«advice» sin propuestas NO es un error: es franqueza', () => {
+    const out = parseProposals(
+      wrap({ exercises: [], advice: 'Ya cubres la espalda con Remo con Barra.' }),
+      parseCtx(),
+    );
+    expect(out.parseError).toBeUndefined();
+    expect(out.proposals).toEqual([]);
+    expect(out.advice).toBe('Ya cubres la espalda con Remo con Barra.');
+  });
+
+  it('acepta una respuesta con SOLO advice (sin array de ejercicios)', () => {
+    const out = parseProposals(
+      wrap({ advice: 'No tienes historial para justificarlo.' }),
+      parseCtx(),
+    );
+    expect(out.parseError).toBeUndefined();
+    expect(out.advice).toBe('No tienes historial para justificarlo.');
+  });
+
+  it('el advice convive con las propuestas', () => {
+    const out = parseProposals(
+      wrap({ exercises: [{ name: 'Plancha lateral' }], advice: 'Ojo con el volumen de core.' }),
+      parseCtx(),
+    );
+    expect(out.proposals).toHaveLength(1);
+    expect(out.advice).toBe('Ojo con el volumen de core.');
   });
 });
 

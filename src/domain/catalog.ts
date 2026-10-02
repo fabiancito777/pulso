@@ -51,6 +51,11 @@ function E(
 }
 
 /* ---------- grupos musculares ---------- */
+/* Los 13 de la v1 (generados) + los AÑADIDOS A MANO al final: la v1 no tenía
+   estos músculos y el generador IA sí puede proponer ejercicios para ellos. Se
+   añaden aquí (y no en `seed.ts`) porque son taxonomía del catálogo: el
+   generador enumera estas claves, los gráficos y el planner las recorren, y
+   `data.test.ts` vigila que todo grupo guardado exista. */
 export const GROUPS: readonly MuscleGroup[] = [
   { key: 'pecho', label: 'Pecho', color: '#60a5fa' },
   { key: 'espalda', label: 'Espalda', color: '#34d399' },
@@ -65,6 +70,13 @@ export const GROUPS: readonly MuscleGroup[] = [
   { key: 'antebrazo', label: 'Antebrazo', color: '#c084fc' },
   { key: 'cardio', label: 'Cardio', color: '#4ade80' },
   { key: 'movilidad', label: 'Movilidad', color: '#8b9dc3' },
+  /* --- añadidos a mano (no venían en la v1) --- */
+  { key: 'trapecio', label: 'Trapecio', color: '#fdba74' },
+  { key: 'lumbares', label: 'Lumbares', color: '#a3a3a3' },
+  { key: 'oblicuos', label: 'Oblicuos', color: '#5eead4' },
+  { key: 'aductores', label: 'Aductores', color: '#f9a8d4' },
+  { key: 'cuello', label: 'Cuello', color: '#d8b4fe' },
+  { key: 'serrato', label: 'Serrato', color: '#bef264' },
 ];
 
 /* ---------- sinergias: qué grupos acompaña cada uno ---------- */

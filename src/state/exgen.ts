@@ -44,8 +44,6 @@ const DEFAULT_COUNT = 4;
 export interface GenExercisesInput {
   /** campo libre del usuario, ya montado */
   prompt: string;
-  /** atajo «según mis huecos del historial»: añade la sección HUECOS */
-  gaps?: boolean;
   /** cuántos ejercicios se piden (3-6 recomendado; el tope lo pone el prompt) */
   count?: number;
 }
@@ -59,6 +57,11 @@ export interface ExgenDeps {
 export interface ExgenOutcome {
   /** propuestas normalizadas y validadas, listas para `createExerciseFromAI` */
   proposals: ExerciseProposal[];
+  /**
+   * Lo que el modelo dice sin proponer nada (franqueza): «esto ya lo cubres»,
+   * «no tienes historial para justificarlo»… Puede venir con o sin propuestas.
+   */
+  advice?: string;
   /** avisos (material que no tienes, filas ilegibles, duplicados en la tanda…) */
   issues: string[];
   usage?: GenResult['usage'];
@@ -88,8 +91,11 @@ function makeCtx(input: GenExercisesInput, snap: GenSnapshot, todayIso: string):
     favorites: snap.library.filter((ex) => ex.fav === true).map((ex) => ex.name),
     existing: snap.library.map((ex) => ex.name).slice(0, EXISTING_MAX),
     count: input.count ?? DEFAULT_COUNT,
+    /* Va SIEMPRE: es la misma petición (no gasta una llamada de más) y es lo que
+       permite decir «esto ya lo cubres» con fundamento. `gapsBrief` contempla el
+       caso de usuario sin sesiones. */
+    gaps: gapsBrief(snap.history, snap.library, todayIso),
   };
-  if (input.gaps) ctx.gaps = gapsBrief(snap.history, snap.library, todayIso);
   return ctx;
 }
 
@@ -97,8 +103,8 @@ function makeCtx(input: GenExercisesInput, snap: GenSnapshot, todayIso: string):
  * Genera ejercicios nuevos con UNA llamada al modelo.
  *
  * @throws `GeminiError` de kind `auth` (sin key, sin llamar a nadie), `parse`
- *   (respuesta ilegible) o `empty` (ninguna propuesta utilizable), además de
- *   los que pueda devolver el cliente (`quota`/`network`/`blocked`/`http`).
+ *   (respuesta ilegible) o `empty` (ni propuestas ni consejo que enseñar),
+ *   además de los que pueda devolver el cliente (`quota`/`network`/`blocked`/`http`).
  */
 export async function generateExercises(
   input: GenExercisesInput,
@@ -135,7 +141,9 @@ export async function generateExercises(
   if (parsed.parseError) {
     throw new GeminiError('parse', 'No entendí la respuesta del modelo');
   }
-  if (!parsed.proposals.length) {
+  /* Sin propuestas: si el modelo explicó por qué (franqueza), NO es un error,
+     es una respuesta válida que la UI pinta como consejo. */
+  if (!parsed.proposals.length && !parsed.advice) {
     throw new GeminiError(
       'empty',
       parsed.issues.length ? parsed.issues.join(' · ') : 'El modelo no devolvió ejercicios nuevos',
@@ -145,6 +153,7 @@ export async function generateExercises(
   return {
     proposals: parsed.proposals,
     issues: parsed.issues,
+    ...(parsed.advice ? { advice: parsed.advice } : {}),
     ...(res.usage ? { usage: res.usage } : {}),
     ...(res.thoughts ? { thoughts: res.thoughts } : {}),
     ...(res.finish ? { finish: res.finish } : {}),

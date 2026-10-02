@@ -27,7 +27,7 @@ import {
   volumeOf,
 } from '@/domain/analytics';
 import type { PersonalRecord } from '@/domain/analytics';
-import { GROUPS, groupLabel } from '@/domain/data';
+import { GROUPS, groupKeysInUse, groupLabel } from '@/domain/data';
 import { today } from '@/domain/dates';
 import { num } from '@/domain/num';
 import type { Exercise, Session } from '@/domain/types';
@@ -159,7 +159,9 @@ export function lastStimulusRows(
   todayIso: string = today(),
 ): StimulusRow[] {
   const last = lastTrained(sessions, exercises);
-  return GROUPS.filter((g) => g.key !== 'cardio' && g.key !== 'movilidad')
+  /* Solo los grupos que tienes: un grupo sin ejercicios saldría siempre «nunca» */
+  const inUse = groupKeysInUse(exercises);
+  return GROUPS.filter((g) => g.key !== 'cardio' && g.key !== 'movilidad' && inUse.has(g.key))
     .map((g) => {
       const iso = last[g.key] ?? null;
       const days = daysSince(iso, todayIso);
