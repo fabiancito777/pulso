@@ -56,8 +56,8 @@ function PendingTab({ tab }: { tab: Tab }) {
         <span class="badge warn">pendiente</span>
       </div>
       <div class="tiny muted mb-s">
-        {tab.hint} · esta vista todavía no está portada (vive en la v1 del tag{' '}
-        <code>v1-final</code>).
+        {tab.hint} · esta vista todavía no está portada (vive en la v1 del tag <code>v1-final</code>
+        ).
       </div>
       <div class="tiny muted">
         El roadmap de la pestaña Hoy dice en qué bloque entra. Mientras tanto, las pestañas con el
@@ -74,6 +74,79 @@ function PendingTab({ tab }: { tab: Tab }) {
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Barra de navegación inferior. En móvil el carril de 7 chips NO cabe (≈660 px
+ * para 390), así que se desliza en horizontal: aquí se centra la pestaña activa
+ * al cambiar de vista y se difuminan los bordes que tienen contenido fuera, para
+ * que se lea como «desliza» y no como un chip cortado (mismo recurso que el
+ * carril de acciones del Coach).
+ */
+function BottomNav({ current }: { current: string }) {
+  const nav = useRef<HTMLElement | null>(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+
+  /*
+   * Todo en UN efecto porque las dos cosas van juntas: al cambiar de pestaña hay
+   * que CENTRAR la activa y, acto seguido, medir los bordes con la posición ya
+   * aplicada. Separarlos en dos efectos hacía que el `scroll` del centrado no
+   * llegara a tiempo y el degradado saliera desfasado un tick.
+   */
+  useEffect(() => {
+    const el = nav.current;
+    if (!el) return;
+    const measure = (): void => {
+      const start = el.scrollLeft > 4;
+      const end = el.scrollWidth - el.clientWidth - el.scrollLeft > 4;
+      /* solo cambia si de verdad cambió: un objeto nuevo por cada tick de scroll
+         dispararía un repintado de más */
+      setEdges((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+    };
+
+    const chip = el.querySelector<HTMLElement>('.chip.on');
+    if (chip) {
+      /* Centra la activa: en una barra de 7 chips puede quedar fuera (Progreso,
+         Ajustes). Instantáneo a propósito: con `smooth` el carril se queda a
+         medias al encadenar pestañas. Se calcula el scrollLeft a mano en vez de
+         `scrollIntoView` para no arrastrar la página. */
+      el.scrollTo({
+        left: chip.offsetLeft - (el.clientWidth - chip.clientWidth) / 2,
+        behavior: 'auto',
+      });
+    }
+    measure();
+
+    el.addEventListener('scroll', measure, { passive: true });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', measure);
+      ro.disconnect();
+    };
+  }, [current]);
+
+  return (
+    <nav
+      class={`v2-tabs${edges.start ? ' has-start' : ''}${edges.end ? ' has-end' : ''}`}
+      aria-label="Navegación principal"
+      ref={nav}
+    >
+      {TABS.map((t) => (
+        <button
+          key={t.key}
+          type="button"
+          class={`chip${t.key === current ? ' on accent' : ''}${t.ported ? '' : ' off'}`}
+          title={t.ported ? t.hint : `${t.hint} · pendiente`}
+          aria-current={t.key === current ? 'page' : undefined}
+          onClick={() => go(t.key)}
+        >
+          <Icon name={t.icon} />
+          {t.label}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -202,7 +275,6 @@ export function App() {
             <Icon name="info" />
           </button>
         </div>
-        <div class="tiny muted">Vite · TypeScript · Preact — migración en curso</div>
       </header>
 
       <main class="v2-main">
@@ -221,21 +293,7 @@ export function App() {
         <CurrentView tab={current} />
       </main>
 
-      <nav class="v2-tabs" aria-label="Navegación principal">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            class={`chip${t.key === current.key ? ' accent' : ''}${t.ported ? '' : ' off'}`}
-            title={t.ported ? t.hint : `${t.hint} · pendiente`}
-            aria-current={t.key === current.key ? 'page' : undefined}
-            onClick={() => go(t.key)}
-          >
-            <Icon name={t.icon} />
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <BottomNav current={current.key} />
 
       {/* Overlay global de primera visita: se desmonta en cuanto la signal
           `meta.onboarded` pasa a true (los dos botones del modal lo marcan). */}

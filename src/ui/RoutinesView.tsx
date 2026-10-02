@@ -1162,7 +1162,7 @@ export function RoutinesView() {
         <div class="row" style="gap:6px">
           <button
             type="button"
-            class="btn lg block rt-btn"
+            class="btn lg grow rt-btn"
             disabled={aiLoading}
             onClick={() => void suggest()}
           >

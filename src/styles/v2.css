@@ -18,7 +18,9 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 16px 12px;
+  /* `safe-area-inset-top` = muesca/barra de estado: con `viewport-fit=cover`
+     (index.html) el contenido no debe meterse debajo del notch. */
+  padding: calc(10px + env(safe-area-inset-top)) 16px 12px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: saturate(160%) blur(14px);
@@ -65,15 +67,116 @@
   z-index: 30;
   display: flex;
   gap: 6px;
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  /* En móvil son 7 chips y no caben: se desliza y `BottomNav` centra la activa
+     y pone `has-start`/`has-end` para difuminar el borde con contenido fuera. */
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: saturate(160%) blur(16px);
 }
 
+.v2-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.v2-tabs .chip {
+  flex: none;
+  min-height: 40px;
+}
+
+.v2-tabs.has-end {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+}
+
+.v2-tabs.has-start {
+  mask-image: linear-gradient(90deg, transparent, #000 26px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 26px);
+}
+
+.v2-tabs.has-start.has-end {
+  mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 26px,
+    #000 calc(100% - 26px),
+    transparent
+  );
+}
+
 .v2-tabs .chip:disabled {
   opacity: 0.45;
+}
+
+/* ==========================================================================
+   Móvil: objetivos táctiles y micro-tipografía
+
+   En pantalla pequeña el dedo necesita más superficie que el ratón. Aquí solo
+   se suben TAMAÑOS (el ⓘ de 28 px de `help.css`, las filas del segmento y los
+   números de 8,5 px de la tira de días); no se recoloca nada, porque el layout
+   de la v1 ya se adapta solo. Última hoja importada (`main.tsx`): estos valores
+   ganan a `base.css`/`help.css` a igual especificidad.
+   ========================================================================== */
+@media (max-width: 640px) {
+  .help-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .kpi .help-btn {
+    margin: -5px -5px -5px 0;
+  }
+
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .chip {
+    height: 36px;
+  }
+
+  .seg button {
+    min-height: 38px;
+  }
+
+  /* «descanso: 180s · pulsa para cambiarlo» es un botón de 20 px: en móvil se
+     le da superficie sin tocar el texto (el ajuste del descanso de cada
+     ejercicio). */
+  .set-hint {
+    min-height: 34px;
+    padding: 4px 0;
+  }
+
+  /* Recuadro de descanso: con el anillo a 96 px los botones (−15/+15/Saltar) se
+     caían a dos filas y la tarjeta se comía media pantalla. El anillo baja a
+     72 y caben en una. */
+  .session-rest {
+    gap: 12px;
+  }
+
+  .session-rest .sr-ring,
+  .session-rest .sr-ring .rest-ring {
+    width: 72px;
+    height: 72px;
+  }
+
+  .session-rest .sr-time {
+    font-size: 20px;
+  }
+
+  .day-cell .ddow,
+  .day-cell .dvol {
+    font-size: 9.5px;
+  }
+
+  .day-cell .dtag {
+    font-size: 10px;
+  }
 }
 
 /* Los KPIs y las barras de la antigua tarjeta de progreso (`.pg-*`) se
