@@ -81,7 +81,8 @@ Notas de entorno:
   una pasada sin red ni cuota:
   `npx vitest run --exclude 'src/features/coach/{smoke,edge}.test.ts'`.
 - `_specs/` guarda las specs de trabajo de la migración (gitignored, como `_shots/`): son el
-  contrato de cada bloque; el estado consolidado —no duplicado— está en `src/app/roadmap.ts`.
+  contrato de cada bloque. Con la migración cerrada, el estado ya no se duplica: el roadmap que
+  vivía en `src/app/roadmap.ts` se retiró junto con su panel.
 
 ---
 
@@ -90,7 +91,7 @@ Notas de entorno:
 ```
 index.html          → entrada de Vite (carga src/main.tsx)
 src/main.tsx        → monta <App /> en #app e importa los estilos
-src/app/            → shell de la app (App.tsx) y roadmap.ts (estado de la migración)
+src/app/            → shell de la app (App.tsx) y router.ts (pestañas y rutas por hash)
 src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado global
     num / format / units / dates / text        utilidades base
     plates.ts                                  calculadora de discos (solver)
@@ -192,11 +193,7 @@ localStorage['pulso.state']  (mismo formato que la v1; placas en unidades, con e
    parámetro) y escribe el test en `xxx.test.ts`. Nada de UI todavía.
 2. **Estado después**: si necesita persistencia, añade el setter a `src/state/store.ts`.
 3. **UI al final**: crea el componente en `src/ui/`.
-4. **Da el bloque por cerrado solo cuando esté cubierto por tests**, y actualiza
-   `src/app/roadmap.ts` (que es lo que se ve en la app: `portado` / `en curso` / `pendiente`).
-
-El estado de cada bloque está en **`src/app/roadmap.ts`** — una sola fuente, sin listas duplicadas
-en la documentación.
+4. **Da el bloque por cerrado solo cuando esté cubierto por tests.**
 
 ---
 
@@ -269,3 +266,4 @@ floor(discos/huecos)` con reparto **simétrico**, eligiendo la suma más cercana
 | 01-oct-2026 | Limpieza de código muerto: fuera `legacy/` (la v1 congelada, 22 archivos) y los generadores `tools/port-{catalog,icons}.mjs`, ya cumplida la migración; la v1 queda solo en el tag `v1-final`. `.gitignore` ya ignora `*.log` | La v1 se conserva entera en git (tag `v1-final` + historial de `main`), así que mantener su copia en el árbol de trabajo solo engordaba cada clon; los dos generadores eran de un solo uso y se quedaban sin fuente que leer. |
 | 01-oct-2026 | Catálogo muscular **ampliado de 13 a 19 grupos** (6 nuevos: trapecio, lumbares, oblicuos, aductores, cuello, serrato) con `groupKeysInUse` para no gastar huecos en grupos sin ejercicios, y generador de ejercicios **integrado con la biblioteca**: el brief del historial va SIEMPRE (usuario nuevo incluido), el system ordena **ser sincero** (puede devolver `"exercises": []` y explicarlo en `"advice"`, que el runner devuelve sin tratarlo como error), la biblioteca se agrupa por músculo con los grupos vacíos visibles y un botón «Generar» prerelleno. `npm run test` ≈ **922 tests** | Un generador que siempre da la razón inventa duplicados; con el historial y el material delante puede decir «eso ya lo cubres». Los grupos que faltaban y los que no tienen ningún ejercicio son justo los huecos más grandes, así que se ven y se pueden llenar de un clic. |
 | 01-oct-2026 | Pasada móvil: la barra superior pierde el subtítulo de desarrollo y respeta el safe-area del notch; la navegación inferior (7 chips que no caben en 390 px) se desliza, **centra la pestaña activa** y difumina los bordes con contenido fuera; se arregla el desborde de `Rutinas` (`.row > .btn.block`) y un bloque `@media (max-width:640px)` de `v2.css` sube los objetivos táctiles (ⓘ 32, chips 36, segmentos 38), agranda la letra diminuta de la tira de días y compacta el recuadro de descanso (anillo 96→72: la tarjeta baja de 271 a 213 px) | Con 7 pestañas, «Progreso» y «Ajustes» quedaban fuera de la barra inferior y el usuario no veía que existían; el dedo necesita más superficie que el ratón y durante el entreno el recuadro de descanso se comía media pantalla. Verificado en 360/390/1280 px: cero desbordes y sin objetivos por debajo de 34 px. |
+| 01-oct-2026 | Retirado el panel «Migración y catálogo»: fuera `src/ui/MigrationCards.tsx`, `src/app/roadmap.ts` (su única fuente de datos) y el CSS `rm-*`; el `default` del shell pasa a `null` (las 7 pestañas están portadas, así que era inalcanzable) | Con la migración cerrada, un desplegable con el roadmap de bloques y una nota sobre el tag `v1-final` solo ensuciaba el final de Hoy. |

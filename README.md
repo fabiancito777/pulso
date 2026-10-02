@@ -205,7 +205,7 @@ se guarda en servidores propios.
 ```
 index.html              · entrada de Vite (carga src/main.tsx)
 src/main.tsx            · monta <App /> en #app e importa los estilos
-src/app/                · shell de la app (App.tsx), router y roadmap de migración
+src/app/                · shell de la app (App.tsx) y router de pestañas
 src/domain/             · NÚCLEO PURO (sin DOM ni estado): discos, analítica, sesión,
                           descanso, planner local, catálogo (generado) y formatos
 src/state/              · estado + persistencia (store, sesión activa, coach, chat)

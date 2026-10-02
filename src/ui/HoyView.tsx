@@ -3,7 +3,7 @@
  * `V.render` sin sesión activa) con el mismo orden de bloques:
  *
  * saludo → hero del día → semana → Recomendado → KPIs 7d → Herramientas →
- * Libre/Elegir rutina → Últimas sesiones → migración.
+ * Libre/Elegir rutina → Últimas sesiones.
  *
  * Decisiones que no se pueden romper sin querer:
  *
@@ -77,7 +77,6 @@ import {
 import type { TodayPlan } from './hoy-helpers';
 import { Icon } from './Icon';
 import { Kpi, SectionHead } from './kit';
-import { MigrationCards } from './MigrationCards';
 import { PlatesCard } from './PlatesCard';
 import { routineSets, toSuggestion } from './routines-helpers';
 import type { RoutineSuggestion } from './routines-helpers';
@@ -979,10 +978,6 @@ export function HoyView() {
         onToggle={(id) => setOpenSession(openSession === id ? null : id)}
         onRepeat={repeat}
       />
-
-      <div class="mt">
-        <MigrationCards />
-      </div>
 
       {pickOpen ? (
         <ExercisePickerModal

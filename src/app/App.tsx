@@ -18,7 +18,6 @@ import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
 import { openHelp } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
-import { MigrationCards } from '@/ui/MigrationCards';
 import { Onboarding } from '@/ui/Onboarding';
 import { PlatesCard } from '@/ui/PlatesCard';
 import { ProgressView } from '@/ui/ProgressView';
@@ -60,8 +59,8 @@ function PendingTab({ tab }: { tab: Tab }) {
         ).
       </div>
       <div class="tiny muted">
-        El roadmap de la pestaña Hoy dice en qué bloque entra. Mientras tanto, las pestañas con el
-        punto en verde ya funcionan aquí.
+        Las 7 pestañas están portadas, así que este aviso no debería aparecer: si lo ves, es que hay
+        una pestaña nueva en el router a la que le falta su vista.
       </div>
       <div class="row mt-s" style="gap:8px">
         <button type="button" class="btn sm" onClick={() => go('hoy')}>
@@ -193,7 +192,8 @@ function CurrentView({ tab }: { tab: Tab }) {
     case 'coach':
       return <CoachView />;
     default:
-      return <MigrationCards />;
+      /* las 7 pestañas están portadas (`ported: true`): este caso es inalcanzable */
+      return null;
   }
 }
 

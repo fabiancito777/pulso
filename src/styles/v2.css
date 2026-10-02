@@ -183,42 +183,6 @@
    retiraron al reconvertir `ProgressCard` en cabecera: hoy solo pinta el sub de
    la v1 y la rejilla de KPIs vive en `ProgressCharts`, igual que en `main`. */
 
-/* ---------- estado de la migración ---------- */
-.rm {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rm-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.rm-dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  margin-top: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--muted-2);
-}
-
-.rm-dot.portado {
-  background: var(--ok);
-}
-
-.rm-dot.curso {
-  background: var(--warn);
-}
-
-.rm-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
 /* ---------- Ajustes → Ejercicios: ★, ocultos y métricas ---------- */
 
 /* Segmentos + buscador de la biblioteca, pegados bajo la barra superior: la
