@@ -33,6 +33,7 @@ import { hasApiKey } from '@/state/coach';
 import { createExerciseFromAI, requestEdit } from '@/state/exercise-create';
 import { exgenErrorText, generateExercises } from '@/state/exgen';
 
+import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { toast } from './toast';
@@ -207,7 +208,11 @@ export function ExerciseGenModal({
         </>
       }
     >
-      <div class="tiny muted">
+      <span class="label help-h3">
+        Generar ejercicios nuevos
+        <HelpBtn id="coach.generator" title="Generador de ejercicios" />
+      </span>
+      <div class="tiny muted mt-s">
         Nada se escribe hasta que lo confirmas: aquí solo se previsualizan.
       </div>
       <div class="tiny muted mt-s">

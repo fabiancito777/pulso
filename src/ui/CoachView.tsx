@@ -653,6 +653,11 @@ function StatusCard() {
           </button>
         </div>
       </div>
+      <div class="row wrap mt-s" style="gap:6px;align-items:center">
+        <span class="tiny muted grow">Sabe de tu historial, tu plan y tu material.</span>
+        <HelpBtn id="coach.what" title="Qué puede hacer el coach" />
+        <HelpBtn id="coach.sees" title="Lo que el coach sabe de ti" />
+      </div>
     </section>
   );
 }
@@ -691,6 +696,7 @@ function MemoryPanel() {
         </span>
         <span class="row" style="gap:6px">
           <span class="tiny muted">{memory.length} car.</span>
+          <HelpBtn id="coach.learns" title="Cómo aprende de ti" />
           <HelpBtn id="coach.memory" title="Memoria del coach" />
         </span>
       </summary>

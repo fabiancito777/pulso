@@ -97,8 +97,12 @@ export const HELP_IDS = [
   'cal.noKey',
 
   /* --- coach --- */
+  'coach.what',
+  'coach.sees',
+  'coach.learns',
   'coach.memory',
   'coach.quick',
+  'coach.generator',
   'coach.apiKey',
   'coach.footer',
 
@@ -258,9 +262,10 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Coach',
     paras: [
       'El chat con el coach, 6 acciones rápidas y la «Memoria del coach», que puedes editar.',
+      'Puede montarte la sesión de hoy, sugerir una rutina, revisar tu volumen o tu reparto por músculo, atacar un récord y generar ejercicios nuevos. Ve tu historial, tu plan y tu material, así que sus propuestas encajan con lo que entrenas.',
       'Necesita una clave de Google AI Studio. Sin ella, la app sigue funcionando con el planificador local.',
     ],
-    see: ['coach.memory', 'coach.apiKey'],
+    see: ['coach.what', 'coach.sees', 'coach.apiKey'],
   },
   'tab.progreso': {
     id: 'tab.progreso',
@@ -500,15 +505,45 @@ export const HELP: Record<HelpId, HelpTopic> = {
   },
 
   /* ---------- coach ---------- */
+  'coach.what': {
+    id: 'coach.what',
+    section: 'coach',
+    title: 'Qué puede hacer el coach',
+    paras: [
+      'Es un entrenador con IA que vive en la pestaña Coach. Le hablas en lenguaje normal y puede: montarte la sesión de hoy, sugerir una rutina, revisar tu volumen y tu reparto por músculo, decirte cómo atacar un récord, ajustar el plan de la semana y proponerte ejercicios nuevos para tu biblioteca.',
+      'No solo contesta: lo que propone se puede llevar a la acción. «Sugerir entreno» deja la sesión en Hoy, el plan de la semana se aplica al Calendario y los ejercicios nuevos se añaden desde Ajustes → Ejercicios.',
+    ],
+    see: ['coach.sees', 'coach.quick', 'coach.generator'],
+  },
+  'coach.sees': {
+    id: 'coach.sees',
+    section: 'coach',
+    title: 'Lo que el coach sabe de ti',
+    paras: [
+      'Antes de responder recibe un resumen de tus datos: el historial reciente (qué series, con qué peso y cuándo), el plan de la semana, el volumen por grupo muscular, tu material activo, tus ejercicios ★ y los que tienes prohibidos.',
+      'Con eso ajusta lo que propone a lo que de verdad haces: no te manda a la barra si no tienes barra, ni repite el ejercicio de hace dos días. Y si tus datos no dan para justificar algo, te lo dice en vez de inventárselo.',
+    ],
+    see: ['coach.learns', 'coach.memory', 'opt.material'],
+  },
+  'coach.learns': {
+    id: 'coach.learns',
+    section: 'coach',
+    title: 'Cómo aprende de ti',
+    paras: [
+      'Lo que le cuentas en el chat se guarda en la Memoria del coach: lesiones, cuánto llevas entrenando, lo que te gusta o te sienta mal, tus objetivos. La actualiza él solo y tú puedes corregirla o borrarla.',
+      'También aprende de lo que haces: los ejercicios que marcas ★ salen primero en buscadores y generadores, y tu historial le sirve para no repetir estímulos y para ver qué te falta. Cuanto más entrenas con Pulso, mejor te conoce.',
+    ],
+    see: ['coach.memory', 'opt.exercises'],
+  },
   'coach.memory': {
     id: 'coach.memory',
     section: 'coach',
     title: 'Memoria del coach',
     paras: [
-      'Lo que el coach recuerda entre conversaciones: tus lesiones, cuánto llevas entrenando, lo que prefieres. Puedes escribirlo tú y él lo va actualizando.',
+      'Lo que el coach recuerda entre conversaciones: tus lesiones, cuánto llevas entrenando, lo que prefieres. Puedes escribirlo tú y él lo va actualizando con lo que le cuentas.',
       'Si lo borras, empieza de cero. Tiene un límite de caracteres: cuando se llena, se van quitando las entradas más antiguas.',
     ],
-    see: ['coach.apiKey', 'tab.coach'],
+    see: ['coach.learns', 'coach.apiKey', 'tab.coach'],
   },
   'coach.quick': {
     id: 'coach.quick',
@@ -518,7 +553,17 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Son preguntas de un clic. El coach ya conoce tu historial, tu plan y tu volumen, así que solo eliges qué quieres que haga.',
       '«Sugerir entreno» deja la propuesta en la pestaña Hoy, «Romper un récord» te dice cómo atacar tu mejor marca y «Revisar volumen» mira si entrenas demasiado o muy poco.',
     ],
-    see: ['coach.memory', 'tab.coach'],
+    see: ['coach.what', 'coach.sees', 'tab.coach'],
+  },
+  'coach.generator': {
+    id: 'coach.generator',
+    section: 'coach',
+    title: 'Generador de ejercicios nuevos',
+    paras: [
+      'Está en Ajustes → Ejercicios, con «Generar con IA». Le describes qué buscas (o entras desde un grupo muscular sin ejercicios) y propone ejercicios que aún no tienes, mirando tu historial y tu material.',
+      'Es sincero: si lo que pides ya lo cubres, o no tienes datos para justificarlo, te lo dirá y no rellenará con ejercicios de más. Antes de crear nada ves la previsualización con sus avisos (parecido a otro ejercicio, material que no tienes…): eliges cuáles añadir y solo entonces se guardan.',
+    ],
+    see: ['opt.exercises', 'coach.sees'],
   },
   'coach.apiKey': {
     id: 'coach.apiKey',
@@ -753,7 +798,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Tu biblioteca, agrupada por músculo. Arriba eliges qué ver: ★ Favoritos, Catálogo, Propios u Ocultos. El atajo «★ Los de mis récords» marca de golpe los que ya tienen marca, y cada fila dice cuándo lo entrenaste, tu mejor 1RM y cuántas veces lo has hecho.',
       '★ son los que salen primero en los buscadores y generadores. «Oculto» solo lo esconde de esta lista. «Prohibido» es el único que lo quita de las propuestas. Para hacer algo con varias filas a la vez, pulsa «Seleccionar».',
     ],
-    see: ['opt.material', 'glossary.equipment'],
+    see: ['coach.generator', 'opt.material', 'glossary.equipment'],
   },
   'opt.model': {
     id: 'opt.model',
