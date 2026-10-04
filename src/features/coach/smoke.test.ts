@@ -11,7 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   allowedExercises,
@@ -30,9 +30,12 @@ import { buildContext } from './context';
 import { MEMORY_LIMIT, applyMemoryEntries, defaultMemory, extractMemoryBlock } from './memory';
 import { parseJSON } from './parse';
 import { MEMORY_INSTRUCTION, buildRequest } from './prompts';
+import { TEST_MODEL, TEST_THINKING, netCalls, watchFetch } from './testnet';
 import type { CoachRequest, CoachRoutine, CoachScheduleDay } from './types';
 
-const MODEL = 'gemini-3.5-flash-lite';
+/* Modelo y nivel de thinking por ENV (`COACH_TEST_MODEL`/`COACH_TEST_THINKING`);
+   sin nada definido: flash-lite + low, que es lo que corre siempre. */
+const MODEL = TEST_MODEL;
 /**
  * Techo por test. La API real de Gemini ahora mismo tarda 30-180 s por llamada
  * (y devuelve 503 «high demand» en los picos), así que un test que hace dos
@@ -80,6 +83,10 @@ function numOf(value: unknown): number {
 
 const API_KEY = loadKey();
 
+/* Contador de peticiones HTTP REALES: los reintentos internos de `generate`
+   (503, respuestas vacías) no aparecen en el contador de llamadas de abajo. */
+watchFetch();
+
 /* ---------- presupuesto de llamadas ---------- */
 
 let apiCalls = 0;
@@ -100,7 +107,7 @@ async function callBrain(req: CoachRequest): Promise<GenResult> {
        petición que la de verdad y el 400 de un schema mal formado pasaría
        desapercibido hasta en producción */
     ...(req.responseSchema ? { responseSchema: req.responseSchema } : {}),
-    thinkingLevel: 'low',
+    thinkingLevel: TEST_THINKING,
   };
   if (req.history?.length) opts.history = req.history;
 
@@ -305,6 +312,12 @@ function suite(name: string, fn: () => void): void {
   else describe.skip(name, fn);
 }
 
+afterAll(() => {
+  console.log(
+    `[smoke] modelo=${MODEL} · thinking=${TEST_THINKING} · llamadas HTTP reales: ${netCalls()}`,
+  );
+});
+
 suite('coach IA contra Gemini (smoke)', () => {
   it(
     'suggest → JSON con ejercicios de la biblioteca permitida',
@@ -320,7 +333,7 @@ suite('coach IA contra Gemini (smoke)', () => {
       const res = await callBrain(req);
       console.log(
         `[smoke] suggest: finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)}` +
-          ` · resp=${JSON.stringify(res.text.slice(0, 300))}`,
+          ` · ${res.ms} ms · resp=${JSON.stringify(res.text.slice(0, 300))}`,
       );
       const reply = parseJSON<unknown>(res.text);
       expect(
@@ -371,7 +384,7 @@ suite('coach IA contra Gemini (smoke)', () => {
       expect(texto.trim(), 'rationale ausente o vacío').not.toBe('');
 
       console.log(
-        `[smoke] suggest → "${title}" · ${list.length} ejercicios · finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)}`,
+        `[smoke] suggest → "${title}" · ${list.length} ejercicios · finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)} · ${res.ms} ms`,
       );
     },
     TIMEOUT,
@@ -393,7 +406,7 @@ suite('coach IA contra Gemini (smoke)', () => {
       const { rest, block } = extractMemoryBlock(res.text);
       console.log(
         `[smoke] chat → finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)}` +
-          ` · resp=${JSON.stringify(res.text.slice(0, 500))}`,
+          ` · ${res.ms} ms · resp=${JSON.stringify(res.text.slice(0, 500))}`,
       );
       if (!block) {
         const suelto = res.text.includes('```memoria');
@@ -416,7 +429,7 @@ suite('coach IA contra Gemini (smoke)', () => {
       expect(update.memory.length).toBeLessThanOrEqual(MEMORY_LIMIT);
 
       console.log(
-        `[smoke] chat → ${JSON.stringify(rest.slice(0, 300))} · +${update.added.length} entradas · finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)}`,
+        `[smoke] chat → ${JSON.stringify(rest.slice(0, 300))} · +${update.added.length} entradas · finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)} · ${res.ms} ms`,
       );
     },
     TIMEOUT,

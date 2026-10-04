@@ -259,7 +259,10 @@ export interface CoachRequest {
 
 /**
  * Subconjunto OpenAPI que la API acepta en `generationConfig.responseSchema`
- * (types en MAYÚSCULAS, `properties`/`items`/`required`/`description`).
+ * (types en MAYÚSCULAS, `properties`/`items`/`required`/`description` y desde
+ * la comprobación empírica de 04-oct-2026 también `minItems`/`maxItems`, que la
+ * API RESPETA como regla dura incluso contra una instrucción que pida lo
+ * contrario: "un solo ejercicio" + `minItems:4` devuelve 4).
  *
  * Solo cubre lo que los esquemas de `schema.ts` usan: el `additionalProperties`
  * o `format` están fuera del subconjunto documentado por Google y harían fallar
@@ -271,4 +274,6 @@ export interface ResponseSchema {
   properties?: Record<string, ResponseSchema>;
   items?: ResponseSchema;
   required?: string[];
+  minItems?: number;
+  maxItems?: number;
 }

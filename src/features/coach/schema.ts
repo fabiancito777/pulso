@@ -9,11 +9,17 @@
  * la memoria del usuario no caben en un schema cerrado).
  *
  * Reglas del subconjunto que acepta Google (ver `ResponseSchema` en
- * `types.ts`): types en MAYÚSCULAS y solo `type`/`properties`/`items`/
- * `required`/`description`. Un `additionalProperties` o un `format` que no
- * esté en esa lista haría fallar la llamada entera con 400 INVALID_ARGUMENT,
- * que además NO cae en el fallback local (`kind: 'http'`), así que aquí no se
- * arriesga nada: lo que quede fuera del schema simplemente no se pide.
+ * `types.ts`): types en MAYÚSCULAS y `type`/`properties`/`items`/
+ * `required`/`description`/`minItems`/`maxItems`. Un `additionalProperties` o
+ * un `format` que no esté en esa lista haría fallar la llamada entera con 400
+ * INVALID_ARGUMENT, que además NO cae en el fallback local (`kind: 'http'`),
+ * así que aquí no se arriesga nada: lo que quede fuera del schema simplemente
+ * no se pide.
+ *
+ * `minItems`/`maxItems` se verificaron contra la API real el 04-oct-2026: la
+ * API los cumple como regla dura (pedido "un solo ejercicio" con `minItems:4`
+ * → devuelve 4), así que el «entre 4 y 7» del prompt no depende de que el
+ * modelo obedezca: flash-lite con thinking low llegó a devolver 3.
  *
  * Los `required` son el contrato mínimo que leen los consumidores
  * (`toSuggestion`, `normalizePlan`, `applyWeek`): todo lo demás lo rellenan
@@ -57,7 +63,13 @@ export const SUGGEST_RESPONSE_SCHEMA: ResponseSchema = {
     title: { type: 'STRING', description: 'Título corto de la rutina' },
     focus: { type: 'STRING', description: 'Grupos principales' },
     rationale: { type: 'ARRAY', items: { type: 'STRING' }, description: 'Motivos del reparto' },
-    exercises: { type: 'ARRAY', items: EXERCISE, description: 'Entre 4 y 7 ejercicios' },
+    exercises: {
+      type: 'ARRAY',
+      items: EXERCISE,
+      description: 'Entre 4 y 7 ejercicios',
+      minItems: 4,
+      maxItems: 7,
+    },
   },
   required: ['title', 'focus', 'rationale', 'exercises'],
 };

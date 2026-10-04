@@ -45,6 +45,15 @@ describe('SUGGEST_RESPONSE_SCHEMA', () => {
     expect(SUGGEST_RESPONSE_SCHEMA.properties?.exercises?.type).toBe('ARRAY');
   });
 
+  it('el «entre 4 y 7» va en el schema, no solo en el prompt', () => {
+    /* verificado contra la API real (04-oct-2026): minItems/maxItems se
+       cumplen como regla dura; sin esto, flash-lite con thinking low llegó a
+       devolver 3 ejercicios y el smoke se caía */
+    const arr = SUGGEST_RESPONSE_SCHEMA.properties?.exercises;
+    expect(arr?.minItems).toBe(4);
+    expect(arr?.maxItems).toBe(7);
+  });
+
   it('cada ejercicio trae los números que aplican la rutina, y los opcionales del prompt', () => {
     const ex = SUGGEST_RESPONSE_SCHEMA.properties?.exercises?.items;
     expect(ex?.type).toBe('OBJECT');

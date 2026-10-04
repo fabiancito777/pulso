@@ -12,7 +12,8 @@
  * 500/día). `realGenerate` cuenta CADA llamada y corta en seco si se pasa; sin
  * API key solo corren los tests sin red (8 y 9) y el resto se salta.
  *
- * Modelo `gemini-3.5-flash-lite` con `thinkingLevel: 'low'`, leído de
+ * Modelo `gemini-3.5-flash-lite` con `thinkingLevel: 'low'` (por defecto), o
+ * los que fijen `COACH_TEST_MODEL`/`COACH_TEST_THINKING` — leídos de
  * `settings.ai` (lo parchea el `beforeEach`), así que `runCoachTask` usa la
  * misma configuración que usaría la app.
  */
@@ -40,8 +41,9 @@ import { buildContext } from './context';
 import { HISTORY_DEFAULT_LINES, consolidatedHistory, queryHistory } from './history';
 import { MEMORY_LIMIT, applyMemoryEntries, defaultMemory } from './memory';
 import { parseJSON } from './parse';
+import { TEST_MODEL, TEST_THINKING, netCalls, watchFetch } from './testnet';
 
-const MODEL = 'gemini-3.5-flash-lite';
+const MODEL = TEST_MODEL;
 /**
  * Techo por test. La API real de Gemini ahora mismo tarda 30-180 s por llamada
  * (y devuelve 503 «high demand» en los picos), así que los tests de dos llamadas
@@ -85,6 +87,9 @@ function loadKey(): string {
 }
 
 const API_KEY = loadKey();
+
+/* Peticiones HTTP REALES (incluidos los reintentos internos de `generate`) */
+watchFetch();
 
 /* ---------- localStorage simulado: ANTES del import (storageAvailable se decide al cargar) ---------- */
 
@@ -140,7 +145,10 @@ async function realGenerate(opts: GenOpts): Promise<GenResult> {
 }
 
 afterAll(() => {
-  console.log(`[edge] llamadas API usadas: ${apiCalls}/${MAX_CALLS}`);
+  console.log(
+    `[edge] llamadas API usadas: ${apiCalls}/${MAX_CALLS} · HTTP reales: ${netCalls()}` +
+      ` · modelo=${MODEL} · thinking=${TEST_THINKING}`,
+  );
 });
 
 /* ---------- helpers de fixture ---------- */
@@ -202,7 +210,7 @@ beforeEach(() => {
   store.writeState(store.defaultState());
   store.refresh();
   store.applyEquipment(equipPreset('gym'));
-  aiPatch({ apiKey: API_KEY, model: MODEL, thinkingLevel: 'low', memory: '' });
+  aiPatch({ apiKey: API_KEY, model: MODEL, thinkingLevel: TEST_THINKING, memory: '' });
 });
 
 /** Sin API key el bloque de red entero se salta: no se falla, no se llama a nadie. */
@@ -441,7 +449,7 @@ suite('edge cases contra Gemini (API real)', () => {
           'uses llaves ni corchetes.\n\nJSON:\n' +
           json,
         json: false,
-        thinkingLevel: 'low',
+        thinkingLevel: TEST_THINKING,
       });
       console.log(
         `[edge] 4 · finish=${res.finish ?? '?'} · usage=${JSON.stringify(res.usage)}` +
