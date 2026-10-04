@@ -213,7 +213,11 @@ export interface BuildRequestOpts {
    * efecto en `chat`: ahí los ejercicios nuevos viajan en un bloque ```crear```)
    */
   create?: boolean;
-  /** mensaje del usuario (analyze y chat) */
+  /**
+   * mensaje del usuario: en `chat` es el prompt entero; en las demás tareas es
+   * contexto adicional («Petición del usuario: …») — los chips con la caja
+   * rellena mandan su `ask` + lo que había escrito por aquí
+   */
   question?: string;
   /** unidad del usuario, para los prompts de JSON */
   unit?: Unit;

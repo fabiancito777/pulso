@@ -9,6 +9,9 @@
  *   `responseMimeType: application/json` en `client.ts`);
  * - `analyze` pide markdown de ≤ 400 palabras;
  * - `chat` se lleva los últimos 12 mensajes del historial;
+ * - `opts.question` viaja en TODAS las tareas: en `chat` es el prompt entero y
+ *   en el resto se añade al prompt como «Petición del usuario: …» (así los
+ *   chips de acción rápida pueden llevar el texto de la caja como contexto);
  * - el contexto del usuario se inyecta SIEMPRE detrás de
  *   `system + "\n\nCONTEXTO DEL USUARIO:\n" + ctx`.
  */
@@ -93,6 +96,18 @@ export const CONSULT_INSTRUCTION = [
   'Antes de consultar, mira el HISTORIAL CONSOLIDADO: ya resume TODO el histórico por ejercicio (nº de sesiones, rango de fechas, primera y última serie, mejor 1RM y las tres últimas), así que solo consulta si necesitas detalle sesión a sesión.',
 ].join('\n');
 
+/**
+ * La petición del usuario cuando llega rellena (la caja libre, o el `ask` de un
+ * chip de acción rápida con contexto detrás). Va DESPUÉS de las reglas y ANTES
+ * del bloque `local`: el JSON de salida sigue mandando, esto es solo contexto
+ * adicional que el modelo puede usar para concretar («solo empuje», «sin press
+ * banca»…). En `chat` no se usa: allí `question` ES el prompt entero.
+ */
+function requestContext(opts: BuildRequestOpts): string[] {
+  const question = opts.question?.trim();
+  return question ? ['', `Petición del usuario: ${question}`] : [];
+}
+
 function suggestPrompt(opts: BuildRequestOpts): string {
   const unit = opts.unit ?? 'kg';
   const lines = [
@@ -105,6 +120,7 @@ function suggestPrompt(opts: BuildRequestOpts): string {
     'ordena de compuesto a aislado; incluye 1 bloque de core;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
   ];
+  lines.push(...requestContext(opts));
   if (opts.local !== undefined) {
     lines.push(
       '',
@@ -125,6 +141,7 @@ function planPrompt(opts: BuildRequestOpts): string {
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];
+  lines.push(...requestContext(opts));
   if (opts.local !== undefined) {
     lines.push(
       '',

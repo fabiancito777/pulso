@@ -78,7 +78,12 @@ export interface CoachDeps {
 
 /** Opciones de una tarea del coach. */
 export interface CoachTaskOpts {
-  /** pregunta del usuario (chat y analyze) */
+  /**
+   * pregunta del usuario, SIEMPRE: en `chat` es el prompt entero (y
+   * `buildRequest` lo convierte en el turno final del historial), en el resto
+   * es contexto adicional que el prompt añade con la etiqueta
+   * «Petición del usuario». De ahí los chips con la caja rellena.
+   */
   userText?: string;
   /** historial previo del chat (en chat se recorta a los últimos 12 mensajes) */
   history?: ChatMsg[];
@@ -505,7 +510,11 @@ export async function runCoachTask(
     goal: st.goal,
     daysPerWeek: st.daysPerWeek,
   };
-  if (task === 'chat' || task === 'analyze') reqOpts.question = opts.userText ?? '';
+  /* La pregunta viaja en TODAS las tareas (antes solo en chat/analyze, y así el
+     `ask` de los chips de acción rápida se perdía en suggest/plan). En chat no
+     se mete además en `history`: `buildRequest` la usa como prompt, que es el
+     turno final del historial — duplicarla daría el mismo mensaje dos veces. */
+  reqOpts.question = opts.userText ?? '';
   if (task === 'chat') reqOpts.history = opts.history ?? [];
   if (task === 'plan') {
     reqOpts.from = from;

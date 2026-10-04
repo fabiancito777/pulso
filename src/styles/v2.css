@@ -8,7 +8,10 @@
 .v2-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  /* `dvh` y no `vh`: con `vh` (alto del viewport grande) la barra inferior se
+     queda por debajo de la barra del navegador en móvil y sobraba media URL
+     bar de scroll fantasma. Igual que `.app` de base.css. */
+  min-height: 100dvh;
 }
 
 .v2-bar {
@@ -59,6 +62,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Alto REAL de la barra sin el safe-area (padding 8 + chip 40 + padding 8 +
+   borde 1). Lo lee `.coach-view` para llenar el viewport que le queda; el
+   `env(safe-area-inset-bottom)` lo suma cada consumidor, porque es variable.
+   Si cambia cualquier valor de la regla de abajo, hay que cambiarlo aquí. */
+:root {
+  --v2-tabs-h: 57px;
 }
 
 .v2-tabs {

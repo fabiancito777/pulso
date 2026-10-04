@@ -165,6 +165,39 @@ describe('runCoachTask', () => {
     expect(arg?.system).not.toContain('CONSULTA');
   });
 
+  it('la petición del usuario llega al prompt en suggest y plan (chips con contexto)', async () => {
+    const gen = makeGen([
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+      res('{"rationale":"x","days":[]}'),
+    ]);
+    const contexto = 'Genera el entreno de hoy para mí.\n\nContexto adicional: solo empuje';
+
+    await coach.runCoachTask('suggest', { userText: contexto }, { generateFn: gen });
+    const enSuggest = gen.mock.calls[0]?.[0];
+    expect(enSuggest?.json).toBe(true);
+    expect(enSuggest?.prompt).toContain('Petición del usuario: Genera el entreno de hoy para mí.');
+    expect(enSuggest?.prompt).toContain('Contexto adicional: solo empuje');
+
+    await coach.runCoachTask(
+      'plan',
+      { userText: 'Planifica mi semana de entrenamiento.' },
+      {
+        generateFn: gen,
+      },
+    );
+    expect(gen.mock.calls[1]?.[0].prompt).toContain(
+      'Petición del usuario: Planifica mi semana de entrenamiento.',
+    );
+  });
+
+  it('sin userText la etiqueta de petición no aparece (nada de ruido en los prompts)', async () => {
+    const gen = makeGen([res('{"title":"x","focus":"","rationale":[],"exercises":[]}')]);
+
+    await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+    expect(gen.mock.calls[0]?.[0].prompt).not.toContain('Petición del usuario');
+  });
+
   it('bloque ```consulta``` → queryHistory y 2ª llamada con el MISMO system', async () => {
     seedSessions([SESION]);
     const gen = makeGen([

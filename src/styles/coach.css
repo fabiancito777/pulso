@@ -7,13 +7,59 @@
    el resto de la app hereda de `base.css`.
    ========================================================================== */
 
+/* --------------------------------------------------------------------------
+   Altura de la pestaña: chat clásico SIN scroll de página
+
+   La vista es una columna de altura DEFINIDA = lo que queda de viewport
+   después de la barra superior (`--appbar-h`, medida en vivo por App.tsx, ya
+   incluye la muesca), la barra inferior (`--v2-tabs-h` + `safe-area`, que va
+   aparte porque es variable) y el padding de `.v2-main` (16 + 26 = 42 px).
+   Con eso `.chat` puede ocupar el resto (`flex: 1` + `min-height: 0`) y el
+   composer queda al final EN FLUJO, sin `sticky` respecto a la página: nunca
+   se solapa con los mensajes y la pestaña no desborda el documento.
+
+   Si los bloques de arriba no caben (memoria abierta, pantalla muy baja),
+   el sobrante lo absorbe `.coach-view` con su propio scroll en vez de
+   desbordar por debajo sobre la nav. */
+.coach-view {
+  display: flex;
+  flex-direction: column;
+  /* Si al shell le sobra altura, el remate lo pone esta vista y no un hueco
+     bajo el composer (un `height` por debajo del real se corrige solo). */
+  flex: 1 1 auto;
+  height: calc(
+    100dvh - var(--appbar-h, 64px) - var(--v2-tabs-h, 57px) - env(safe-area-inset-bottom) - 42px
+  );
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* `section` de base.css mete 20 px más debajo: los saco de la cuenta. */
+  margin-bottom: 0;
+}
+
+/* Los márgenes verticales NO se colapsan dentro de un contenedor flex: la
+   tarjeta de estado (`section`, 20 px de base.css) y el `.mt-s` del carril de
+   chips se sumarían (28 px) en vez de quedarse en 20. Aquí se recupera el
+   ritmo de antes y, de paso, esos 8 px vuelven a la conversación. */
+.coach-view > section:first-child {
+  margin-bottom: 0;
+}
+
+.coach-view > section:first-child + * {
+  margin-top: 20px;
+}
+
 /* La conversación se desborda por dentro: así el composer se queda abajo sin
    tener que recorrer toda la historia para escribir. */
 .coach-view .chat {
   display: flex;
   flex-direction: column;
   gap: 11px;
-  max-height: min(60vh, 540px);
+  /* El tope ya no es un `max-height` fijo: es lo que dejan los bloques de
+     arriba dentro del alto definido de la vista. `min-height: 0` es lo que
+     permite que la conversación ENCOJA (y haga su propio scroll) en vez de
+     empujar el composer fuera de pantalla. */
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 2px 2px 4px;
@@ -140,12 +186,21 @@
   font-size: 13px;
 }
 
-/* En la v2 no hay barra de pestañas fija de la v1, así que el composer se pega
-   justo encima de la suya. */
-.coach-view .composer {
+/* El composer va al final EN FLUJO: con `.coach-view` de alto definido ocupa
+   su hueco exacto y no tapa mensajes. El `sticky` de `base.css` era respecto a
+   la PÁGINA (por eso flotaba sobre el chat); aquí el scrollport de referencia
+   es la propia vista, así que `bottom: 0` solo se nota si LA VISTA desborda,
+   y eso solo pasa cuando los bloques de arriba no caben (memoria abierta,
+   pantalla muy baja): en ese caso `.chat` se ha quedado en 0 px por el
+   `flex`/`min-height: 0` de arriba, así que el composer se queda pegado abajo
+   en vez de perderse fuera del recorte y por debajo solo hay bloques, no
+   mensajes legibles.
+   El `.v2-shell` del selector es a propósito: gana en especificidad al
+   `body.has-rest .composer` de base.css (0,2,1) sin tocar esa hoja. */
+.v2-shell .coach-view .composer {
   position: sticky;
-  bottom: calc(env(safe-area-inset-bottom) + 58px);
-  z-index: 20;
+  bottom: 0;
+  z-index: 1;
 }
 
 /* Carril de acciones rápidas: cuando hay chips fuera de la vista, el borde

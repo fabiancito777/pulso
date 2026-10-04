@@ -6,8 +6,10 @@
  * lo que hay que vigilar es el DATO, que es lo que se rompe sin darse cuenta —
  * los 6 chips de la v1 con sus prompts literales, iconos que existan de verdad
  * en el catálogo generado (`ui/icons.ts` es un archivo generado), el badge de
- * ms/ok del «Probar» y las opciones de un turno (`turnOpts`), que es lo único
- * que manda la pregunta del usuario al modelo.
+ * ms/ok del «Probar», las opciones de un turno (`turnOpts`), que es lo único
+ * que manda la pregunta del usuario al modelo, y la unión chip + caja
+ * (`chipText`): con la caja vacía el ask literal de siempre y con texto
+ * escrito el ask + el contexto rotulado.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -17,6 +19,7 @@ import type { CoachOutcome } from '@/state/coach';
 import { ICONS } from '@/ui/icons';
 import {
   QUICK_ACTIONS,
+  chipText,
   creationButtons,
   creationSummary,
   resultLine,
@@ -97,6 +100,28 @@ describe('chips rápidos (v1 `coach:quick`)', () => {
     const jumps = QUICK_ACTIONS.filter((a) => a.jump);
     expect(jumps.map((a) => a.label)).toEqual(['Sugerir entreno']);
     expect(jumps[0]?.jump).toEqual({ tab: 'hoy', toast: 'Sesión lista en la pestaña Hoy' });
+  });
+});
+
+describe('chip con contexto de la caja (`chipText`)', () => {
+  it('caja vacía → el chip manda su `ask` EXACTO (paridad con la v1)', () => {
+    for (const action of QUICK_ACTIONS) {
+      expect(chipText(action.ask, ''), action.label).toBe(action.ask);
+      expect(chipText(action.ask, '   \n\t '), action.label).toBe(action.ask);
+    }
+  });
+
+  it('caja con texto → el `ask` arriba y el contexto debajo, rotulado', () => {
+    const ask = 'Genera el entreno de hoy para mí.';
+    expect(chipText(ask, 'solo empuje, y nada de press banca')).toBe(
+      `${ask}\n\nContexto adicional: solo empuje, y nada de press banca`,
+    );
+  });
+
+  it('el contexto se recorta (sin espacios ni saltos de sobra) y no se pisa el `ask`', () => {
+    expect(chipText('ask literal', '  hola  \n')).toBe('ask literal\n\nContexto adicional: hola');
+    /* el ask nunca se toca: los tests de QUICK_ACTIONS siguen viendo el literal */
+    expect(chipText('ask literal', 'hola').startsWith('ask literal')).toBe(true);
   });
 });
 

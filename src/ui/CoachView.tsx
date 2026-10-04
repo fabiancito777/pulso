@@ -18,6 +18,11 @@
  *   `coach:test` de la v1) y deja ms/ok en la propia tarjeta. Son los mismos 6
  *   chips rápidos de `views-coach.js:30`: los tres que faltaban van a un `chat`
  *   con el prompt literal de la v1.
+ * - **Chips + caja**: al pulsar un chip, si la caja tiene texto escrito viaja
+ *   como contexto detrás del `ask` (`chipText`) y la caja se vacía; con la caja
+ *   vacía el chip manda su `ask` literal, igual que siempre. La caja libre
+ *   sigue siendo chat a pelo: NO hay heurísticas de intención (el usuario las
+ *   rechazó), solo esta unión explícita en los chips.
  * - El textarea de entrada usa `onInput` (no `change`): el borrador es estado
  *   local y Enter tiene que ver el valor ACTUAL; los campos que se PERSISTEN al
  *   confirmar —el de la memoria— también, para que el contador de caracteres
@@ -802,18 +807,33 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
   },
 ];
 
+/**
+ * Texto que manda un chip: el `ask` de siempre, y si la caja tenía algo
+ * escrito, ese texto ABAJO marcado como contexto (dos saltos de línea + la
+ * etiqueta). Con la caja vacía devuelve el `ask` SIN tocar, así que el chip se
+ * comporta exactamente como antes.
+ *
+ * Es el string que se apila en el chat como mensaje del usuario (la burbuja
+ * muestra lo que de verdad viaja) y el que `runCoachTask` recibe en `userText`.
+ */
+export function chipText(ask: string, draft: string): string {
+  const context = draft.trim();
+  return context ? `${ask}\n\nContexto adicional: ${context}` : ask;
+}
+
 /* ---------- la vista ---------- */
 
 /**
  * Opciones de `runCoachTask` para UN turno de la vista.
  *
- * La pregunta viaja SIEMPRE en `userText`: es lo único que hace `buildRequest`
- * con `question`, y sin ella el prompt sale vacío — el modelo contesta a ciegas
- * y, con historial, la API devuelve **HTTP 400 «Requests ending with a model
- * turn are not supported»** (el turno de usuario final venía vacío y el último
- * turno de verdad era el del modelo). El historial solo se lo pasa el chat, y
- * llega ya calculado con `promptHistory()`: `buildRequest` añade el turno actual
- * por su cuenta, meterlo dos veces duplicaría la pregunta.
+ * La pregunta viaja SIEMPRE en `userText`: en `chat` es el prompt entero (y el
+ * prompt vacío hace que la API devuelva **HTTP 400 «Requests ending with a
+ * model turn are not supported»**, porque el último turno de verdad sería el
+ * del modelo); en el resto de tareas `buildRequest` la añade al prompt como
+ * «Petición del usuario: …», que es por donde los chips mandan el texto de la
+ * caja como contexto. El historial solo se lo pasa el chat, y llega ya
+ * calculado con `promptHistory()`: `buildRequest` añade el turno actual por su
+ * cuenta, meterlo dos veces duplicaría la pregunta.
  */
 export function turnOpts(task: CoachTask, text: string, history: ChatMsg[]): CoachTaskOpts {
   return task === 'chat' ? { userText: text, history } : { userText: text };
@@ -1048,8 +1068,13 @@ export function CoachView() {
               type="button"
               class="chip"
               disabled={busy}
+              /* micro-pista sin CSS: si la caja tiene texto, el chip lo manda
+                 junto a su pregunta en vez de ignorarlo */
+              title={draft.trim() ? 'Tu texto se enviará como contexto' : undefined}
               onClick={() => {
-                void run(action.task, action.ask, action.jump);
+                const text = chipText(action.ask, draft);
+                if (draft.trim()) setDraft(''); /* ya se envió: la caja queda vacía */
+                void run(action.task, text, action.jump);
               }}
             >
               <Icon name={action.icon} />

@@ -177,6 +177,34 @@ describe('buildRequest', () => {
     expect(prompt).toContain('48 h');
   });
 
+  it('suggest y plan meten la petición del usuario ROTULADA sin tocar sus reglas de JSON', () => {
+    const req = buildRequest('suggest', { question: 'solo empuje, nada de press banca' });
+    expect(req.json).toBe(true);
+    expect(req.prompt).toContain('Petición del usuario: solo empuje, nada de press banca');
+    expect(req.prompt).toContain('"exercises"');
+    expect(req.prompt).toContain('1 bloque de core');
+
+    const plan = buildRequest('plan', {
+      from: '2026-09-21',
+      to: '2026-09-27',
+      question: '4 días y descanso el viernes',
+    });
+    expect(plan.json).toBe(true);
+    expect(plan.prompt).toContain('Petición del usuario: 4 días y descanso el viernes');
+    expect(plan.prompt).toContain('del 2026-09-21 al 2026-09-27');
+    expect(plan.prompt).toContain('48 h');
+  });
+
+  it('la petición es OPCIONAL: sin question no hay etiqueta, con espacios en blanco tampoco', () => {
+    expect(buildRequest('suggest').prompt).not.toContain('Petición del usuario');
+    expect(buildRequest('plan', { from: '2026-09-21', to: '2026-09-27' }).prompt).not.toContain(
+      'Petición del usuario',
+    );
+    expect(buildRequest('suggest', { question: '   ' }).prompt).not.toContain(
+      'Petición del usuario',
+    );
+  });
+
   it('analyze pide markdown corto y no JSON', () => {
     const req = buildRequest('analyze', {
       weeks: 6,

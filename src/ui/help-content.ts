@@ -552,6 +552,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Son preguntas de un clic. El coach ya conoce tu historial, tu plan y tu volumen, así que solo eliges qué quieres que haga.',
       '«Sugerir entreno» deja la propuesta en la pestaña Hoy, «Romper un récord» te dice cómo atacar tu mejor marca y «Revisar volumen» mira si entrenas demasiado o muy poco.',
+      'Si has escrito algo en la caja de la conversación antes de pulsar, ese texto viaja con la acción como contexto (para concretar más) y la caja se queda vacía. Con la caja vacía el chip manda su pregunta de siempre.',
     ],
     see: ['coach.what', 'coach.sees', 'tab.coach'],
   },
