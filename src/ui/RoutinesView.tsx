@@ -29,6 +29,7 @@ import { findTemplate } from '@/domain/plan';
 import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
+import { promptHistory } from '@/state/chat';
 import { applySuggestionAsRoutine, hasApiKey, runCoachTask } from '@/state/coach';
 import { addRoutineToSession, startFromRoutine } from '@/state/session';
 import {
@@ -896,7 +897,9 @@ export function RoutinesView() {
     setAiLoading(true);
     setProposal(null);
     try {
-      const outcome = await runCoachTask('suggest');
+      /* transcript del chat como `contents`: la propuesta se apoya en lo que el
+         usuario pidió y pegó antes (P1), igual que en Hoy y en el coach */
+      const outcome = await runCoachTask('suggest', { history: promptHistory() });
       const parsed = toSuggestion(parseJSON<unknown>(outcome.text), library);
       if (!parsed) {
         setNotice({

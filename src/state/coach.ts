@@ -35,10 +35,11 @@
  *   ni tire el aviso «IA no disponible» al reescribir el texto con el rationale
  *   (era el bug P2 del diagnóstico `_specs/chat-coach-diagnostico.md`).
  * - **Historial de la conversación**: `opts.history` viaja en las CUATRO
- *   tareas — en `chat` como `contents` de Gemini y en `suggest`/`plan`/
- *   `analyze` como bloque `CONVERSACIÓN PREVIA` dentro del prompt (acotado en
- *   `prompts.ts`). Antes solo lo recibía `chat`, así que «ten en cuenta los
- *   récords que te pasé antes» era imposible desde el chip (P1).
+ *   tareas como `contents` de Gemini (`buildRequest` lo acota a 12 turnos en
+ *   `chat` y 6 en el resto, y `client.buildBody` lo normaliza). Antes solo lo
+ *   recibía `chat`, así que «ten en cuenta los récords que te pasé antes» era
+ *   imposible desde el chip (P1); después se metía como bloque de texto DENTRO
+ *   del prompt, que era más caro y se leía como una instrucción más.
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
@@ -48,7 +49,7 @@ import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
-import { norm } from '@/domain/text';
+import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
 import { GeminiError, generate } from '@/features/coach/client';
 import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
@@ -59,7 +60,13 @@ import { localSuggest, localWeek, summarizeLocal } from '@/features/coach/local'
 import type { LocalParams, PlanJSON, SuggestJSON } from '@/features/coach/local';
 import { applyMemoryEntries } from '@/features/coach/memory';
 import { extractBlocks, extractCreations, parseJSON, payloadItems } from '@/features/coach/parse';
-import { buildRequest } from '@/features/coach/prompts';
+import {
+  boundedHistory,
+  buildRequest,
+  CHAT_HISTORY_LIMIT,
+  HISTORY_MODEL_LIMIT,
+  PROMPT_HISTORY_LIMIT,
+} from '@/features/coach/prompts';
 import type { BuildRequestOpts, CoachRequest, CoachTask } from '@/features/coach/types';
 import {
   addRoutine,
@@ -88,17 +95,17 @@ export interface CoachDeps {
 /** Opciones de una tarea del coach. */
 export interface CoachTaskOpts {
   /**
-   * pregunta del usuario, SIEMPRE: en `chat` es el prompt entero (y
-   * `buildRequest` lo convierte en el turno final del historial), en el resto
-   * es contexto adicional que el prompt añade con la etiqueta
-   * «Petición del usuario». De ahí los chips con la caja rellena.
+   * pregunta del usuario, SIEMPRE: en `chat` es el prompt entero, en el resto
+   * es la cola del prompt (en crudo, sin etiqueta). De ahí los chips con la
+   * caja rellena.
    */
   userText?: string;
   /**
-   * historial previo del chat, en las CUATRO tareas: en `chat` viaja como
-   * `contents` de Gemini (últimos 12 mensajes) y en el resto como bloque
-   * `CONVERSACIÓN PREVIA` dentro del prompt (acotado), para que «los récords
-   * que te pasé antes» se cumpla también al pedir un entreno con el chip.
+   * historial previo del chat, en las CUATRO tareas: viaja como `contents` de
+   * Gemini (12 turnos en `chat`, 6 en el resto), acotado en `buildRequest`, y
+   * se calcula ANTES de apilar este turno para que no salga duplicado. Así
+   * «los récords que te pasé antes» se cumple también al pedir un entreno con
+   * el chip.
    */
   history?: ChatMsg[];
   /** sesiones del HISTORIAL; si falta manda el tope de la tarea (8/10/12/16) */
@@ -187,6 +194,15 @@ const QUERY_ALIAS: Record<string, keyof HistoryQuery> = {
 
 /** Semanas del análisis (el mismo tope que la v1). */
 const ANALYZE_WEEKS = 6;
+
+/**
+ * Tope de salida en las tareas de JSON (`suggest`/`plan`), sea cual sea el
+ * `settings.ai.maxTokens` del usuario: un plan de 7 días × 6 ejercicios es un
+ * JSON de kB y con los 4096 por defecto se llega al borde (finish `MAX_TOKENS`
+ * = payload corto = `parse` devuelve null y se cae al plan local). No es más
+ * gasto, solo es el TECHO: lo que no se usa no se factura.
+ */
+const JSON_TASK_MAX_TOKENS = 8192;
 
 /**
  * Aviso cuando no hay API key y la tarea no tiene plan local. Corto y amable,
@@ -388,6 +404,9 @@ export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
   if (THINKING_LEVELS.includes(ai.thinkingLevel)) {
     opts.thinkingLevel = ai.thinkingLevel as GenOpts['thinkingLevel'];
   }
+  /* El esquema viaja con las tareas JSON (`suggest`/`plan`): `client.buildBody`
+     solo lo manda si además se pide `responseMimeType: application/json` */
+  if (req.json && req.responseSchema) opts.responseSchema = req.responseSchema;
   const budget = String(ai.thinkingBudget ?? '').trim();
   if (budget) opts.thinkingBudget = int(budget, -1);
   if (ai.includeThoughts) opts.includeThoughts = true;
@@ -548,12 +567,13 @@ export async function runCoachTask(
     daysPerWeek: st.daysPerWeek,
   };
   /* La pregunta viaja en TODAS las tareas (antes solo en chat/analyze, y así el
-     `ask` de los chips de acción rápida se perdía en suggest/plan). En chat no
-     se mete además en `history`: `buildRequest` la usa como prompt, que es el
-     turno final del historial — duplicarla daría el mismo mensaje dos veces.
-     El historial previo viaja TAMBIÉN en las cuatro tareas: en chat como
-     `contents` de Gemini y en el resto como bloque `CONVERSACIÓN PREVIA` dentro
-     del prompt (se recorta ahí, no aquí). */
+     `ask` de los chips de acción rápida se perdía en suggest/plan): en chat es
+     el prompt entero y en el resto cierra el prompt, en crudo y sin etiqueta.
+     NO se mete además en `history`: `buildRequest` la pone en el prompt, que es
+     el turno final — duplicarla daría el mismo mensaje dos veces.
+     El historial previo viaja TAMBIÉN en las cuatro tareas, ya acotado por
+     `buildRequest` (12 turnos en chat, 6 en el resto) y como `contents` de
+     Gemini en todas. */
   reqOpts.question = opts.userText ?? '';
   reqOpts.history = opts.history ?? [];
   if (task === 'plan') {
@@ -566,6 +586,11 @@ export async function runCoachTask(
   }
   const req = buildRequest(task, reqOpts);
   const base = aiGenOptions(ai, req);
+  /* El tope de Ajustes manda en chat/analyze; en suggest/plan (JSON largo) no
+     puede bajar del mínimo — el `?? 4096` es el default de `aiGenOptions` */
+  if (task === 'suggest' || task === 'plan') {
+    base.maxOutputTokens = Math.max(base.maxOutputTokens ?? 4096, JSON_TASK_MAX_TOKENS);
+  }
 
   /* 3 · llamada (sin key no se llega aquí; el fallo de la PRIMERA llamada en
      suggest/plan se resuelve con el plan local, ver cabecera del módulo) */
@@ -573,12 +598,18 @@ export async function runCoachTask(
   const consultable = task === 'chat' || task === 'analyze';
   const rounds = consultable ? Math.max(0, int(opts.consultRounds ?? 1, 1)) : 0;
   const consulted: string[] = [];
+  /* tope de turnos de ESTA tarea (el mismo que ya aplicó `buildRequest`) y
+     turnos que AÑADE el bucle de consulta, aparte, para poder reservarles sitio
+     en cada vuelta (ver más abajo) */
+  const limit = task === 'chat' ? CHAT_HISTORY_LIMIT : PROMPT_HISTORY_LIMIT;
+  let kept: ChatMsg[] = req.history ?? [];
+  const extra: ChatMsg[] = [];
 
   let prompt = req.prompt;
-  let history: ChatMsg[] | undefined = req.history;
+  let history: ChatMsg[] = kept;
   let res: GenResult;
   try {
-    res = await genFn({ ...base, ...(history?.length ? { history } : {}) });
+    res = await genFn({ ...base, ...(history.length ? { history } : {}) });
   } catch (err) {
     if (isLocalTask(task) && isFallbackError(err)) {
       return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0, err);
@@ -587,7 +618,11 @@ export async function runCoachTask(
   }
   let text: string;
 
-  /* 4 · bucle de consulta: el MISMO system, historial acumulado */
+  /* 4 · bucle de consulta: el MISMO system y el historial ACOTADO al tope de la
+     tarea. Cada vuelta reserva 2 huecos para sus turnos nuevos: sin ese ajuste
+     la 2ª llamada salía con 14 mensajes cuando el chat admite 12, y la API la
+     habría rechazado (o, peor, el modelo habría leído el doble de conversación
+     de la que le habíamos dicho que recordara). */
   for (let round = 0; ; round++) {
     const { rest, blocks } = extractBlocks(res.text, 'consulta');
     if (!blocks.length || round >= rounds) {
@@ -608,11 +643,16 @@ export async function runCoachTask(
       break;
     }
     const message = `DATOS DE LA CONSULTA:\n${answers.join('\n\n')}\n\nContinúa con tu respuesta.`;
-    history = [
-      ...(history ?? []),
+    kept = boundedHistory(kept, Math.max(0, limit - extra.length - 2));
+    /* El turno del usuario entra SIN recortar: es la petición completa (en
+       `analyze` trae además las instrucciones de formato), y recortarla dejaría
+       la 2ª llamada sin las reglas. La respuesta del modelo sí se acota: solo
+       aporta lo que pidió, no su prosa entera. */
+    extra.push(
       { role: 'user', text: prompt },
-      { role: 'model', text: res.text },
-    ];
+      { role: 'model', text: trunc(res.text, HISTORY_MODEL_LIMIT) },
+    );
+    history = [...kept, ...extra];
     prompt = message;
     res = await genFn({ ...base, prompt, history });
   }

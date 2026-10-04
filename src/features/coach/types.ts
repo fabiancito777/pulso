@@ -215,7 +215,7 @@ export interface BuildRequestOpts {
   create?: boolean;
   /**
    * mensaje del usuario: en `chat` es el prompt entero; en las demás tareas es
-   * contexto adicional («Petición del usuario: …») — los chips con la caja
+   * la COLA del prompt (en crudo y sin etiqueta) — los chips con la caja
    * rellena mandan su `ask` + lo que había escrito por aquí
    */
   question?: string;
@@ -234,10 +234,9 @@ export interface BuildRequestOpts {
   from?: string;
   to?: string;
   /**
-   * historial previo del chat: en `chat` se recorta a los últimos 12 mensajes y
-   * viaja como `contents` de Gemini; en las demás tareas se inyecta en el
-   * prompt como bloque `CONVERSACIÓN PREVIA` (acotado) para que el modelo vea
-   * lo que el usuario pidió y pegó en turnos anteriores
+   * historial previo del chat: en las CUATRO tareas se recorta con
+   * `boundedHistory` (12 turnos en `chat`, 6 en el resto) y viaja como
+   * `contents` de Gemini
    */
   history?: readonly ChatMessage[];
 }
@@ -247,5 +246,29 @@ export interface CoachRequest {
   prompt: string;
   /** true = la respuesta viene en JSON (`responseMimeType: application/json`) */
   json: boolean;
+  /**
+   * Forma exigida a esa respuesta (`generationConfig.responseSchema`), solo en
+   * las tareas puramente JSON (`suggest`/`plan`): con el schema el modelo no
+   * puede soltar prosa ni bloques de memoria alrededor, así que el payload sale
+   * parseable sin depender del tolerante de `parse.ts`
+   */
+  responseSchema?: ResponseSchema;
+  /** historial ya acotado, listo para `GenOpts.history` (`contents` de Gemini) */
   history?: ChatMessage[];
+}
+
+/**
+ * Subconjunto OpenAPI que la API acepta en `generationConfig.responseSchema`
+ * (types en MAYÚSCULAS, `properties`/`items`/`required`/`description`).
+ *
+ * Solo cubre lo que los esquemas de `schema.ts` usan: el `additionalProperties`
+ * o `format` están fuera del subconjunto documentado por Google y harían fallar
+ * la llamada entera con 400 INVALID_ARGUMENT.
+ */
+export interface ResponseSchema {
+  type?: 'OBJECT' | 'ARRAY' | 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN';
+  description?: string;
+  properties?: Record<string, ResponseSchema>;
+  items?: ResponseSchema;
+  required?: string[];
 }

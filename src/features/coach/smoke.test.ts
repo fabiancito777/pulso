@@ -96,6 +96,10 @@ async function callBrain(req: CoachRequest): Promise<GenResult> {
     system: req.system,
     prompt: req.prompt,
     json: req.json,
+    /* Se reenvía el esquema de `suggest`/`plan`: si no, el smoke probaría otra
+       petición que la de verdad y el 400 de un schema mal formado pasaría
+       desapercibido hasta en producción */
+    ...(req.responseSchema ? { responseSchema: req.responseSchema } : {}),
     thinkingLevel: 'low',
   };
   if (req.history?.length) opts.history = req.history;

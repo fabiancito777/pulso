@@ -40,6 +40,7 @@ import { unitLabel } from '@/domain/units';
 import type { Session } from '@/domain/types';
 import { localSuggest } from '@/features/coach/local';
 import { parseJSON } from '@/features/coach/parse';
+import { promptHistory } from '@/state/chat';
 import { applySuggestionAsRoutine, hasApiKey, runCoachTask } from '@/state/coach';
 import {
   active,
@@ -830,7 +831,10 @@ export function HoyView() {
     }
     setAiLoading(true);
     try {
-      const outcome = await runCoachTask('suggest');
+      /* El transcript del chat viaja como `contents`: «mejorar con IA» parte de
+         lo que el usuario pidió y pegó en turnos anteriores (P1), igual que los
+         chips de la vista del coach. */
+      const outcome = await runCoachTask('suggest', { history: promptHistory() });
       /* `payload` viene ya parseado del coach; el texto es la red de seguridad
          (si el modelo devolvió el JSON embebido en ```consulta`). */
       let payload: unknown = outcome.payload;

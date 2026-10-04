@@ -22,6 +22,8 @@ import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
 import type { GenOpts, GenResult } from '@/features/coach/client';
 import { queryHistory } from '@/features/coach/history';
+import { HISTORY_MODEL_LIMIT } from '@/features/coach/prompts';
+import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from '@/features/coach/schema';
 import type { Routine } from './store';
 
 const mem = new Map<string, string>();
@@ -144,6 +146,8 @@ describe('runCoachTask', () => {
     expect(arg?.apiKey).toBe('test-key');
     expect(arg?.model).toBe('gemini-3.8-flash');
     expect(arg?.json).toBe(false);
+    /* sin esquema: la conversación libre no tiene forma cerrada */
+    expect(arg?.responseSchema).toBeUndefined();
     expect(arg?.prompt).toBe('¿cómo voy?');
     expect(arg?.system).toContain('Eres Pulso Coach');
     expect(arg?.system).toContain('CONTEXTO DEL USUARIO');
@@ -161,8 +165,34 @@ describe('runCoachTask', () => {
 
     const arg = gen.mock.calls[0]?.[0];
     expect(arg?.json).toBe(true);
+    expect(arg?.responseSchema).toBe(SUGGEST_RESPONSE_SCHEMA);
     expect(arg?.system).toContain('DÍA DE HOY');
     expect(arg?.system).not.toContain('CONSULTA');
+  });
+
+  it('P5: suggest/plan no bajan de 8192 tokens de salida, chat respeta el ajuste', async () => {
+    const gen = makeGen([
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+      res('{"rationale":"x","days":[]}'),
+      res('ok'),
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+    ]);
+    const conMax = (maxTokens: number): void => {
+      store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: 'test-key', maxTokens } });
+    };
+
+    conMax(2048);
+    await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    expect(gen.mock.calls[0]?.[0].maxOutputTokens).toBe(8192);
+    await coach.runCoachTask('plan', {}, { generateFn: gen });
+    expect(gen.mock.calls[1]?.[0].maxOutputTokens).toBe(8192);
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(gen.mock.calls[2]?.[0].maxOutputTokens).toBe(2048);
+
+    /* un tope del usuario MÁS ALTO se respeta: el mínimo nunca lo recorta */
+    conMax(32768);
+    await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    expect(gen.mock.calls[3]?.[0].maxOutputTokens).toBe(32768);
   });
 
   it('la petición del usuario llega al prompt en suggest y plan (chips con contexto)', async () => {
@@ -175,8 +205,10 @@ describe('runCoachTask', () => {
     await coach.runCoachTask('suggest', { userText: contexto }, { generateFn: gen });
     const enSuggest = gen.mock.calls[0]?.[0];
     expect(enSuggest?.json).toBe(true);
-    expect(enSuggest?.prompt).toContain('Petición del usuario: Genera el entreno de hoy para mí.');
-    expect(enSuggest?.prompt).toContain('Contexto adicional: solo empuje');
+    /* en crudo y al final: la última cosa que lee el modelo es lo que se pide */
+    expect(enSuggest?.prompt).toContain(contexto);
+    expect(enSuggest?.prompt.trimEnd().endsWith('Contexto adicional: solo empuje')).toBe(true);
+    expect(enSuggest?.prompt).not.toContain('Petición del usuario');
 
     await coach.runCoachTask(
       'plan',
@@ -185,12 +217,14 @@ describe('runCoachTask', () => {
         generateFn: gen,
       },
     );
-    expect(gen.mock.calls[1]?.[0].prompt).toContain(
-      'Petición del usuario: Planifica mi semana de entrenamiento.',
-    );
+    expect(
+      gen.mock.calls[1]?.[0].prompt.trimEnd().endsWith('Planifica mi semana de entrenamiento.'),
+    ).toBe(true);
+    expect(gen.mock.calls[1]?.[0].prompt).not.toContain('Petición del usuario');
+    expect(gen.mock.calls[1]?.[0].responseSchema).toBe(PLAN_RESPONSE_SCHEMA);
   });
 
-  it('P1: el transcript anterior viaja en suggest/plan y como contents en chat', async () => {
+  it('P1: el transcript anterior viaja como contents en suggest/plan/chat', async () => {
     const RECORDS = 'Encogimientos (Shrugs con barra) 43.5kg · Remo con Barra 38.5kg';
     const history: GenOpts['history'] = [
       {
@@ -205,22 +239,25 @@ describe('runCoachTask', () => {
       res('Aquí tienes.'),
     ]);
 
-    /* suggest: los récords de un turno anterior deben estar en el prompt */
+    /* suggest: los récords de un turno anterior viajan en `history`, no en el prompt */
     await coach.runCoachTask(
       'suggest',
       { userText: 'dame una nueva, corta, que son las 10 de la noche', history },
       { generateFn: gen },
     );
     const enSuggest = gen.mock.calls[0]?.[0];
-    expect(enSuggest?.prompt).toContain('CONVERSACIÓN PREVIA');
-    expect(enSuggest?.prompt).toContain(RECORDS);
-    expect(enSuggest?.prompt).toContain('Petición del usuario: dame una nueva, corta');
-    expect(enSuggest?.history).toBeUndefined(); /* el bloque es texto, no contents */
+    expect(enSuggest?.prompt).not.toContain('CONVERSACIÓN PREVIA');
+    expect(enSuggest?.prompt).not.toContain(RECORDS);
+    expect(enSuggest?.prompt.trimEnd().endsWith('que son las 10 de la noche')).toBe(true);
+    expect(enSuggest?.history?.map((m) => m.role)).toEqual(['user', 'model']);
+    expect(enSuggest?.history?.[0]?.text).toContain(RECORDS);
 
     /* plan: ídem */
     await coach.runCoachTask('plan', { userText: '¿y la semana?', history }, { generateFn: gen });
-    expect(gen.mock.calls[1]?.[0].prompt).toContain('CONVERSACIÓN PREVIA');
-    expect(gen.mock.calls[1]?.[0].prompt).toContain(RECORDS);
+    const enPlan = gen.mock.calls[1]?.[0];
+    expect(enPlan?.prompt).not.toContain('CONVERSACIÓN PREVIA');
+    expect(enPlan?.prompt).not.toContain(RECORDS);
+    expect(enPlan?.history?.[0]?.text).toContain(RECORDS);
 
     /* chat: sigue siendo historial de Gemini, con el turno actual como prompt */
     await coach.runCoachTask('chat', { userText: '¿cómo voy?', history }, { generateFn: gen });
@@ -230,20 +267,33 @@ describe('runCoachTask', () => {
     expect(enChat?.history?.[0]?.text).toContain(RECORDS);
   });
 
-  it('sin historial no se cuela la cabecera de conversación previa', async () => {
-    const gen = makeGen([res('{"title":"x","focus":"","rationale":[],"exercises":[]}')]);
+  it('sin historial las cuatro tareas mandan el campo `history` vacío', async () => {
+    const gen = makeGen([
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+      res('{"rationale":"x","days":[]}'),
+      res('ok'),
+      res('ok'),
+    ]);
 
     await coach.runCoachTask('suggest', { userText: 'hola' }, { generateFn: gen });
+    await coach.runCoachTask('plan', { userText: 'hola' }, { generateFn: gen });
+    await coach.runCoachTask('analyze', { userText: 'hola' }, { generateFn: gen });
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
 
-    expect(gen.mock.calls[0]?.[0].prompt).not.toContain('CONVERSACIÓN PREVIA');
+    for (const call of gen.mock.calls) {
+      expect(call[0].prompt).not.toContain('CONVERSACIÓN PREVIA');
+      expect(call[0].history ?? []).toEqual([]);
+    }
   });
 
-  it('sin userText la etiqueta de petición no aparece (nada de ruido en los prompts)', async () => {
+  it('sin userText el prompt cierra con las reglas, sin cola de petición', async () => {
     const gen = makeGen([res('{"title":"x","focus":"","rationale":[],"exercises":[]}')]);
 
     await coach.runCoachTask('suggest', {}, { generateFn: gen });
 
-    expect(gen.mock.calls[0]?.[0].prompt).not.toContain('Petición del usuario');
+    const prompt = gen.mock.calls[0]?.[0].prompt;
+    expect(prompt).not.toContain('Petición del usuario');
+    expect(prompt.endsWith('60-75 s).')).toBe(true);
   });
 
   it('bloque ```consulta``` → queryHistory y 2ª llamada con el MISMO system', async () => {
@@ -283,6 +333,65 @@ describe('runCoachTask', () => {
     expect(out.consulted).toEqual([NOMBRE]);
     expect(out.text).toContain('Con esos datos');
     expect(out.text).not.toContain('```consulta');
+  });
+
+  it('P6: el bucle de consulta respeta el tope de turnos y acota lo que añade', async () => {
+    seedSessions([SESION]);
+    /* 20 turnos de historial: `buildRequest` deja los 12 más recientes y el
+       bucle tiene que MANTENER ese tope en la 2ª y la 3ª llamada (antes sumaba
+       2 mensajes por vuelta y la 2ª salía con 14) */
+    const history: GenOpts['history'] = Array.from({ length: 20 }, (_, i) => {
+      const role: 'user' | 'model' = i % 2 ? 'model' : 'user';
+      return { role, text: `turno ${i}` };
+    });
+    const prosa = 'Voy a mirar tu historial. '.repeat(60); /* > HISTORY_MODEL_LIMIT */
+    const gen = makeGen([
+      res(`${prosa}\n\`\`\`consulta\n{"ejercicio":"${NOMBRE}","tipo":"full"}\n\`\`\``),
+      res(`${prosa}\n\`\`\`consulta\n{"ejercicio":"${NOMBRE}","tipo":"reciente"}\n\`\`\``),
+      res('Con esos datos: mantén 80 kg.'),
+    ]);
+
+    await coach.runCoachTask(
+      'chat',
+      { userText: '¿cómo voy?', history, consultRounds: 2 },
+      { generateFn: gen },
+    );
+
+    expect(gen).toHaveBeenCalledTimes(3);
+    expect(gen.mock.calls.map((call) => call[0].history?.length ?? 0)).toEqual([12, 12, 12]);
+    /* los turnos NUEVOS son pares petición + respuesta: el del usuario entra
+       entero (es la petición completa) y el del modelo se acota, porque su
+       prosa no aporta y el bloque ```consulta``` ya vive en `res.text` */
+    const h = gen.mock.calls[2]?.[0].history ?? [];
+    expect(h.filter((m) => m.role === 'user').map((m) => m.text)).toContain('¿cómo voy?');
+    expect(h.some((m) => m.text.startsWith('DATOS DE LA CONSULTA'))).toBe(true);
+    expect(
+      h.filter((m) => m.role === 'model').every((m) => m.text.length <= HISTORY_MODEL_LIMIT),
+    ).toBe(true);
+    /* se pierden los turnos MÁS ANTIGUOS, nunca los recientes */
+    expect(gen.mock.calls[0]?.[0].history?.[0]?.text).toBe('turno 8');
+    expect(gen.mock.calls[0]?.[0].history?.[11]?.text).toBe('turno 19');
+  });
+
+  it('P6: el turno del usuario del bucle entra SIN recortar (es la petición completa)', async () => {
+    seedSessions([SESION]);
+    const pregunta = 'x'.repeat(1200); /* por encima de HISTORY_USER_LIMIT */
+    const gen = makeGen([
+      res('Miro tu historial.\n```consulta\n{"ejercicio":"' + NOMBRE + '"}\n```'),
+      res('Hecho.'),
+    ]);
+
+    await coach.runCoachTask('analyze', { userText: pregunta }, { generateFn: gen });
+
+    expect(gen).toHaveBeenCalledTimes(2);
+    const historia = gen.mock.calls[1]?.[0].history ?? [];
+    expect(historia.length).toBeLessThanOrEqual(6);
+    expect(
+      historia
+        .filter((m) => m.role === 'user')
+        .map((m) => m.text)
+        .join('\n'),
+    ).toContain(pregunta);
   });
 
   it('bloque ```memoria``` → se persiste en settings.ai.memory y sale del texto', async () => {
@@ -397,6 +506,25 @@ describe('runCoachTask', () => {
       expect(out.fallback).toEqual({ kind, message: `se cayó ${kind}` });
       expect(out.usage).toBeUndefined(); /* sin tokens: no hubo llamada buena */
     }
+  });
+
+  it('P6: un 429 diario cae al plan local con el motivo visible, sin reintentar', async () => {
+    const gen = makeFailing(
+      new GeminiError(
+        'quota',
+        'Cuota diaria de Gemini agotada: Quota exceeded for GenerateRequestsPerDayPerProject',
+        429,
+        true,
+      ),
+    );
+    const out = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+    expect(gen).toHaveBeenCalledTimes(1);
+    expect(out.origin).toBe('local');
+    expect(out.payload).toBeTruthy();
+    expect(out.fallback?.kind).toBe('quota');
+    expect(out.fallback?.message).toContain('Cuota diaria de Gemini agotada');
+    expect(out.text).toContain('IA no disponible');
   });
 
   it('P2: una respuesta de la IA queda marcada como `model`, sin `fallback`', async () => {

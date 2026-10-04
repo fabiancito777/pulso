@@ -23,10 +23,10 @@
  *   vacía el chip manda su `ask` literal, igual que siempre. La caja libre
  *   sigue siendo chat a pelo: NO hay heurísticas de intención (el usuario las
  *   rechazó), solo esta unión explícita en los chips.
- * - **Historial en TODAS las tareas** (`promptHistory()` → `turnOpts`): en chat
- *   va como `contents` de Gemini y en `suggest`/`plan`/`analyze` como bloque
- *   `CONVERSACIÓN PREVIA` en el prompt, así los récords que el usuario pegó en
- *   turnos anteriores siguen disponibles al pedir un entreno con el chip.
+ * - **Historial en TODAS las tareas** (`promptHistory()` → `turnOpts`): viaja
+ *   como `contents` de Gemini (12 turnos en chat, 6 en el resto), así los
+ *   récords que el usuario pegó en turnos anteriores siguen disponibles al
+ *   pedir un entreno con el chip (P1).
  * - **Fallback local visible** (`origin`/`fallback` del `CoachOutcome`): una
  *   propuesta del planificador del dispositivo se firma «Plan local (sin IA)»
  *   y lleva el motivo arriba en el texto; nunca «Coach IA».
@@ -869,13 +869,13 @@ export function chipText(ask: string, draft: string): string {
  * La pregunta viaja SIEMPRE en `userText`: en `chat` es el prompt entero (y el
  * prompt vacío hace que la API devuelva **HTTP 400 «Requests ending with a
  * model turn are not supported»**, porque el último turno de verdad sería el
- * del modelo); en el resto de tareas `buildRequest` la añade al prompt como
- * «Petición del usuario: …», que es por donde los chips mandan el texto de la
- * caja como contexto. El historial viaja en las CUATRO tareas (se calcula con
- * `promptHistory()`): en `chat` como `contents` de Gemini y en el resto como
- * bloque `CONVERSACIÓN PREVIA` dentro del prompt, que es lo que permite que el
- * modelo vea los récords y las peticiones de turnos anteriores (P1). Llega ya
- * calculado porque `buildRequest` añade el turno actual por su cuenta.
+ * del modelo); en el resto de tareas `buildRequest` la deja como cola del
+ * prompt, en crudo, que es por donde los chips mandan el texto de la caja como
+ * contexto. El historial viaja en las CUATRO tareas como `contents` de Gemini
+ * (se calcula con `promptHistory()` y se acota en `buildRequest`), lo que
+ * permite que el modelo vea los récords y las peticiones de turnos anteriores
+ * (P1). Llega ya calculado porque `buildRequest` añade el turno actual por su
+ * cuenta.
  */
 export function turnOpts(text: string, history: ChatMsg[]): CoachTaskOpts {
   return { userText: text, history };
@@ -941,9 +941,8 @@ export function CoachView() {
 
     /* El historial se calcula ANTES de apilar la pregunta: `buildRequest` añade
        el turno actual por su cuenta y con él dentro saldría duplicado. Viaja en
-       las cuatro tareas (en chat como `contents`, en el resto como bloque
-       `CONVERSACIÓN PREVIA`): si no, «los récords que te pasé antes» se perdía
-       al pedir un entreno con el chip (P1). */
+       las cuatro tareas como `contents` de Gemini: si no, «los récords que te
+       pasé antes» se perdía al pedir un entreno con el chip (P1). */
     const history = promptHistory();
     setBusy(true);
     addChat({ role: 'user', text, ts: nowTs() });

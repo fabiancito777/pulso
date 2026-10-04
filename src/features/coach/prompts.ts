@@ -5,17 +5,22 @@
  *
  * La semántica es la misma que en la v1:
  *
- * - `suggest` y `plan` piden JSON (eso se traduce en
- *   `responseMimeType: application/json` en `client.ts`);
+ * - `suggest` y `plan` piden JSON: eso se traduce en
+ *   `responseMimeType: application/json` + `responseSchema` en `client.ts`, de
+ *   modo que la respuesta sale con la forma fijada por `schema.ts` y no por la
+ *   prosa del modelo (por eso mismo estos dos prompts ya no llevan el ejemplo
+ *   JSON de la v1: la forma vive en un solo sitio);
  * - `analyze` pide markdown de ≤ 400 palabras;
- * - `chat` se lleva los últimos 12 mensajes del historial (como `contents` de
- *   Gemini, que es lo único que va por ahí: el resto de tareas lo mete DENTRO
- *   del prompt como bloque `CONVERSACIÓN PREVIA`, acotado, para que «los
- *   récords que te pasé antes» se cumpla también al pedir un entreno con el
- *   chip);
+ * - **el historial de conversación viaja como `contents` en las CUATRO tareas**
+ *   (campo `history` de la petición, que `client.ts` convierte en `contents`),
+ *   acotado por turno y por número de turnos (`boundedHistory`). En la v1 el
+ *   transcript de `suggest`/`plan`/`analyze` se metía DENTRO del prompt como
+ *   bloque `CONVERSACIÓN PREVIA`: era texto caro dentro de un prompt que ya es
+ *   grande, y encima el modelo lo leía como parte de las instrucciones;
  * - `opts.question` viaja en TODAS las tareas: en `chat` es el prompt entero y
- *   en el resto se añade al prompt como «Petición del usuario: …» (así los
- *   chips de acción rápida pueden llevar el texto de la caja como contexto);
+ *   en el resto es la COLA del prompt, en crudo y sin etiqueta, para que lo
+ *   último que vea el modelo sea lo que el usuario pide (y solo aparece UNA vez:
+ *   el historial se calcula antes de apilar ese turno);
  * - el contexto del usuario se inyecta SIEMPRE detrás de
  *   `system + "\n\nCONTEXTO DEL USUARIO:\n" + ctx`.
  */
@@ -23,7 +28,8 @@ import { AI_EXERCISE_SCHEMA } from '@/domain/ai-exercise';
 import { EXERCISE_TYPES, GROUPS, goalLabel } from '@/domain/data';
 import { int } from '@/domain/num';
 import { trunc } from '@/domain/text';
-import type { BuildRequestOpts, CoachRequest, CoachTask } from './types';
+import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from './schema';
+import type { BuildRequestOpts, ChatMessage, CoachRequest, CoachTask } from './types';
 
 /** Personalidad y reglas del coach (port literal del system de la v1). */
 export const DEFAULT_SYSTEM = [
@@ -60,48 +66,61 @@ export const MEMORY_INSTRUCTION = [
 export const CHAT_HISTORY_LIMIT = 12;
 
 /**
- * Cuántos mensajes de conversación previa entran en los prompts que NO son
- * `chat` (`suggest`, `plan`, `analyze`). Menos que los 12 del chat a propósito:
- * ahí el historial va como `contents` (tokens de entrada baratos) y aquí se
- * convierte en texto DENTRO del prompt, junto a un contexto que ya es grande.
+ * Cuántos turnos de conversación previa viajan en las tareas que NO son
+ * `chat` (`suggest`, `plan`, `analyze`). Menos que los 12 del chat a
+ * propósito: ahí el prompt ya es grande (contexto + propuesta local), y aunque
+ * estos turnos van como `contents` —que es más barato que meterlos dentro del
+ * prompt— un tope bajo obliga al modelo a mirar lo reciente.
  */
 export const PROMPT_HISTORY_LIMIT = 6;
 
 /**
- * Cuántos caracteres de cada mensaje previo se conservan en ese bloque. Los
- * turnos de `suggest`/`plan` son JSON de varios kB: recortados aportan «qué se
- * pidió y qué se propuso» sin disparar el tamaño del prompt (mismo criterio de
- * acotado que `history.ts` y `context.ts`).
+ * Cuántos caracteres de un turno del USUARIO se conservan. Los turnos de
+ * `suggest`/`plan` traen peticiones con contexto pegado (récords, material),
+ * que es justo lo que hay que recordar, pero un pegado de kB no cabe entero
+ * dentro de un tope de turnos.
  */
-export const PROMPT_HISTORY_MSG_LIMIT = 800;
+export const HISTORY_USER_LIMIT = 800;
 
 /**
- * Trozo `CONVERSACIÓN PREVIA` para `suggest`/`plan`/`analyze`.
- *
- * Es la respuesta a «ten en cuenta los récords que te pasé antes»: sin esto,
- * esas tareas solo reciben el turno ACTUAL (`opts.question`) y todo lo que el
- * usuario pegó en mensajes anteriores se perdía. El rol se rotula en
- * castellano, los saltos de línea se colapsan (el bloque es una lista) y cada
- * mensaje se recorta con `trunc`.
- *
- * Devuelve `[]` cuando no hay historial, para no dejar cabeceras vacías.
+ * Cuántos caracteres de un turno del MODELO se conservan. Sus respuestas de
+ * `suggest`/`plan` son JSON de varios kB que la vista ya guarda como `payload`
+ * y resume en su línea visible: reenviar el JSON entero solo engorda la
+ * entrada (mismo criterio de acotado que `history.ts` y `context.ts`).
  */
-export function historyPrompt(opts: BuildRequestOpts): string[] {
-  const messages = (opts.history ?? [])
-    .filter((message) => message.role === 'user' || message.role === 'model')
-    .slice(-PROMPT_HISTORY_LIMIT);
-  if (!messages.length) return [];
-  const lines = messages.map(
-    (message) =>
-      `- ${message.role === 'user' ? 'usuario' : 'coach'}: ` +
-      trunc(message.text.replace(/\s+/g, ' ').trim(), PROMPT_HISTORY_MSG_LIMIT),
-  );
-  return [
-    '',
-    'CONVERSACIÓN PREVIA (lo que ya se han dicho en este chat; los datos, ' +
-      'récords o preferencias que el usuario pegó ahí siguen en vigor):',
-    ...lines,
-  ];
+export const HISTORY_MODEL_LIMIT = 600;
+
+/**
+ * Historial recortado para viajar como `contents`: solo `user`/`model`, con los
+ * espacios colapsados, cada turno dentro de su presupuesto por rol y los
+ * últimos `turns` (los más recientes). Los turnos vacíos se descartan, así que
+ * `client.buildBody` no manda nunca `parts: ['']`.
+ *
+ * `buildRequest` lo aplica ANTES de mandar: así el tope de turnos es el mismo
+ * con o sin mensajes en blanco de por medio, y el límite por turno se fija en
+ * un sitio (este) en vez de en cada vista.
+ */
+export function boundedHistory(
+  history: readonly ChatMessage[] | undefined,
+  turns: number,
+): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const message of history ?? []) {
+    if (message.role !== 'user' && message.role !== 'model') continue;
+    const limit = message.role === 'user' ? HISTORY_USER_LIMIT : HISTORY_MODEL_LIMIT;
+    const text = trunc(
+      String(message.text ?? '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+      limit,
+    );
+    if (!text) continue;
+    out.push({ role: message.role, text });
+  }
+  const max = Math.max(0, Math.floor(turns));
+  /* `slice(-0)` sería `slice(0)` (devolvería TODO), de ahí el cálculo por la
+     cola: `out.length - 0` corta exactamente al final */
+  return out.slice(Math.max(0, out.length - max));
 }
 
 /**
@@ -147,89 +166,90 @@ export const CONSULT_INSTRUCTION = [
 ].join('\n');
 
 /**
- * La petición del usuario cuando llega rellena (la caja libre, o el `ask` de un
- * chip de acción rápida con contexto detrás). Va DESPUÉS de las reglas y ANTES
- * del bloque `local`: el JSON de salida sigue mandando, esto es solo contexto
- * adicional que el modelo puede usar para concretar («solo empuje», «sin press
- * banca»…). En `chat` no se usa: allí `question` ES el prompt entero.
+ * La petición del usuario como COLA del prompt: en crudo, sin etiqueta y al
+ * FINAL, para que lo último que lea el modelo sea lo que se le pide («solo
+ * empuje», «sin press banca»…). Aparece SOLO AQUÍ: el historial de turnos se
+ * calcula antes de apilar este turno, así que no se duplica. En `chat` no se
+ * usa: allí `question` ES el prompt entero.
  */
-function requestContext(opts: BuildRequestOpts): string[] {
+function questionTail(opts: BuildRequestOpts): string[] {
   const question = opts.question?.trim();
-  return question ? ['', `Petición del usuario: ${question}`] : [];
+  return question ? ['', question] : [];
+}
+
+/**
+ * Bloque `local` (propuesta del dispositivo) como DATOS de apertura del prompt:
+ * el modelo lo recibe primero, como contexto que puede mejorar, y después vienen
+ * las instrucciones y la petición. Cada tarea rotula el bloque a su manera
+ * (mismos textos que en la v1).
+ */
+function localHead(opts: BuildRequestOpts, label: string): string[] {
+  if (opts.local === undefined) return [];
+  return [label, JSON.stringify(opts.local), ''];
 }
 
 function suggestPrompt(opts: BuildRequestOpts): string {
   const unit = opts.unit ?? 'kg';
   const lines = [
+    ...localHead(
+      opts,
+      'Propuesta generada en el dispositivo con sus datos (puedes mejorarla o corregirla):',
+    ),
     'Genera el entrenamiento de HOY para este usuario.',
-    'Devuelve SOLO un JSON con esta forma exacta:',
-    '{"title":"titulo corto","focus":"grupos principales","rationale":["motivo 1","motivo 2"],"exercises":[{"name":"nombre EXACTO de la lista permitida","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":"breve tip"}]}',
+    'Devuelve SOLO un JSON: la forma exacta la fija el esquema de la respuesta (title, focus, rationale[] y exercises[] con name/sets/repMin/repMax/weight/rest/notes).',
     'Restricciones: entre 4 y 7 ejercicios; usa nombres de la lista de ejercicios permitidos siempre que encajen;',
     'si NINGUNO encaja con su material, puedes inventar uno: márcalo con "isNew":true en ese mismo objeto y llévale "group", "equip", "type" (y opcionalmente "unilateral"/"desc"); el resto de nombres siguen teniendo que ser de la lista;',
     `weight en ${unit} (0 si es peso corporal) y debe ser cargable con su inventario;`,
     'ordena de compuesto a aislado; incluye 1 bloque de core;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
   ];
-  lines.push(...historyPrompt(opts));
-  lines.push(...requestContext(opts));
-  if (opts.local !== undefined) {
-    lines.push(
-      '',
-      'Propuesta generada en el dispositivo con sus datos (puedes mejorarla o corregirla):',
-      JSON.stringify(opts.local),
-    );
-  }
+  lines.push(...questionTail(opts));
   return lines.join('\n');
 }
 
 function planPrompt(opts: BuildRequestOpts): string {
   const lines = [
+    ...localHead(
+      opts,
+      'Base generada en el dispositivo (revisa coherencia con el historial y mejórala si hace falta):',
+    ),
     `Planifica la semana de entrenamiento del ${opts.from ?? ''} al ${opts.to ?? ''} (7 días exactos).`,
     `Objetivo del usuario: ${goalLabel(opts.goal ?? 'hipertrofia')} | días de entreno deseados: ${int(opts.daysPerWeek, 4)}.`,
-    'Devuelve SOLO este JSON:',
-    '{"rationale":"explicación breve del reparto","days":[{"date":"YYYY-MM-DD","type":"entreno|cardio|movilidad|descanso","title":"...","focus":"...","exercises":[{"name":"nombre EXACTO","sets":4,"repMin":8,"repMax":10,"weight":40,"rest":120,"notes":""}]}]}',
+    'Devuelve SOLO un JSON: la forma exacta la fija el esquema de la respuesta (rationale y days[] con date, type, title, focus y exercises[]).',
     'Reglas: respeta exactamente las fechas; usa ejercicios permitidos y, solo si alguno no encaja con el material, inventa uno con "isNew":true + "group"/"equip"/"type" en su objeto; deja al menos 48 h antes de repetir el mismo grupo muscular;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];
-  lines.push(...historyPrompt(opts));
-  lines.push(...requestContext(opts));
-  if (opts.local !== undefined) {
-    lines.push(
-      '',
-      'Base generada en el dispositivo (revisa coherencia con el historial y mejórala si hace falta):',
-      JSON.stringify(opts.local),
-    );
-  }
+  lines.push(...questionTail(opts));
   return lines.join('\n');
 }
 
 function analyzePrompt(opts: BuildRequestOpts): string {
   const weeks = int(opts.weeks, 6);
   const lines = [
+    'Volumen por semana:',
+    opts.weeklyBrief ?? '(sin datos de semanas todavía)',
+    '',
     `Analiza mi progreso de las últimas ${weeks} semanas y dame conclusiones accionables.`,
     'Estructura en markdown con: 1) Resumen en 3 bullets, 2) Qué está funcionando, 3) Riesgos o desequilibrios, 4) 3 ajustes concretos para la próxima semana.',
     'Sé específico con números y no superes las 400 palabras.',
-    '',
-    'Volumen por semana:',
-    opts.weeklyBrief ?? '(sin datos de semanas todavía)',
   ];
-  lines.push(...historyPrompt(opts));
-  if (opts.question?.trim()) lines.push('', opts.question.trim());
+  lines.push(...questionTail(opts));
   return lines.join('\n');
 }
 
 /**
  * Monta la petición completa para una tarea: `system` (con la memoria, las
  * instrucciones de consulta y de creación y el contexto ya inyectados),
- * `prompt`, si se espera JSON (`json`) y, en el chat, los últimos 12 mensajes de
- * historial.
+ * `prompt` (que en las tres tareas que no son `chat` CIERRA con la petición del
+ * usuario), `json` y el historial acotado con `boundedHistory`.
  *
- * El `opts.history` se usa SIEMPRE, pero de dos formas distintas: en `chat`
- * sale como historial de Gemini (campo `history` de la petición, que `client`
- * convierte en `contents`) y en el resto de tareas se inyecta en el prompt como
- * bloque `CONVERSACIÓN PREVIA` (el campo NO se devuelve: si fuera `contents`
- * el modelo lo continuaría en vez de leer la petición de JSON).
+ * El `opts.history` se usa SIEMPRE: en las CUATRO tareas sale como historial de
+ * Gemini (campo `history` de la petición, que `client.ts` convierte en
+ * `contents`), con tope de turnos de 12 en `chat` y 6 en el resto. Eso es lo
+ * que permite que «los récords que te pasé antes» se cumpla también al pedir un
+ * entreno con el chip (P1), y además es más barato y más limpio que meter el
+ * transcript como texto DENTRO del prompt.
  */
 export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): CoachRequest {
   const base = opts.system?.trim() || DEFAULT_SYSTEM;
@@ -242,21 +262,31 @@ export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): Coac
   if (opts.create !== false && task === 'chat') system += `\n\n${CREATION_INSTRUCTION}`;
   if (opts.context) system += `\n\nCONTEXTO DEL USUARIO:\n${opts.context}`;
 
+  const history = boundedHistory(
+    opts.history,
+    task === 'chat' ? CHAT_HISTORY_LIMIT : PROMPT_HISTORY_LIMIT,
+  );
+
   switch (task) {
     case 'suggest':
-      return { system, prompt: suggestPrompt(opts), json: true };
-    case 'plan':
-      return { system, prompt: planPrompt(opts), json: true };
-    case 'analyze':
-      return { system, prompt: analyzePrompt(opts), json: false };
-    case 'chat':
       return {
         system,
-        prompt: String(opts.question ?? ''),
-        json: false,
-        history: (opts.history ?? [])
-          .filter((message) => message.role === 'user' || message.role === 'model')
-          .slice(-CHAT_HISTORY_LIMIT),
+        prompt: suggestPrompt(opts),
+        json: true,
+        responseSchema: SUGGEST_RESPONSE_SCHEMA,
+        history,
       };
+    case 'plan':
+      return {
+        system,
+        prompt: planPrompt(opts),
+        json: true,
+        responseSchema: PLAN_RESPONSE_SCHEMA,
+        history,
+      };
+    case 'analyze':
+      return { system, prompt: analyzePrompt(opts), json: false, history };
+    case 'chat':
+      return { system, prompt: String(opts.question ?? ''), json: false, history };
   }
 }

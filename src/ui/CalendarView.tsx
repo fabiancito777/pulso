@@ -55,6 +55,7 @@ import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { unresolvedNames } from '@/domain/match';
 import type { Session } from '@/domain/types';
 import { localWeek } from '@/features/coach/local';
+import { promptHistory } from '@/state/chat';
 import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
 import {
   equipment,
@@ -758,7 +759,8 @@ export function CalendarView() {
     try {
       let parsed: PlanResult | null;
       if (engine === 'ia') {
-        const outcome = await runCoachTask('plan');
+        /* transcript del chat como `contents`: «Con IA» parte de lo pedido antes */
+        const outcome = await runCoachTask('plan', { history: promptHistory() });
         /* `payload` es el camino directo (en local ya viene del planificador);
            el texto es la red de seguridad por si el JSON viene en una cercilla */
         parsed = planFromJson(outcome.payload) ?? parsePlan(outcome.text);

@@ -16,6 +16,7 @@ import {
   MODELS_LIMIT,
   testConnection,
 } from './client';
+import type { ResponseSchema } from './types';
 
 /** Lo que `buildBody` manda a la API, tal y como se serializa. */
 interface SentBody {
@@ -25,6 +26,7 @@ interface SentBody {
     temperature?: number;
     maxOutputTokens?: number;
     responseMimeType?: string;
+    responseSchema?: ResponseSchema;
     thinkingConfig?: Record<string, unknown>;
   };
 }
@@ -145,6 +147,18 @@ describe('buildBody', () => {
     );
   });
 
+  it('manda responseSchema SOLO junto a responseMimeType (el schema sin JSON da 400)', () => {
+    const schema: ResponseSchema = { type: 'OBJECT', required: ['title'], properties: {} };
+    const conJson = buildBody(opts({ json: true, responseSchema: schema })) as SentBody;
+    expect(conJson.generationConfig.responseMimeType).toBe('application/json');
+    expect(conJson.generationConfig.responseSchema).toBe(schema);
+
+    /* un caller que se olvide `json: true` no manda un schema suelto */
+    const sinJson = buildBody(opts({ responseSchema: schema })) as SentBody;
+    expect('responseSchema' in sinJson.generationConfig).toBe(false);
+    expect('responseMimeType' in sinJson.generationConfig).toBe(false);
+  });
+
   it('thinkingConfig: manda el level, o el budget si no hay level (nunca los dos)', () => {
     expect(thinkingOf(opts({ thinkingLevel: 'medium' }))).toEqual({ thinkingLevel: 'medium' });
     expect(thinkingOf(opts({ thinkingBudget: 512 }))).toEqual({ thinkingBudget: 512 });
@@ -215,8 +229,59 @@ describe('generate · éxito', () => {
 
   it('el historial llega con role "model" (Gemini no entiende "assistant")', async () => {
     const f = makeFetch(reply());
-    await generate(opts({ history: [{ role: 'model', text: 'antes' }] }), f);
-    expect(sentBody(f).contents.map((c) => c.role)).toEqual(['model', 'user']);
+    await generate(
+      opts({
+        history: [
+          { role: 'user', text: 'hola' },
+          { role: 'model', text: 'antes' },
+        ],
+      }),
+      f,
+    );
+    expect(sentBody(f).contents.map((c) => c.role)).toEqual(['user', 'model', 'user']);
+  });
+
+  it('recorta el historial para que contents empiece en user, alterne y acabe en user', () => {
+    const body = buildBody(
+      opts({
+        history: [
+          { role: 'model', text: 'arranqué yo (no válido)' },
+          { role: 'user', text: 'una' },
+          { role: 'user', text: 'dos' },
+          { role: 'model', text: 'tres' },
+          { role: 'model', text: '' },
+        ],
+      }),
+    ) as SentBody;
+    expect(body.contents).toEqual([
+      { role: 'user', parts: [{ text: 'una\n\ndos' }] },
+      { role: 'model', parts: [{ text: 'tres' }] },
+      { role: 'user', parts: [{ text: '¿Qué hago hoy?' }] },
+    ]);
+  });
+
+  it('sin historial o con solo turnos de model queda UN turno user con el prompt', () => {
+    const vacio = buildBody(opts({ history: [] })) as SentBody;
+    expect(vacio.contents).toEqual([{ role: 'user', parts: [{ text: '¿Qué hago hoy?' }] }]);
+    const soloModel = buildBody(opts({ history: [{ role: 'model', text: 'solo' }] })) as SentBody;
+    expect(soloModel.contents).toEqual([{ role: 'user', parts: [{ text: '¿Qué hago hoy?' }] }]);
+  });
+
+  it('no manda nunca partes vacías: los turnos en blanco se ignoran', () => {
+    const body = buildBody(
+      opts({
+        history: [
+          { role: 'user', text: '  ' },
+          { role: 'model', text: 'ok' },
+          { role: 'user', text: '' },
+        ],
+        prompt: '¿Qué hago hoy?',
+      }),
+    ) as SentBody;
+    /* el único turno con texto del historial era el de model, que además
+       arranca la conversación: se descarta y queda solo el turno actual */
+    expect(body.contents).toEqual([{ role: 'user', parts: [{ text: '¿Qué hago hoy?' }] }]);
+    expect(body.contents.every((c) => c.parts.every((p) => p.text.trim() !== ''))).toBe(true);
   });
 
   it('sin modelo usa el por defecto de la app', async () => {
@@ -312,6 +377,73 @@ describe('generate · política de reintentos', () => {
       status: 429,
     });
     expect(siempre429).toHaveBeenCalledTimes(3); /* inicial + 2 reintentos */
+  });
+
+  it('429 diario (QuotaFailure de Google) → daily, SIN reintentos y mensaje en castellano', async () => {
+    const f = makeFetch(
+      {
+        error: {
+          code: 429,
+          message:
+            "Quota exceeded for quota metric 'GenerateRequestsPerDayPerProjectPerModel' with limit '50 requests per day'",
+          status: 'RESOURCE_EXHAUSTED',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [
+                {
+                  quotaId: 'GenerateRequestsPerDayPerProjectPerModel',
+                  quotaValue: '50',
+                  description: 'Requests can be made per day',
+                },
+              ],
+            },
+            { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '86400s' },
+          ],
+        },
+      },
+      429,
+    );
+    const err = await generate(opts(), f).then(
+      () => null,
+      (e: GeminiError) => e,
+    );
+    expect(err).toMatchObject({ kind: 'quota', status: 429, daily: true });
+    expect(err?.message).toContain('Cuota diaria de Gemini agotada');
+    expect(f).toHaveBeenCalledTimes(1); /* esperar un día no arregla nada */
+  });
+
+  it('RetryInfo largo cuenta como diario; el de 41 s sigue siendo un 429 reintentable', async () => {
+    const soloRetryLargo = makeFetch(
+      {
+        error: {
+          code: 429,
+          message: 'RESOURCE_EXHAUSTED',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '600s' }],
+        },
+      },
+      429,
+    );
+    await expect(generate(opts(), soloRetryLargo)).rejects.toMatchObject({ daily: true });
+    expect(soloRetryLargo).toHaveBeenCalledTimes(1);
+
+    const porMinuto = makeFetch(
+      {
+        error: {
+          code: 429,
+          message: 'RESOURCE_EXHAUSTED',
+          details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '41s' }],
+        },
+      },
+      429,
+    );
+    const err = await generate(opts(), porMinuto).then(
+      () => null,
+      (e: GeminiError) => e,
+    );
+    expect(err).toMatchObject({ kind: 'quota', status: 429 });
+    expect(err?.daily).toBeFalsy(); /* es el 429 de siempre: se reintenta */
+    expect(porMinuto).toHaveBeenCalledTimes(3); /* inicial + 2 reintentos */
   });
 
   it('403 → auth: NUNCA se reintenta', async () => {

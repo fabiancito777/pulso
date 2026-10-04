@@ -11,6 +11,7 @@
 
 import { trunc } from '@/domain/text';
 import type { ModelOption } from '@/domain/types';
+import type { ResponseSchema } from './types';
 
 /** Modelo por defecto de la app (el mismo que en la v1). */
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
@@ -36,6 +37,11 @@ export interface GenOpts {
   prompt: string;
   /** Si es cierto se pide respuesta JSON (`responseMimeType`). */
   json?: boolean;
+  /**
+   * Forma exigida a la respuesta JSON (`generationConfig.responseSchema`): solo
+   * tiene sentido con `json: true`, que es quien rellena `responseMimeType`.
+   */
+  responseSchema?: ResponseSchema;
   /** Conversación anterior, en orden; el rol ya es el de Gemini (`user`/`model`). */
   history?: ChatMsg[];
   /** Nivel de razonamiento; `'auto'` deja que elija el modelo. */
@@ -72,12 +78,19 @@ export interface GenResult {
 export class GeminiError extends Error {
   readonly kind: 'auth' | 'quota' | 'blocked' | 'http' | 'network' | 'empty' | 'parse';
   readonly status?: number;
+  /**
+   * true = ese 429 es del límite DIARIO (Google lo deja en `error.details`), no
+   * del por minuto: no se recupera esperando segundos, así que `retryReason`
+   * ni lo reintenta y la UI puede mandarlo directo al plan local.
+   */
+  readonly daily?: boolean;
 
-  constructor(kind: GeminiError['kind'], message: string, status?: number) {
+  constructor(kind: GeminiError['kind'], message: string, status?: number, daily?: boolean) {
     super(message);
     this.name = 'GeminiError';
     this.kind = kind;
     this.status = status;
+    if (daily) this.daily = true;
   }
 }
 
@@ -100,6 +113,8 @@ interface ApiError {
   code?: number | string;
   message?: string;
   status?: string;
+  /** `QuotaFailure`/`RetryInfo` de Google: de ahí sale la cuota diaria */
+  details?: unknown;
 }
 
 interface ApiReply {
@@ -132,6 +147,7 @@ interface GenerationConfig {
   temperature: number;
   maxOutputTokens: number;
   responseMimeType?: string;
+  responseSchema?: ResponseSchema;
   thinkingConfig?: ThinkingConfig;
 }
 
@@ -149,6 +165,43 @@ function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
 }
 
 /**
+ * `contents` válido para `generateContent`: SIEMPRE empieza en `user`, alterna
+ * `user`/`model`, termina en el turno actual (que es `user`) y nunca trae
+ * turnos con `parts` vacíos.
+ *
+ * La API rechaza con 400 `INVALID_ARGUMENT` un historial que arranque en
+ * `model`, con dos turnos seguidos del mismo rol o con textos vacíos: en la v1
+ * eso no podía pasar porque el chat nacía con el usuario y el historial se
+ * metía como texto dentro del prompt. Ahora que la conversación viaja como
+ * `contents`, un turno cortado, un mensaje en blanco o una conversación de la
+ * copia de la v1 pueden romper la llamada entera. Aquí se descartan los
+ * `model` iniciales, se ignoran los vacíos y se fusionan los consecutivos del
+ * mismo rol (son dos turnos del mismo emisor seguidos, algo que el modelo ve
+ * igual mejor en un solo mensaje).
+ */
+function normalizeContents(
+  o: Pick<GenOpts, 'history' | 'prompt'>,
+): { role: ChatMsg['role']; parts: { text: string }[] }[] {
+  const turns: ChatMsg[] = [];
+  const push = (m: ChatMsg): void => {
+    const text = String(m.text ?? '').trim();
+    if (!text) return;
+    const last = turns[turns.length - 1];
+    if (last && last.role === m.role) last.text += `\n\n${text}`;
+    else turns.push({ role: m.role, text });
+  };
+  for (const m of o.history ?? []) push(m);
+  /* Un inicio de conversación del modelo no es válido: se corta por la base */
+  while (turns.length && turns[0].role !== 'user') turns.shift();
+  /* El turno actual SIEMPRE cierra la petición como `user`: aunque el prompt
+     venga en blanco (bug del caller, no de la conversación) no se puede acabar
+     en `model`, y ese caso ya fallaba igual en la v1 */
+  push({ role: 'user', text: o.prompt });
+  if (turns[turns.length - 1]?.role !== 'user') turns.push({ role: 'user', text: '' });
+  return turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
+}
+
+/**
  * Cuerpo de la petición. Puro: ni red ni estado, así que el contrato de la API
  * (historial + prompt al final, systemInstruction y generationConfig) se puede
  * verificar con tests sin salir del sitio.
@@ -158,16 +211,16 @@ function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
  * texto (ver `generate`), para modelos que con thinking devuelven solo thoughts.
  */
 export function buildBody(o: GenOpts, opts: { dropThinking?: boolean } = {}): unknown {
-  const contents: { role: ChatMsg['role']; parts: { text: string }[] }[] = (o.history ?? []).map(
-    (m) => ({ role: m.role, parts: [{ text: m.text }] }),
-  );
-  contents.push({ role: 'user', parts: [{ text: o.prompt }] });
+  const contents = normalizeContents(o);
 
   const generationConfig: GenerationConfig = {
     temperature: o.temperature ?? DEFAULT_TEMPERATURE,
     maxOutputTokens: o.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   };
   if (o.json) generationConfig.responseMimeType = 'application/json';
+  /* Solo con `json: true`: la API exige `responseMimeType: application/json`
+     junto al schema y rechaza la llamada si mandamos un schema sin pedir JSON */
+  if (o.json && o.responseSchema) generationConfig.responseSchema = o.responseSchema;
   const tc = opts.dropThinking ? undefined : thinkingConfig(o);
   if (tc) generationConfig.thinkingConfig = tc;
 
@@ -207,7 +260,69 @@ function httpError(status: number | undefined, data: unknown, raw: string): Gemi
   )
     kind = 'auth';
   else if (code === 429 || apiStatus === 'RESOURCE_EXHAUSTED') kind = 'quota';
-  return new GeminiError(kind, message, code ?? status);
+  /* Solo el 429 puede ser el límite diario; el mensaje lleva la marca para que
+     la UI diga «cuota diaria» en vez de repetir el texto en inglés de Google */
+  const daily = kind === 'quota' && isDailyQuota(apiErr, message);
+  return new GeminiError(
+    kind,
+    daily ? `Cuota diaria de Gemini agotada: ${message}` : message,
+    code ?? status,
+    daily,
+  );
+}
+
+/**
+ * ¿Un `retryDelay` de Google («41s», «5m», «1.5h») son segundos? Devuelve
+ * `NaN` si la cadena no la entendemos, para no convertir un detalle nuevo en
+ * una decisión equivocada.
+ */
+function retryDelaySeconds(value: unknown): number {
+  if (typeof value !== 'string') return Number.NaN;
+  const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h)?$/.exec(value.trim());
+  if (!match) return Number.NaN;
+  const n = Number(match[1]);
+  const unit = match[2] ?? 's';
+  if (unit === 'h') return n * 3600;
+  if (unit === 'm') return n * 60;
+  if (unit === 'ms') return n / 1000;
+  return n;
+}
+
+/** `quotaId`/`metricName`/`description` que nombran un límite POR DÍA. */
+const DAY_QUOTA_RE = /perday|daily/i;
+
+/**
+ * ¿Un 429 es del límite DIARIO y no del por minuto? La distinción vive en
+ * `error.details`:
+ *
+ * - `QuotaFailure.violations[].quotaId` (p. ej. `…PerDayPerProject…`);
+ * - un `RetryInfo` con `retryDelay` de minutos u horas (el límite por minuto
+ *   se resuelve en segundos: reintentar tiene sentido, esperar un día no).
+ *
+ * Si no hay detalles, se mira el mensaje («…per day…»). Falso negativo → el
+ * error sigue siendo un reintento normal, que es el comportamiento de siempre.
+ */
+function isDailyQuota(err: ApiError | undefined, message: string): boolean {
+  const details = err && Array.isArray(err.details) ? err.details : [];
+  for (const raw of details) {
+    if (!raw || typeof raw !== 'object') continue;
+    const detail = raw as Record<string, unknown>;
+    const type = typeof detail['@type'] === 'string' ? detail['@type'] : '';
+    if (type.includes('QuotaFailure')) {
+      const violations = Array.isArray(detail.violations) ? detail.violations : [];
+      for (const violation of violations) {
+        if (!violation || typeof violation !== 'object') continue;
+        for (const key of ['quotaId', 'metricName', 'description']) {
+          const text = (violation as Record<string, unknown>)[key];
+          if (typeof text === 'string' && DAY_QUOTA_RE.test(text.replace(/[\s_-]+/g, ''))) {
+            return true;
+          }
+        }
+      }
+    }
+    if (type.includes('RetryInfo') && retryDelaySeconds(detail.retryDelay) >= 300) return true;
+  }
+  return DAY_QUOTA_RE.test(message.replace(/[\s_-]+/g, ''));
 }
 
 /** Red caída (o respuesta ilegible a mitad de camino): siempre `network`. */
@@ -248,9 +363,12 @@ const TRANSIENT_BACKOFF_MAX_MS = 4_000;
  * - `unusable` (caso i): la respuesta llegó pero no sirve — `empty` cubre
  *   candidatos ausentes, texto vacío y `finishReason` `MALFORMED_RESPONSE`.
  * - `transient` (caso ii): fallo de red, 429 o un 5xx del servidor.
- * - `null`: nunca se reintenta (auth 400/403, `blocked`, `parse`, resto de 4xx).
+ * - `null`: nunca se reintenta (auth 400/403, `blocked`, `parse`, resto de 4xx
+ *   y la cuota DIARIA: reintentarla solo añade latencia a un error que no se
+ *   resuelve esperando segundos).
  */
 function retryReason(err: GeminiError): 'unusable' | 'transient' | null {
+  if (err.daily) return null;
   if (err.kind === 'empty') return 'unusable';
   if (err.kind === 'network') return 'transient';
   if (err.kind === 'quota' && err.status === 429) return 'transient';
