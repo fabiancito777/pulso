@@ -656,6 +656,13 @@ const EX_SEGMENTS = [
 
 type ExSegment = (typeof EX_SEGMENTS)[number]['key'];
 
+/* Orden de catálogo precalculado. El comparador de `filtered` se ejecuta
+   O(n log n) veces por render y aquí llamaba `GROUPS.findIndex` DOS veces por
+   comparación; con el Map es una consulta. El resultado es el mismo: el render
+   vuelve a agrupar con `GROUPS.map` (y un grupo fuera del catálogo ni siquiera
+   se pinta), así que solo cambia el coste, no el orden en pantalla. */
+const GROUP_INDEX = new Map(GROUPS.map((g, i) => [g.key, i] as const));
+
 function SecEjercicios() {
   const [q, setQ] = useState('');
   /* Segmento inicial: ★ si ya hay alguno, si no el catálogo. Es una decisión de
@@ -736,8 +743,8 @@ function SecEjercicios() {
       return true;
     })
     .sort((a, b) => {
-      const ga = GROUPS.findIndex((x) => x.key === a.group);
-      const gb = GROUPS.findIndex((x) => x.key === b.group);
+      const ga = GROUP_INDEX.get(a.group) ?? Number.MAX_SAFE_INTEGER;
+      const gb = GROUP_INDEX.get(b.group) ?? Number.MAX_SAFE_INTEGER;
       if (ga !== gb) return ga - gb;
       const fa = a.fav === true ? 0 : 1;
       const fb = b.fav === true ? 0 : 1;

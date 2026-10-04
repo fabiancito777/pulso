@@ -26,9 +26,28 @@ export function pickTextFile(accept = 'application/json,.json'): Promise<string 
     input.type = 'file';
     input.accept = accept;
     input.style.display = 'none';
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
+
+    let detached = false;
+
+    /* Único cierre del nodo: sin él, cancelar el diálogo dejaba el `<input>`
+       huérfano en el DOM y la promesa colgada (el `change` era el único camino). */
+    const detach = (): void => {
+      if (detached) return;
+      detached = true;
+      input.removeEventListener('cancel', onCancel);
+      input.removeEventListener('change', onChange);
       input.remove();
+    };
+
+    /* El usuario cierra el diálogo sin elegir (Chrome/Firefox emiten `cancel`). */
+    const onCancel = (): void => {
+      detach();
+      resolve(null);
+    };
+
+    const onChange = (): void => {
+      const file = input.files?.[0];
+      detach();
       if (!file) {
         resolve(null);
         return;
@@ -41,9 +60,10 @@ export function pickTextFile(accept = 'application/json,.json'): Promise<string 
       });
       reader.addEventListener('error', () => resolve(null));
       reader.readAsText(file);
-    });
-    /* si el usuario cierra el diálogo sin elegir, en algunos navegadores no hay evento:
-       el input queda huérfano hasta el siguiente intento, que lo reemplaza */
+    };
+
+    input.addEventListener('cancel', onCancel);
+    input.addEventListener('change', onChange);
     document.body.appendChild(input);
     input.click();
   });

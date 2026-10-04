@@ -98,8 +98,14 @@ export function relative(isoDate: string): string {
   return n > 1 ? `hace ${n} días` : `en ${Math.abs(n)} días`;
 }
 
-export function timeAgo(ts: string): string {
-  const m = Math.round((Date.now() - new Date(ts).getTime()) / 60_000);
+/**
+ * «hace X» de un timestamp ISO. `now` se inyecta (mismo patrón que
+ * `durationOf` en `analytics.ts`) porque el redondeo con `Math.round` hace que
+ * cada umbral dependa del instante exacto («hace 1 min» empieza a 30 s): con el
+ * reloj real ese caso no se podría fijar en un test.
+ */
+export function timeAgo(ts: string, now: number = Date.now()): string {
+  const m = Math.round((now - new Date(ts).getTime()) / 60_000);
   if (m < 1) return 'ahora';
   if (m < 60) return `hace ${m} min`;
   const h = Math.round(m / 60);

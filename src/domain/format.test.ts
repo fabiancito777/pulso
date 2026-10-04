@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addDays, diffDays, dowIdx, iso, parse, startOfWeek, weekDates } from './dates';
+import { addDays, diffDays, dowIdx, iso, parse, startOfWeek, timeAgo, weekDates } from './dates';
 import { fmtClock, fmtDur, fmtMmss, fmtN, fmtVol, inputNum } from './format';
 import { num, round, sum } from './num';
 import { fromKg, roundToStep, toKg, unitIncrement } from './units';
@@ -82,5 +82,36 @@ describe('fechas ISO locales', () => {
     expect(startOfWeek('2026-09-20')).toBe('2026-09-14');
     expect(weekDates('2026-09-16')).toHaveLength(7);
     expect(weekDates('2026-09-16')[0]).toBe('2026-09-14');
+  });
+});
+
+describe('timeAgo', () => {
+  /* El reloj se inyecta: `Math.round` sube «ahora» a «hace 1 min» justo en 30 s
+     y «hace 1 h» a «hace 1 d» en 23 h 30 min, así que fijando `now` esos
+     umbrales quedan probados sin depender del reloj real. */
+  const NOW = new Date(2026, 9, 3, 12, 0, 0).getTime();
+  const ago = (s: number): string => timeAgo(new Date(NOW - s * 1000).toISOString(), NOW);
+
+  it('menos de 30 s es «ahora» (y lo mismo un timestamp futuro)', () => {
+    expect(ago(0)).toBe('ahora');
+    expect(ago(29)).toBe('ahora');
+    expect(timeAgo(new Date(NOW + 60_000).toISOString(), NOW)).toBe('ahora');
+    expect(ago(30)).toBe('hace 1 min');
+    expect(ago(60)).toBe('hace 1 min');
+  });
+
+  it('minutos hasta 59 y de ahí en adelante en horas redondeadas', () => {
+    expect(ago(59 * 60)).toBe('hace 59 min');
+    expect(ago(60 * 60)).toBe('hace 1 h');
+    expect(ago(89 * 60)).toBe('hace 1 h');
+    expect(ago(90 * 60)).toBe('hace 2 h');
+    expect(ago(23 * 3600)).toBe('hace 23 h');
+  });
+
+  it('a partir de 23 h 30 min el redondeo ya habla en días', () => {
+    expect(ago(23 * 3600 + 30 * 60)).toBe('hace 1 d');
+    expect(ago(24 * 3600)).toBe('hace 1 d');
+    expect(ago(36 * 3600)).toBe('hace 2 d');
+    expect(ago(48 * 3600)).toBe('hace 2 d');
   });
 });
