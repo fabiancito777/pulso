@@ -8,7 +8,11 @@
  * - `suggest` y `plan` piden JSON (eso se traduce en
  *   `responseMimeType: application/json` en `client.ts`);
  * - `analyze` pide markdown de ≤ 400 palabras;
- * - `chat` se lleva los últimos 12 mensajes del historial;
+ * - `chat` se lleva los últimos 12 mensajes del historial (como `contents` de
+ *   Gemini, que es lo único que va por ahí: el resto de tareas lo mete DENTRO
+ *   del prompt como bloque `CONVERSACIÓN PREVIA`, acotado, para que «los
+ *   récords que te pasé antes» se cumpla también al pedir un entreno con el
+ *   chip);
  * - `opts.question` viaja en TODAS las tareas: en `chat` es el prompt entero y
  *   en el resto se añade al prompt como «Petición del usuario: …» (así los
  *   chips de acción rápida pueden llevar el texto de la caja como contexto);
@@ -18,6 +22,7 @@
 import { AI_EXERCISE_SCHEMA } from '@/domain/ai-exercise';
 import { EXERCISE_TYPES, GROUPS, goalLabel } from '@/domain/data';
 import { int } from '@/domain/num';
+import { trunc } from '@/domain/text';
 import type { BuildRequestOpts, CoachRequest, CoachTask } from './types';
 
 /** Personalidad y reglas del coach (port literal del system de la v1). */
@@ -53,6 +58,51 @@ export const MEMORY_INSTRUCTION = [
 
 /** Cuántos mensajes de historial se mandan en el chat (el mismo tope que la v1). */
 export const CHAT_HISTORY_LIMIT = 12;
+
+/**
+ * Cuántos mensajes de conversación previa entran en los prompts que NO son
+ * `chat` (`suggest`, `plan`, `analyze`). Menos que los 12 del chat a propósito:
+ * ahí el historial va como `contents` (tokens de entrada baratos) y aquí se
+ * convierte en texto DENTRO del prompt, junto a un contexto que ya es grande.
+ */
+export const PROMPT_HISTORY_LIMIT = 6;
+
+/**
+ * Cuántos caracteres de cada mensaje previo se conservan en ese bloque. Los
+ * turnos de `suggest`/`plan` son JSON de varios kB: recortados aportan «qué se
+ * pidió y qué se propuso» sin disparar el tamaño del prompt (mismo criterio de
+ * acotado que `history.ts` y `context.ts`).
+ */
+export const PROMPT_HISTORY_MSG_LIMIT = 800;
+
+/**
+ * Trozo `CONVERSACIÓN PREVIA` para `suggest`/`plan`/`analyze`.
+ *
+ * Es la respuesta a «ten en cuenta los récords que te pasé antes»: sin esto,
+ * esas tareas solo reciben el turno ACTUAL (`opts.question`) y todo lo que el
+ * usuario pegó en mensajes anteriores se perdía. El rol se rotula en
+ * castellano, los saltos de línea se colapsan (el bloque es una lista) y cada
+ * mensaje se recorta con `trunc`.
+ *
+ * Devuelve `[]` cuando no hay historial, para no dejar cabeceras vacías.
+ */
+export function historyPrompt(opts: BuildRequestOpts): string[] {
+  const messages = (opts.history ?? [])
+    .filter((message) => message.role === 'user' || message.role === 'model')
+    .slice(-PROMPT_HISTORY_LIMIT);
+  if (!messages.length) return [];
+  const lines = messages.map(
+    (message) =>
+      `- ${message.role === 'user' ? 'usuario' : 'coach'}: ` +
+      trunc(message.text.replace(/\s+/g, ' ').trim(), PROMPT_HISTORY_MSG_LIMIT),
+  );
+  return [
+    '',
+    'CONVERSACIÓN PREVIA (lo que ya se han dicho en este chat; los datos, ' +
+      'récords o preferencias que el usuario pegó ahí siguen en vigor):',
+    ...lines,
+  ];
+}
 
 /**
  * Se añade al system SOLO de `chat` para que el modelo pueda proponer ejercicios
@@ -120,6 +170,7 @@ function suggestPrompt(opts: BuildRequestOpts): string {
     'ordena de compuesto a aislado; incluye 1 bloque de core;',
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
   ];
+  lines.push(...historyPrompt(opts));
   lines.push(...requestContext(opts));
   if (opts.local !== undefined) {
     lines.push(
@@ -141,6 +192,7 @@ function planPrompt(opts: BuildRequestOpts): string {
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];
+  lines.push(...historyPrompt(opts));
   lines.push(...requestContext(opts));
   if (opts.local !== undefined) {
     lines.push(
@@ -162,6 +214,7 @@ function analyzePrompt(opts: BuildRequestOpts): string {
     'Volumen por semana:',
     opts.weeklyBrief ?? '(sin datos de semanas todavía)',
   ];
+  lines.push(...historyPrompt(opts));
   if (opts.question?.trim()) lines.push('', opts.question.trim());
   return lines.join('\n');
 }
@@ -171,6 +224,12 @@ function analyzePrompt(opts: BuildRequestOpts): string {
  * instrucciones de consulta y de creación y el contexto ya inyectados),
  * `prompt`, si se espera JSON (`json`) y, en el chat, los últimos 12 mensajes de
  * historial.
+ *
+ * El `opts.history` se usa SIEMPRE, pero de dos formas distintas: en `chat`
+ * sale como historial de Gemini (campo `history` de la petición, que `client`
+ * convierte en `contents`) y en el resto de tareas se inyecta en el prompt como
+ * bloque `CONVERSACIÓN PREVIA` (el campo NO se devuelve: si fuera `contents`
+ * el modelo lo continuaría en vez de leer la petición de JSON).
  */
 export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): CoachRequest {
   const base = opts.system?.trim() || DEFAULT_SYSTEM;

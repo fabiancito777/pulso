@@ -11,7 +11,10 @@ import {
   CREATION_INSTRUCTION,
   DEFAULT_SYSTEM,
   MEMORY_INSTRUCTION,
+  PROMPT_HISTORY_LIMIT,
+  PROMPT_HISTORY_MSG_LIMIT,
   buildRequest,
+  historyPrompt,
 } from './prompts';
 import type { ChatMessage } from './types';
 
@@ -237,5 +240,100 @@ describe('buildRequest', () => {
 
   it('chat sin historial devuelve el campo vacío', () => {
     expect(buildRequest('chat', { question: 'hola' }).history).toEqual([]);
+  });
+});
+
+/* ---------- P1: el transcript también en las tareas que no son chat ---------- */
+
+describe('CONVERSACIÓN PREVIA (transcript en suggest/plan/analyze)', () => {
+  const RECORDS = 'Encogimientos 43.5kg · Remo con Barra 38.5kg';
+  const history: ChatMessage[] = [
+    {
+      role: 'user',
+      text: `Genera el entreno de hoy para mí.\n\nContexto adicional: mis records:\n${RECORDS}`,
+    },
+    { role: 'model', text: 'Reacti acación muscular tras 2 semanas de inactividad.' },
+    { role: 'user', text: 'ok, ten en cuenta mis records que te envie anteriormente' },
+  ];
+
+  it('suggest y plan lo meten DENTRO del prompt, con la petición del usuario detrás', () => {
+    const sug = buildRequest('suggest', { history, question: 'dame una corta, son las 10' });
+    expect(sug.prompt).toContain('CONVERSACIÓN PREVIA');
+    expect(sug.prompt).toContain(RECORDS);
+    expect(sug.prompt).toContain('- usuario:');
+    expect(sug.prompt).toContain('- coach:');
+    expect(sug.prompt).toContain('Petición del usuario: dame una corta, son las 10');
+    /* el bloque es TEXTO: el campo `history` (contents de Gemini) sigue vacío */
+    expect(sug.history).toBeUndefined();
+
+    const plan = buildRequest('plan', { from: '2026-09-28', to: '2026-10-04', history });
+    expect(plan.prompt).toContain('CONVERSACIÓN PREVIA');
+    expect(plan.prompt).toContain(RECORDS);
+    expect(plan.history).toBeUndefined();
+  });
+
+  it('analyze también (y ahí la petición va sin la etiqueta de los JSON)', () => {
+    const req = buildRequest('analyze', { weeks: 6, history, question: '¿y los brazos?' });
+    expect(req.prompt).toContain('CONVERSACIÓN PREVIA');
+    expect(req.prompt).toContain(RECORDS);
+    expect(req.prompt).toContain('¿y los brazos?');
+    expect(req.prompt).not.toContain('Petición del usuario');
+    expect(req.history).toBeUndefined();
+  });
+
+  it('el bloque va ANTES de la petición del usuario (lo último manda)', () => {
+    const { prompt } = buildRequest('suggest', { history, question: 'corta' });
+    expect(prompt.indexOf('CONVERSACIÓN PREVIA')).toBeLessThan(
+      prompt.indexOf('Petición del usuario'),
+    );
+  });
+
+  it('sin historial no queda ninguna cabecera suelta', () => {
+    expect(historyPrompt({})).toEqual([]);
+    expect(buildRequest('suggest', { question: 'x' }).prompt).not.toContain('CONVERSACIÓN PREVIA');
+    expect(buildRequest('plan', { from: '2026-09-28', to: '2026-10-04' }).prompt).not.toContain(
+      'CONVERSACIÓN PREVIA',
+    );
+    expect(buildRequest('analyze').prompt).not.toContain('CONVERSACIÓN PREVIA');
+  });
+
+  it('los roles que no son usuario/coach no viajan', () => {
+    const mixto = [...history] as { role: string; text: string }[];
+    mixto.push({ role: 'system', text: 'esto no cuenta' });
+    const { prompt } = buildRequest('suggest', {
+      history: mixto as ChatMessage[],
+      question: 'x',
+    });
+    expect(prompt).not.toContain('esto no cuenta');
+    expect(prompt).toContain('ok, ten en cuenta mis records');
+  });
+
+  it('acota: los últimos PROMPT_HISTORY_LIMIT mensajes y PROMPT_HISTORY_MSG_LIMIT por mensaje', () => {
+    const veinte: ChatMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      role: i % 2 ? 'model' : 'user',
+      text: `mensaje ${i}`,
+    }));
+    const { prompt } = buildRequest('suggest', { history: veinte });
+    expect(prompt).not.toContain('mensaje 0');
+    expect(prompt).toContain('mensaje 19');
+    const lineas = prompt
+      .split('\n')
+      .filter((line) => line.startsWith('- usuario:') || line.startsWith('- coach:'));
+    expect(lineas).toHaveLength(PROMPT_HISTORY_LIMIT);
+
+    const { prompt: largo } = buildRequest('suggest', {
+      history: [{ role: 'user', text: 'x'.repeat(5000) }],
+    });
+    const linea = largo.split('\n').find((line) => line.startsWith('- usuario:')) ?? '';
+    expect(linea.length).toBeLessThanOrEqual('- usuario: '.length + PROMPT_HISTORY_MSG_LIMIT);
+    expect(linea.endsWith('…')).toBe(true);
+  });
+
+  it('en chat el MISMO historial sigue yendo por `history`, con el prompt intacto', () => {
+    const req = buildRequest('chat', { question: '¿cómo voy?', history });
+    expect(req.prompt).toBe('¿cómo voy?');
+    expect(req.prompt).not.toContain('CONVERSACIÓN PREVIA');
+    expect(req.history).toHaveLength(3);
+    expect(req.history?.[0]?.text).toContain('mis records');
   });
 });

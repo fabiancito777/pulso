@@ -28,31 +28,26 @@ import {
 } from './CoachView';
 
 describe('turno de la vista (`turnOpts` → runCoachTask)', () => {
-  it('en chat la pregunta viaja en userText y el historial detrás', () => {
+  it('la pregunta viaja en userText y el historial detrás, en las 4 tareas', () => {
     const history = [
       { role: 'model' as const, text: 'hola' },
       { role: 'user' as const, text: '¿y hoy?' },
     ];
-    expect(turnOpts('chat', '¿qué hice esta semana?', history)).toEqual({
+    expect(turnOpts('¿qué hice esta semana?', history)).toEqual({
       userText: '¿qué hice esta semana?',
       history,
     });
-  });
 
-  it('fuera del chat no se manda historial, pero la pregunta SÍ', () => {
-    expect(turnOpts('analyze', 'revisa mi volumen', [])).toEqual({
-      userText: 'revisa mi volumen',
-    });
-    expect(turnOpts('suggest', 'sugiere entreno', [])).toEqual({ userText: 'sugiere entreno' });
-    expect(turnOpts('plan', 'planifica la semana', [])).toEqual({
-      userText: 'planifica la semana',
-    });
-  });
-
-  it('ningún turno se queda sin userText (con historial la API devuelve HTTP 400)', () => {
-    for (const task of ['chat', 'analyze', 'suggest', 'plan'] as const) {
-      expect(turnOpts(task, 'pregunta', []).userText, task).toBe('pregunta');
+    /* ANTES el historial solo se pasaba en chat: los récords que el usuario
+       pegaba en turnos anteriores no llegaban al modelo al pedir un entreno
+       con el chip (P1 del diagnóstico) */
+    for (const text of ['sugiere entreno', 'planifica la semana', 'revisa mi volumen']) {
+      expect(turnOpts(text, history), text).toEqual({ userText: text, history });
     }
+  });
+
+  it('con la caja vacía y sin conversación el turno queda mínimo', () => {
+    expect(turnOpts('', [])).toEqual({ userText: '', history: [] });
   });
 });
 
@@ -137,7 +132,15 @@ describe('tarjeta de estado (v1 `coach:test`)', () => {
 
 /** Outcome mínimo para `resultLine`: todo lo que no se prueba se queda vacío. */
 function out(over: Partial<CoachOutcome> = {}): CoachOutcome {
-  return { text: '', memoryAdded: [], consulted: [], creations: [], ms: 120, ...over };
+  return {
+    origin: 'model',
+    text: '',
+    memoryAdded: [],
+    consulted: [],
+    creations: [],
+    ms: 120,
+    ...over,
+  };
 }
 
 const NUEVA: AIExerciseProposal = {
@@ -211,6 +214,86 @@ describe('resultLine (propuestas de ejercicio nuevo)', () => {
     const line = resultLine('suggest', out({ text: 'no es json' }), 'g');
     expect(line.payload).toBeUndefined();
     expect(line.notes).toContain('no pude interpretar el JSON');
+  });
+});
+
+/* ---------- P2: el plan local no se firma como respuesta de la IA ---------- */
+
+/** Texto exacto que arma `localOutcome` (resumen + motivo + JSON en cercilla). */
+const LOCAL_TEXT = [
+  'Sesión de Cuádriceps + Pecho',
+  '- Sugerencia genérica de cuerpo completo: aún no hay historial suficiente.',
+  'Generado en tu dispositivo con tus datos de los últimos 7 días.',
+  '',
+  'IA no disponible: RESOURCE_EXHAUSTED: la cuota se agotó',
+  '',
+  '```json',
+  JSON.stringify({
+    title: 'Sesión de Cuádriceps + Pecho',
+    source: 'local',
+    rationale: ['Sugerencia genérica de cuerpo completo: aún no hay historial suficiente.'],
+    exercises: [{ name: 'Sentadilla Copa (con mancuerna)' }],
+  }),
+  '```',
+].join('\n');
+
+describe('resultLine con respuesta LOCAL (fallback tras un fallo de la API)', () => {
+  it('el pie dice «Plan local (sin IA)» con el motivo, nunca «Coach IA»', () => {
+    const line = resultLine(
+      'suggest',
+      out({
+        origin: 'local',
+        fallback: { kind: 'quota', message: 'RESOURCE_EXHAUSTED: la cuota se agotó' },
+        text: LOCAL_TEXT,
+        ms: 92_100,
+      }),
+      'gemini-3.8-flash',
+    );
+
+    expect(line.notes).toContain('Plan local (sin IA)');
+    expect(line.notes).toContain('IA no disponible: RESOURCE_EXHAUSTED: la cuota se agotó');
+    expect(line.notes).toContain('92.1 s');
+    expect(line.notes).not.toContain('Coach IA');
+    expect(line.notes).not.toContain('tokens');
+  });
+
+  it('el aviso va ARRIBA del texto y el rationale sigue debajo (con payload aplicable)', () => {
+    const line = resultLine(
+      'suggest',
+      out({
+        origin: 'local',
+        fallback: { kind: 'quota', message: 'RESOURCE_EXHAUSTED: la cuota se agotó' },
+        text: LOCAL_TEXT,
+      }),
+      'gemini-3.8-flash',
+    );
+
+    expect(line.text.startsWith('**Aviso:**')).toBe(true);
+    expect(line.text).toContain('no pude usar la IA (RESOURCE_EXHAUSTED: la cuota se agotó)');
+    expect(line.text).toContain('planificador de tu dispositivo, no la IA');
+    expect(line.text).toContain('Sugerencia genérica de cuerpo completo: aún no hay historial');
+    /* «Aplicar» no cambia: el JSON se sigue sacando del texto */
+    expect((line.payload as { source: string }).source).toBe('local');
+  });
+
+  it('sin key (fallback sin error) el motivo es «sin API key»', () => {
+    const line = resultLine('plan', out({ origin: 'local', text: LOCAL_TEXT }), 'g');
+    expect(line.notes).toContain('Plan local (sin IA)');
+    expect(line.notes).toContain('sin API key');
+    expect(line.text).toContain('no hay API key configurada');
+  });
+
+  it('una respuesta de la IA no lleva aviso y se firma igual que siempre', () => {
+    const line = resultLine(
+      'suggest',
+      out({
+        text: JSON.stringify({ title: 'Propuesta IA', rationale: ['por cierto'], exercises: [] }),
+      }),
+      'gemini-3.8-flash',
+    );
+    expect(line.notes).toBe('Coach IA · gemini-3.8-flash · 0.1 s');
+    expect(line.text).toBe('por cierto');
+    expect(line.text).not.toContain('Aviso');
   });
 });
 

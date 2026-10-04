@@ -190,6 +190,54 @@ describe('runCoachTask', () => {
     );
   });
 
+  it('P1: el transcript anterior viaja en suggest/plan y como contents en chat', async () => {
+    const RECORDS = 'Encogimientos (Shrugs con barra) 43.5kg · Remo con Barra 38.5kg';
+    const history: GenOpts['history'] = [
+      {
+        role: 'user',
+        text: `Genera el entreno de hoy para mí.\n\nContexto adicional: mis records:\n${RECORDS}`,
+      },
+      { role: 'model', text: '{"title":"Torso Hipertrofia: Reactivación","rationale":["ok"]}' },
+    ];
+    const gen = makeGen([
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+      res('{"rationale":"x","days":[]}'),
+      res('Aquí tienes.'),
+    ]);
+
+    /* suggest: los récords de un turno anterior deben estar en el prompt */
+    await coach.runCoachTask(
+      'suggest',
+      { userText: 'dame una nueva, corta, que son las 10 de la noche', history },
+      { generateFn: gen },
+    );
+    const enSuggest = gen.mock.calls[0]?.[0];
+    expect(enSuggest?.prompt).toContain('CONVERSACIÓN PREVIA');
+    expect(enSuggest?.prompt).toContain(RECORDS);
+    expect(enSuggest?.prompt).toContain('Petición del usuario: dame una nueva, corta');
+    expect(enSuggest?.history).toBeUndefined(); /* el bloque es texto, no contents */
+
+    /* plan: ídem */
+    await coach.runCoachTask('plan', { userText: '¿y la semana?', history }, { generateFn: gen });
+    expect(gen.mock.calls[1]?.[0].prompt).toContain('CONVERSACIÓN PREVIA');
+    expect(gen.mock.calls[1]?.[0].prompt).toContain(RECORDS);
+
+    /* chat: sigue siendo historial de Gemini, con el turno actual como prompt */
+    await coach.runCoachTask('chat', { userText: '¿cómo voy?', history }, { generateFn: gen });
+    const enChat = gen.mock.calls[2]?.[0];
+    expect(enChat?.prompt).toBe('¿cómo voy?');
+    expect(enChat?.history?.map((m) => m.role)).toEqual(['user', 'model']);
+    expect(enChat?.history?.[0]?.text).toContain(RECORDS);
+  });
+
+  it('sin historial no se cuela la cabecera de conversación previa', async () => {
+    const gen = makeGen([res('{"title":"x","focus":"","rationale":[],"exercises":[]}')]);
+
+    await coach.runCoachTask('suggest', { userText: 'hola' }, { generateFn: gen });
+
+    expect(gen.mock.calls[0]?.[0].prompt).not.toContain('CONVERSACIÓN PREVIA');
+  });
+
   it('sin userText la etiqueta de petición no aparece (nada de ruido en los prompts)', async () => {
     const gen = makeGen([res('{"title":"x","focus":"","rationale":[],"exercises":[]}')]);
 
@@ -273,6 +321,8 @@ describe('runCoachTask', () => {
       expect(out.memoryAdded).toEqual([]);
       expect(out.consulted).toEqual([]);
       expect(out.ms).toBeGreaterThanOrEqual(0);
+      expect(out.origin).toBe('local'); /* no salió de la IA… */
+      expect(out.fallback).toBeUndefined(); /* …pero tampoco falló nada */
     }
     expect(gen).not.toHaveBeenCalled();
   });
@@ -284,6 +334,8 @@ describe('runCoachTask', () => {
     const sug = await coach.runCoachTask('suggest', {}, { generateFn: gen });
     expect(gen).not.toHaveBeenCalled();
     expect(sug.payload).toBeTruthy();
+    expect(sug.origin).toBe('local');
+    expect(sug.fallback).toBeUndefined();
     const payloadSug = sug.payload as Record<string, unknown>;
     expect(payloadSug.source).toBe('local');
     expect(Array.isArray(payloadSug.exercises)).toBe(true);
@@ -340,7 +392,25 @@ describe('runCoachTask', () => {
       expect((out.payload as { source: string }).source).toBe('local');
       expect(out.text).toContain('IA no disponible');
       expect(out.text).toContain('```json');
+      /* el motivo NO se pierde: la vista lo enseña en el pie y en el aviso */
+      expect(out.origin).toBe('local');
+      expect(out.fallback).toEqual({ kind, message: `se cayó ${kind}` });
+      expect(out.usage).toBeUndefined(); /* sin tokens: no hubo llamada buena */
     }
+  });
+
+  it('P2: una respuesta de la IA queda marcada como `model`, sin `fallback`', async () => {
+    const gen = makeGen([
+      res('{"title":"Propuesta IA","focus":"","rationale":["ok"],"exercises":[]}', {
+        usage: { prompt: 100, candidates: 50, total: 150 },
+      }),
+    ]);
+
+    const out = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+    expect(out.origin).toBe('model');
+    expect(out.fallback).toBeUndefined();
+    expect(out.usage).toEqual({ prompt: 100, candidates: 50, total: 150 });
   });
 
   it('con apiKey y un fallo que no compensa disfrazar → se propaga como antes', async () => {

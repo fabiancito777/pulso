@@ -905,8 +905,20 @@ export function RoutinesView() {
         });
         return;
       }
-      setNotice(null);
       setProposal(parsed);
+      /* Si la llamada falló (cuota/red/clave), `runCoachTask` resuelve con el
+         planificador LOCAL: la propuesta sirve, pero no se puede pintar como
+         si la hubiera escrito la IA (mismo aviso que Hoy y Calendario). */
+      setNotice(
+        outcome.origin === 'local'
+          ? {
+              kind: 'warn',
+              text: outcome.fallback
+                ? `No pude usar la IA (${outcome.fallback.message}): esta propuesta la ha generado el planificador de tu dispositivo.`
+                : 'Sin API key: esta propuesta la ha generado el planificador de tu dispositivo.',
+            }
+          : null,
+      );
     } catch (err) {
       setNotice({
         kind: 'err',

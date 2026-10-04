@@ -30,6 +30,15 @@
  *   (misma idea que el `.catch` de la v1, que devolvía el local con «IA no
  *   disponible»); `blocked`/`parse`/`empty`/`http` se propagan porque son
  *   fallos que el usuario debe ver, no un plan que disfraza un error.
+ *   Ese caída **se MARCA** en el outcome (`origin: 'local'` + `fallback` con el
+ *   `kind` y el mensaje), para que la vista no lo pinte con el pie «Coach IA»
+ *   ni tire el aviso «IA no disponible» al reescribir el texto con el rationale
+ *   (era el bug P2 del diagnóstico `_specs/chat-coach-diagnostico.md`).
+ * - **Historial de la conversación**: `opts.history` viaja en las CUATRO
+ *   tareas — en `chat` como `contents` de Gemini y en `suggest`/`plan`/
+ *   `analyze` como bloque `CONVERSACIÓN PREVIA` dentro del prompt (acotado en
+ *   `prompts.ts`). Antes solo lo recibía `chat`, así que «ten en cuenta los
+ *   récords que te pasé antes» era imposible desde el chip (P1).
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
@@ -85,7 +94,12 @@ export interface CoachTaskOpts {
    * «Petición del usuario». De ahí los chips con la caja rellena.
    */
   userText?: string;
-  /** historial previo del chat (en chat se recorta a los últimos 12 mensajes) */
+  /**
+   * historial previo del chat, en las CUATRO tareas: en `chat` viaja como
+   * `contents` de Gemini (últimos 12 mensajes) y en el resto como bloque
+   * `CONVERSACIÓN PREVIA` dentro del prompt (acotado), para que «los récords
+   * que te pasé antes» se cumpla también al pedir un entreno con el chip.
+   */
   history?: ChatMsg[];
   /** sesiones del HISTORIAL; si falta manda el tope de la tarea (8/10/12/16) */
   maxSessions?: number;
@@ -95,6 +109,19 @@ export interface CoachTaskOpts {
 
 /** Lo que devuelve `runCoachTask`, listo para pintar en la vista del coach. */
 export interface CoachOutcome {
+  /**
+   * quién redactó la respuesta: `model` = la IA; `local` = el planificador del
+   * dispositivo (sin key o tras un fallo) o el aviso de «todavía no hay key».
+   * La vista lo usa para NO vender un plan local como respuesta del coach
+   * (antes el pie decía «Coach IA» y el aviso del fallback se perdía).
+   */
+  origin: 'model' | 'local';
+  /**
+   * motivo real por el que la tarea se resolvió en el dispositivo pese a tener
+   * key: `kind` y mensaje del `GeminiError` que se tragó el fallback
+   * (`auth`/`network`/`quota`). Sin key no hay `fallback` (no falló nada).
+   */
+  fallback?: { kind: GeminiError['kind']; message: string };
   /** respuesta final SIN bloques ```consulta/```memoria */
   text: string;
   /**
@@ -404,11 +431,16 @@ function buildLocal(
  * (`RoutinesView`, `CalendarView` y `CoachView`), que es tolerante y se queda
  * con el trozo JSON, así que «Aplicar» sigue funcionando sin tocar la UI. El
  * JSON ya parseado va además en `payload`, que es el camino directo.
+ *
+ * `origin` sale SIEMPRE `'local'` y, si la caída fue por un fallo de la API
+ * (`cause`), `fallback` conserva `kind` y mensaje: es lo que la vista traduce
+ * en «Plan local (sin IA) · IA no disponible: …» en vez del pie «Coach IA».
  */
 function localOutcome(payload: SuggestJSON | PlanJSON, ms: number, cause?: unknown): CoachOutcome {
   const note = cause instanceof Error ? `IA no disponible: ${cause.message}` : '';
   const text = [summarizeLocal(payload), note].filter((line) => line.trim() !== '').join('\n\n');
-  return {
+  const outcome: CoachOutcome = {
+    origin: 'local',
     text: `${text}\n\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``,
     payload,
     memoryAdded: [],
@@ -416,6 +448,10 @@ function localOutcome(payload: SuggestJSON | PlanJSON, ms: number, cause?: unkno
     creations: [],
     ms,
   };
+  /* el motivo NO se pierde: la vista lo enseña en el pie y en el aviso, que es
+     lo que antes desaparecía al reescribirse el texto con el rationale */
+  if (cause instanceof GeminiError) outcome.fallback = { kind: cause.kind, message: cause.message };
+  return outcome;
 }
 
 /**
@@ -481,6 +517,7 @@ export async function runCoachTask(
       return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0);
     }
     return {
+      origin: 'local',
       text: NO_KEY_TEXT,
       memoryAdded: [],
       consulted: [],
@@ -513,9 +550,12 @@ export async function runCoachTask(
   /* La pregunta viaja en TODAS las tareas (antes solo en chat/analyze, y así el
      `ask` de los chips de acción rápida se perdía en suggest/plan). En chat no
      se mete además en `history`: `buildRequest` la usa como prompt, que es el
-     turno final del historial — duplicarla daría el mismo mensaje dos veces. */
+     turno final del historial — duplicarla daría el mismo mensaje dos veces.
+     El historial previo viaja TAMBIÉN en las cuatro tareas: en chat como
+     `contents` de Gemini y en el resto como bloque `CONVERSACIÓN PREVIA` dentro
+     del prompt (se recorta ahí, no aquí). */
   reqOpts.question = opts.userText ?? '';
-  if (task === 'chat') reqOpts.history = opts.history ?? [];
+  reqOpts.history = opts.history ?? [];
   if (task === 'plan') {
     reqOpts.from = from;
     reqOpts.to = to;
@@ -599,6 +639,7 @@ export async function runCoachTask(
   const { rest: finalText, creations } = extractCreations(clean);
 
   return {
+    origin: 'model',
     text: finalText.trim(),
     payload: extractPayload(task, clean),
     thoughts: res.thoughts,

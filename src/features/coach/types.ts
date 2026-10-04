@@ -233,7 +233,12 @@ export interface BuildRequestOpts {
   /** semana del plan (`plan`) */
   from?: string;
   to?: string;
-  /** historial del chat: se recorta a los últimos 12 mensajes */
+  /**
+   * historial previo del chat: en `chat` se recorta a los últimos 12 mensajes y
+   * viaja como `contents` de Gemini; en las demás tareas se inyecta en el
+   * prompt como bloque `CONVERSACIÓN PREVIA` (acotado) para que el modelo vea
+   * lo que el usuario pidió y pegó en turnos anteriores
+   */
   history?: readonly ChatMessage[];
 }
 

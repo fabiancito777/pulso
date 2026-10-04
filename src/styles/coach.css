@@ -71,6 +71,17 @@
   white-space: pre-wrap;
 }
 
+/* Selección de texto en los mensajes ENVIADOS: el `::selection` global de
+   `base.css` pinta `--accent` sobre `--accent-ink`, que es exactamente la paleta
+   de `.msg.me`, así que el resaltado salía calcado a la burbuja y no se veía
+   (daba la sensación de que no se podía seleccionar). Se invierte el par para
+   que contraste; el resto de la app sigue con el `::selection` de base.css. */
+.coach-view .msg.me::selection,
+.coach-view .msg.me *::selection {
+  background: var(--accent-ink);
+  color: var(--accent);
+}
+
 .coach-view .msg p {
   white-space: pre-line;
 }

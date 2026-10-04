@@ -23,6 +23,13 @@
  *   vacía el chip manda su `ask` literal, igual que siempre. La caja libre
  *   sigue siendo chat a pelo: NO hay heurísticas de intención (el usuario las
  *   rechazó), solo esta unión explícita en los chips.
+ * - **Historial en TODAS las tareas** (`promptHistory()` → `turnOpts`): en chat
+ *   va como `contents` de Gemini y en `suggest`/`plan`/`analyze` como bloque
+ *   `CONVERSACIÓN PREVIA` en el prompt, así los récords que el usuario pegó en
+ *   turnos anteriores siguen disponibles al pedir un entreno con el chip.
+ * - **Fallback local visible** (`origin`/`fallback` del `CoachOutcome`): una
+ *   propuesta del planificador del dispositivo se firma «Plan local (sin IA)»
+ *   y lleva el motivo arriba en el texto; nunca «Coach IA».
  * - El textarea de entrada usa `onInput` (no `change`): el borrador es estado
  *   local y Enter tiene que ver el valor ACTUAL; los campos que se PERSISTEN al
  *   confirmar —el de la memoria— también, para que el contador de caracteres
@@ -91,6 +98,30 @@ function footerOf(out: CoachOutcome, model: string): string {
   return bits.join(' · ');
 }
 
+/**
+ * Pie de una respuesta que NO salió de la IA (`origin === 'local'`): NUNCA pone
+ * «Coach IA» ni tokens, y si hubo un fallo de la API lo dice con su mensaje —
+ * antes el plan local se firmaba como una llamada a `gemini-3.8-flash` (P2 del
+ * diagnóstico), y era imposible distinguirlo de una respuesta buena.
+ */
+function localFooter(out: CoachOutcome, task: CoachTask): string {
+  const etiqueta = task === 'suggest' || task === 'plan' ? 'Plan local (sin IA)' : 'Sin IA';
+  const motivo = out.fallback ? `IA no disponible: ${out.fallback.message}` : 'sin API key';
+  return [etiqueta, motivo, `${(out.ms / 1000).toFixed(1)} s`].join(' · ');
+}
+
+/**
+ * Aviso que se pone ARRIBA del texto de una propuesta local, para que no se lea
+ * como respuesta del coach: el motivo real (clave o fallo de la API) va el
+ * primero, y después queda claro de quién es el plan.
+ */
+function localAviso(out: CoachOutcome): string {
+  const motivo = out.fallback
+    ? `no pude usar la IA (${out.fallback.message})`
+    : 'no hay API key configurada';
+  return `**Aviso:** ${motivo}; esta propuesta la ha generado el planificador de tu dispositivo, no la IA.`;
+}
+
 /** JSON de `suggest`/`plan` ya parseado; `null` si no parece una propuesta. */
 function payloadOf(text: string): Record<string, unknown> | null {
   let raw: unknown;
@@ -123,9 +154,14 @@ function rationaleOf(payload: Record<string, unknown>): string {
  * bloque ```crear``` (`out.creations`) y en `suggest`/`plan` las que el payload
  * marca con `isNew: true` inline. En ningún caso se crea nada aquí: la tarjeta
  * espera su clic.
+ *
+ * Si `out.origin` es `'local'` (plan del dispositivo, sin key o tras un fallo
+ * de la API) el pie cambia y el texto lleva un aviso encima: la propuesta
+ * sigue siendo aplicable igual, pero ya no se vende como respuesta de la IA.
  */
 export function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine {
-  const notes = footerOf(out, model);
+  const local = out.origin === 'local';
+  const notes = local ? localFooter(out, task) : footerOf(out, model);
   const line: ChatLine = {
     role: 'model',
     text: out.text || '(respuesta vacía)',
@@ -145,9 +181,13 @@ export function resultLine(task: CoachTask, out: CoachOutcome, model: string): C
     line.payload = payload;
     const nuevas = creationsFromPayload(payload);
     if (nuevas.length) line.creations = nuevas.map((item) => ({ ...item }));
-    line.text =
+    const cuerpo =
       rationaleOf(payload) ||
       (task === 'plan' ? 'Plan semanal listo.' : 'Propuesta de entreno lista.');
+    /* el aviso del fallback va ARRIBA y sobrevive al reescritura del rationale:
+       era lo que se perdía, y por eso un plan local se leía como respuesta del
+       coach («aún no hay historial suficiente») */
+    line.text = local ? `${localAviso(out)}\n\n${cuerpo}` : cuerpo;
   }
   return line;
 }
@@ -831,12 +871,14 @@ export function chipText(ask: string, draft: string): string {
  * model turn are not supported»**, porque el último turno de verdad sería el
  * del modelo); en el resto de tareas `buildRequest` la añade al prompt como
  * «Petición del usuario: …», que es por donde los chips mandan el texto de la
- * caja como contexto. El historial solo se lo pasa el chat, y llega ya
- * calculado con `promptHistory()`: `buildRequest` añade el turno actual por su
- * cuenta, meterlo dos veces duplicaría la pregunta.
+ * caja como contexto. El historial viaja en las CUATRO tareas (se calcula con
+ * `promptHistory()`): en `chat` como `contents` de Gemini y en el resto como
+ * bloque `CONVERSACIÓN PREVIA` dentro del prompt, que es lo que permite que el
+ * modelo vea los récords y las peticiones de turnos anteriores (P1). Llega ya
+ * calculado porque `buildRequest` añade el turno actual por su cuenta.
  */
-export function turnOpts(task: CoachTask, text: string, history: ChatMsg[]): CoachTaskOpts {
-  return task === 'chat' ? { userText: text, history } : { userText: text };
+export function turnOpts(text: string, history: ChatMsg[]): CoachTaskOpts {
+  return { userText: text, history };
 }
 
 export function CoachView() {
@@ -898,13 +940,16 @@ export function CoachView() {
     }
 
     /* El historial se calcula ANTES de apilar la pregunta: `buildRequest` añade
-       el turno actual por su cuenta y con él dentro saldría duplicado. */
-    const history = task === 'chat' ? promptHistory() : [];
+       el turno actual por su cuenta y con él dentro saldría duplicado. Viaja en
+       las cuatro tareas (en chat como `contents`, en el resto como bloque
+       `CONVERSACIÓN PREVIA`): si no, «los récords que te pasé antes» se perdía
+       al pedir un entreno con el chip (P1). */
+    const history = promptHistory();
     setBusy(true);
     addChat({ role: 'user', text, ts: nowTs() });
     let ok = false;
     try {
-      const out = await runCoachTask(task, turnOpts(task, text, history));
+      const out = await runCoachTask(task, turnOpts(text, history));
       addChat(resultLine(task, out, String(settings.value.ai.model ?? '')));
       ok = true;
     } catch (err) {
