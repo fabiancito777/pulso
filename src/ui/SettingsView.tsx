@@ -614,7 +614,6 @@ function SecDiscos() {
           <NumRow
             label="Peso de la barra EZ"
             hint={barHint(bars.ez)}
-            help="opt.bars"
             value={bars.ez}
             step={0.5}
             min={0}
@@ -624,7 +623,6 @@ function SecDiscos() {
           <NumRow
             label="Peso del mango de mancuerna"
             hint={barHint(bars.mancuerna)}
-            help="opt.bars"
             value={bars.mancuerna}
             step={0.5}
             min={0}
@@ -1770,7 +1768,6 @@ function SecDatos() {
           icon="upload"
           title="Importar copia"
           sub="Reemplaza los datos actuales"
-          help="opt.export"
           onClick={() => {
             void pickTextFile().then((text) => {
               if (text === null) return;
@@ -1818,7 +1815,6 @@ function SecDatos() {
           icon="trash"
           title="Quitar datos de ejemplo"
           sub="Deja solo tus sesiones reales"
-          help="opt.demo"
           onClick={() => {
             if (!window.confirm('Se quitan solo las sesiones de ejemplo. ¿Seguro?')) return;
             const n = clearDemo();

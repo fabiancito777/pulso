@@ -18,7 +18,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 
+import type { HelpId } from './help-content';
 import { Icon } from './Icon';
+import { HelpBtn } from './HelpModal';
 
 export interface ModalProps {
   title: string;
@@ -31,9 +33,18 @@ export interface ModalProps {
    * X de la cabecera (el onboarding de la v1 era así, `dismissable:false`).
    */
   dismissable?: boolean;
+  /** Tema de ayuda del modal: pinta el ⓘ en la cabecera. */
+  help?: HelpId;
 }
 
-export function Modal({ title, onClose, children, foot, dismissable = true }: ModalProps) {
+export function Modal({
+  title,
+  onClose,
+  children,
+  foot,
+  dismissable = true,
+  help,
+}: ModalProps) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -60,7 +71,10 @@ export function Modal({ title, onClose, children, foot, dismissable = true }: Mo
       <div class="modal" role="dialog" aria-modal="true" aria-label={title} ref={box} tabIndex={-1}>
         <div class="grabber" />
         <div class="modal-head">
-          <b class="ellipsis">{title}</b>
+          <div class="row" style="gap:4px;min-width:0;flex:1">
+            <b class="ellipsis" style="min-width:0">{title}</b>
+            {help ? <HelpBtn id={help} title={title} /> : null}
+          </div>
           {dismissable ? (
             <button type="button" class="icon-btn" title="Cerrar" onClick={onClose}>
               <Icon name="x" />

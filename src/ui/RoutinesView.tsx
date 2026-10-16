@@ -284,6 +284,7 @@ function GenerateModal({
   return (
     <Modal
       title="Generar rutina automática"
+      help="rutinas.generate"
       onClose={onClose}
       foot={
         <>
@@ -322,7 +323,6 @@ function GenerateModal({
             </span>
           ) : null}
         </label>
-        <HelpBtn id="rutinas.generate" title="Generar rutina automática" />
       </div>
 
       <div class="help-field mt-s">

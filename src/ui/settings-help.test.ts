@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { HELP_IDS } from './help-content';
+import { HELP, HELP_IDS, type HelpId } from './help-content';
 
 /** Todo el TSX de `src/ui` como texto, sin ejecutar un solo componente. */
 const SOURCES = import.meta.glob('./**/*.tsx', {
@@ -46,6 +46,16 @@ const ANCHORED = new Set(
   ]),
 );
 
+/**
+ * Un tema con ⓘ visible arrastra sus «ver también»: los chips del modal son
+ * una entrada real (el mismo criterio por el que el glosario no necesita botón),
+ * así que agrupar dos ⓘ en uno no deja huérfano al tema absorbido.
+ */
+const REACHABLE = new Set(ANCHORED);
+for (const id of ANCHORED) {
+  for (const ref of HELP[id as HelpId]?.see ?? []) REACHABLE.add(ref);
+}
+
 describe('cada ayuda apunta a un id que existe', () => {
   it('ningún help="…" / HelpBtn id="…" de src/ui es desconocido', () => {
     const known = new Set<string>(HELP_IDS);
@@ -66,7 +76,7 @@ describe('ningún tema se queda sin ancla', () => {
   /* El glosario no lleva botón propio: se llega por el buscador de la guía y
      por los chips «ver también» (los vigila `help-content.test.ts`). */
   it('todo id de la guía está enganchado en el shell o en una vista', () => {
-    const missing = HELP_IDS.filter((id) => !id.startsWith('glossary.') && !ANCHORED.has(id));
+    const missing = HELP_IDS.filter((id) => !id.startsWith('glossary.') && !REACHABLE.has(id));
     expect(missing).toEqual([]);
   });
 });

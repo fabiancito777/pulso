@@ -272,7 +272,6 @@ function EntryCard(props: {
               <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">
                 {en.basis}
               </span>
-              <HelpBtn id="entreno.suggested" title="Peso sugerido" />
             </div>
           ) : null}
         </div>
@@ -420,7 +419,6 @@ export function SessionCard() {
             Marca tus series y el descanso arranca solo con el tiempo del ejercicio; el peso viene
             sugerido de tu última vez.
           </div>
-          <HelpBtn id="entreno.suggested" title="Peso sugerido" />
         </div>
         <div class="row" style="gap:8px">
           <button type="button" class="btn grow" onClick={() => setPickerOpen(true)}>
@@ -474,7 +472,6 @@ export function SessionCard() {
                     <span>
                       En curso · {fmtN(prog.done)} de {fmtN(prog.total)} series
                     </span>
-                    <HelpBtn id="tab.entrenar" title="Entrenar" />
                   </span>
                   <HelpBtn id="entreno.drag" title="El peso se arrastra hacia abajo" />
                 </div>

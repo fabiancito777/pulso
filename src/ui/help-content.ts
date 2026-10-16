@@ -274,7 +274,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Tus números: sesiones, kilos movidos y racha. Debajo, gráficos de volumen, reparto por grupo muscular, récords (el 1RM estimado) e historial de sesiones.',
     ],
-    see: ['prog.e1rm', 'prog.prs'],
+    see: ['prog.e1rm', 'prog.prs', 'prog.subtitle'],
   },
   'tab.ajustes': {
     id: 'tab.ajustes',
@@ -510,10 +510,10 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'coach',
     title: 'Qué puede hacer el coach',
     paras: [
-      'Es un entrenador con IA que vive en la pestaña Coach. Le hablas en lenguaje normal y puede: montarte la sesión de hoy, sugerir una rutina, revisar tu volumen y tu reparto por músculo, decirte cómo atacar un récord, ajustar el plan de la semana y proponerte ejercicios nuevos para tu biblioteca.',
+      'Es un entrenador con IA que vive en la pestaña Coach. Le hablas en lenguaje normal y puede: montarte la sesión de hoy, sugerir una rutina, revisar tu volumen y tu reparto por músculo, decirte cómo atacar un récord, ajustar el plan de la semana y proponerte ejercicios nuevos para tu biblioteca. Para usarlo necesitas una API key de Google AI Studio.',
       'No solo contesta: lo que propone se puede llevar a la acción. «Sugerir entreno» deja la sesión en Hoy, el plan de la semana se aplica al Calendario y los ejercicios nuevos se añaden desde Ajustes → Ejercicios.',
     ],
-    see: ['coach.sees', 'coach.quick', 'coach.generator'],
+    see: ['coach.sees', 'coach.quick', 'coach.generator', 'coach.apiKey'],
   },
   'coach.sees': {
     id: 'coach.sees',

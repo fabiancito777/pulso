@@ -38,7 +38,6 @@ export function ProgressCard() {
           <span class="tiny muted">
             {t.firstDate ? `Desde ${dateLabel(t.firstDate, 'medium')}` : ''}
           </span>
-          <HelpBtn id="prog.subtitle" title="Resumen de Progreso" />
         </div>
       </div>
       <div class="tiny muted">{subtitle(t.sessions, t.volume, t.streak)}</div>

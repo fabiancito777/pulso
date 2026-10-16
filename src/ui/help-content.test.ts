@@ -73,6 +73,12 @@ describe('cada tema', () => {
       }
     }
   });
+
+  it('los temas paraguas enlazan a los que agrupan', () => {
+    expect(topic('coach.what').see).toContain('coach.sees');
+    expect(topic('coach.what').see).toContain('coach.apiKey');
+    expect(topic('coach.memory').see).toContain('coach.learns');
+  });
 });
 
 describe('la guía cubre la app entera', () => {

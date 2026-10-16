@@ -923,7 +923,6 @@ export function CalendarView() {
       {controls.foot ? (
         <div class="row cal-plan-foot" style="gap:6px">
           <span class="tiny muted grow">{controls.foot}</span>
-          <HelpBtn id="cal.noKey" title="Sin API key: plan local" />
         </div>
       ) : null}
 
