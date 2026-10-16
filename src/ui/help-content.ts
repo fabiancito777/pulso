@@ -1016,6 +1016,29 @@ export function topic(id: HelpId): HelpTopic {
   return HELP[id];
 }
 
+/** Un enlace «ver también» resuelto para pintarlo, con su destino. */
+export interface SeeLink {
+  id: HelpId;
+  title: string;
+  /** Sección del tema de destino (para etiquetar el salto). */
+  section: HelpSection;
+  /** `true` si el destino sigue en la MISMA sección que el tema de origen. */
+  same: boolean;
+}
+
+/**
+ * Los «ver también» de un tema, ya resueltos. `same` deja que la UI distinga,
+ * antes de pulsar, si un chip se queda en el mismo apartado o salta a otro
+ * (típicamente al glosario): sin esto el usuario no sabe qué le espera.
+ */
+export function seeLinks(from: HelpId): SeeLink[] {
+  const base = HELP[from];
+  return (base.see ?? []).map((id) => {
+    const t = HELP[id];
+    return { id, title: t.title, section: t.section, same: t.section === base.section };
+  });
+}
+
 /** Todos los temas agrupados por sección, en el orden de `HELP_SECTIONS`. */
 export function topicsBySection(): { section: HelpSection; topics: HelpTopic[] }[] {
   const bySection = new Map<HelpSection, HelpTopic[]>();

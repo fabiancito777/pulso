@@ -22,6 +22,7 @@ import {
   HELP_IDS,
   SECTION_LABELS,
   searchHelp,
+  seeLinks,
   topic,
   topicsBySection,
   type HelpId,
@@ -195,7 +196,7 @@ export function GuideIndex() {
 /** El contenido del modal: sección, párrafos, «ver también» e índice (solo en `guide`). */
 function TopicView({ id }: { id: HelpId }) {
   const t = topic(id);
-  const see = t.see ?? [];
+  const see = seeLinks(id);
   return (
     <>
       <div class="tiny muted help-sec">{SECTION_LABELS[t.section]}</div>
@@ -208,11 +209,21 @@ function TopicView({ id }: { id: HelpId }) {
       </div>
       {see.length ? (
         <div class="help-see">
-          {see.map((s) => (
-            <button type="button" class="chip" key={s} onClick={() => openHelp(s)}>
-              {topic(s).title}
-            </button>
-          ))}
+          <div class="tiny muted help-see-head">Ver también</div>
+          <div class="help-see-chips">
+            {see.map((s) => (
+              <button
+                type="button"
+                class={`chip${s.same ? '' : ' see-jump'}`}
+                key={s.id}
+                title={s.same ? undefined : `Otro apartado: ${SECTION_LABELS[s.section]}`}
+                onClick={() => openHelp(s.id)}
+              >
+                {s.title}
+                {s.same ? null : <span class="see-tag">{SECTION_LABELS[s.section]}</span>}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
       {id === 'guide' ? <GuideIndex /> : null}

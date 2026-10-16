@@ -88,12 +88,43 @@ div.help-row:last-child > button.list-item {
   margin: 0 0 8px;
 }
 
+/* «Ver también»: título propio y, debajo, los chips. Un chip con `.see-jump`
+   salta a OTRA sección (p. ej. al glosario): se pinta con el color `--info` y
+   lleva la etiqueta del apartado de destino, así lo sabes ANTES de pulsar. */
 .help-see {
+  margin-top: 10px;
+}
+
+.help-see-head {
+  margin-bottom: 6px;
+}
+
+.help-see-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  margin-top: 4px;
+}
+
+.help-see .chip.see-jump {
+  background: color-mix(in srgb, var(--info) 12%, transparent);
+  border-color: color-mix(in srgb, var(--info) 45%, var(--border));
+}
+
+.see-jump .see-tag {
+  margin-left: 1px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--info) 22%, transparent);
+  color: var(--info);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.see-jump .see-tag::before {
+  content: '↗ ';
 }
 
 /* ---------- índice de la guía (solo dentro del tema `guide`) ---------- */

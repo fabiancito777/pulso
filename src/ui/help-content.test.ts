@@ -16,6 +16,7 @@ import {
   HELP_SECTIONS,
   SECTION_LABELS,
   searchHelp,
+  seeLinks,
   topic,
   topicsBySection,
   type HelpSection,
@@ -78,6 +79,32 @@ describe('cada tema', () => {
     expect(topic('coach.what').see).toContain('coach.sees');
     expect(topic('coach.what').see).toContain('coach.apiKey');
     expect(topic('coach.memory').see).toContain('coach.learns');
+  });
+});
+
+describe('seeLinks', () => {
+  it('resuelve destino y si el salto cambia de apartado', () => {
+    const links = seeLinks('cal.kpis');
+    expect(links.find((l) => l.id === 'glossary.volume')).toMatchObject({
+      title: 'Volumen (kg movidos)',
+      section: 'glosario',
+      same: false,
+    });
+    expect(links.find((l) => l.id === 'cal.states')).toMatchObject({
+      section: 'calendario',
+      same: true,
+    });
+  });
+
+  it('un enlace por cada «ver también», en orden y con título', () => {
+    for (const id of HELP_IDS) {
+      const links = seeLinks(id);
+      expect(links.map((l) => l.id), id).toEqual(topic(id).see ?? []);
+      expect(
+        links.every((l) => l.title.length > 0),
+        id,
+      ).toBe(true);
+    }
   });
 });
 
