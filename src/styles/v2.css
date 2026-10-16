@@ -188,6 +188,85 @@
   .day-cell .dtag {
     font-size: 10px;
   }
+
+  /* El ⓘ táctil (32 px) le quitaba ancho a la etiqueta del KPI y «Volumen total»
+     salía como «Volumen t…». En móvil se permite envolver a una segunda línea
+     en vez de recortar: la etiqueta se lee entera. */
+  .kpi .kpi-label-row .ellipsis {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  /* Dibujo de discos: con las medidas de escritorio la fila mide más que su
+     contenedor y hay que arrastrar en horizontal. En móvil se compactan las
+     piezas (y el padding lateral) para que las cargas habituales entren sin
+     scroll (y cuando no, la barra fina de abajo avisa de que se puede
+     arrastrar). */
+  .load-vis {
+    padding: 12px 4px 8px;
+  }
+
+  .lv-row {
+    gap: 4px;
+  }
+
+  .lv-side {
+    gap: 2px;
+  }
+
+  .lv-tag {
+    width: 11px;
+    font-size: 10px;
+  }
+
+  .lv-grip {
+    width: 34px;
+    height: 9px;
+  }
+
+  .lv-bar {
+    width: 56px;
+    height: 6px;
+  }
+
+  .lv-chip {
+    width: 26px;
+    height: 34px;
+  }
+
+  .lv-chip b {
+    font-size: 10.5px;
+  }
+
+  .lv-chip i {
+    font-size: 8px;
+  }
+
+  .lv-chip.lv-back {
+    width: 26px;
+    margin-right: -24px;
+  }
+}
+
+/* Pista de scroll del dibujo de discos: una barra fina visible siempre (por
+   defecto el navegador la oculta y no se sabía que la fila se podía arrastrar). */
+.load-vis {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-4) transparent;
+}
+
+.load-vis::-webkit-scrollbar {
+  height: 6px;
+}
+
+.load-vis::-webkit-scrollbar-thumb {
+  background: var(--surface-4);
+  border-radius: 99px;
+}
+
+.load-vis::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Los KPIs y las barras de la antigua tarjeta de progreso (`.pg-*`) se
@@ -226,6 +305,16 @@
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   color: var(--accent);
+}
+
+/* ★ de favorito: en móvil sube al mínimo táctil de 34 px. Va DESPUÉS de la regla
+   base (misma hoja: a igual especificidad gana la posterior; dentro del bloque
+   `@media` de arriba la base la anulaba). */
+@media (max-width: 640px) {
+  .ex-fav {
+    width: 34px;
+    height: 34px;
+  }
 }
 
 /* ★ suelto antes del nombre (fila del picker) */

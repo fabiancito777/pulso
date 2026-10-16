@@ -349,10 +349,18 @@
 }
 
 /* con dos botones comparten la fila; si no caben (o solo hay uno) cada uno
-   ocupa lo que toque sin desbordar el shell */
+   ocupa lo que toque sin desbordar el shell. La base es MENOR que 150 px a
+   propósito: con 150 el ⓘ de ayuda no cabía en la fila en móvil y saltaba solo
+   a una segunda línea. */
 .cal-plan-bar .btn {
-  flex: 1 1 150px;
+  flex: 1 1 118px;
   min-width: 0;
+}
+
+/* El ⓘ no se estira ni encoge: mide lo suyo, pegado al borde de la fila. */
+.cal-plan-bar .help-btn {
+  flex: none;
+  align-self: center;
 }
 
 /* el pie explica por qué no hay botón de IA: va pegado a la barra, no como

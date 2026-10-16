@@ -34,6 +34,13 @@
   right: 0;
 }
 
+/* Sin esto, los envolventes del ⓘ no aportan separación vertical entre campos
+   consecutivos: la pista de un campo queda pegada (0 px) a la etiqueta del
+   siguiente y parece describirlo a él. Solo entre campos CON ⓘ. */
+.help-field + .help-field {
+  margin-top: 10px;
+}
+
 /* Táctil: el objetivo no baja de 28 px (los `icon-btn` de base.css son 34). */
 .help-btn {
   flex: none;

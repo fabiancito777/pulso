@@ -24,6 +24,7 @@ import {
   goalLabel,
   isAvailable,
   missingEquipment,
+  resolveExercise,
   seedExercises,
 } from './data';
 import { slug } from './text';
@@ -285,5 +286,24 @@ describe('búsqueda por nombre', () => {
     expect(findExerciseByName(library, '')).toBeNull();
     expect(findExerciseByName(library, undefined)).toBeNull();
     expect(findExerciseByName(library, 'ejercicio que no existe')).toBeNull();
+  });
+});
+
+describe('resolución de un id guardado (historial, sesiones)', () => {
+  it('prefiere la biblioteca cuando el id existe en ella', () => {
+    const propia: Exercise = { ...byId('press-de-banca-con-barra'), name: 'Mi press' };
+    expect(resolveExercise([propia], 'press-de-banca-con-barra')?.name).toBe('Mi press');
+  });
+
+  it('cae al catálogo completo si el id no está en la biblioteca', () => {
+    // El historial de una copia de la v1 puede citar ejercicios que ya no están
+    // en la semilla de 24; sin esta caída la UI enseñaba el id crudo (M1).
+    const fuera: Exercise = { ...byId('sentadilla-goblet') };
+    expect(resolveExercise([], fuera.id)?.name).toBe(fuera.name);
+    expect(resolveExercise([], fuera.id)?.name).not.toBe(fuera.id);
+  });
+
+  it('devuelve null si no está ni en la biblioteca ni en el catálogo', () => {
+    expect(resolveExercise([], 'id-que-no-existe')).toBeNull();
   });
 });

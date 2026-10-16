@@ -20,7 +20,15 @@
 import { useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
-import { GOAL_REPS, GOAL_REST, TEMPLATES, goalLabel, groupLabel, isAvailable } from '@/domain/data';
+import {
+  GOAL_REPS,
+  GOAL_REST,
+  TEMPLATES,
+  goalLabel,
+  groupLabel,
+  isAvailable,
+  resolveExercise,
+} from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
 import { fmtN, inputNum } from '@/domain/format';
 import { matchExercise, unresolvedNames } from '@/domain/match';
@@ -601,8 +609,11 @@ function RoutineEditor({
   }
 
   function renderItem(item: RoutineItem, index: number) {
-    const ex = byId.get(item.exId) ?? null;
-    const missing = ex ? !isAvailable(ex, equipment.value) : false;
+    const inLib = byId.get(item.exId) ?? null;
+    /* el nombre se resuelve también contra el catálogo: una rutina puede traer
+       ejercicios que ya no están en la biblioteca (import de la v1, semilla). */
+    const ex = inLib ?? resolveExercise(library, item.exId);
+    const missing = inLib ? !isAvailable(inLib, equipment.value) : false;
     return (
       <div class="card tight rt-item" key={`${item.exId}:${index}`}>
         <div class="rt-item-head">

@@ -516,6 +516,28 @@ describe('generate · errores', () => {
     });
   });
 
+  it('503 con texto en inglés → kind http y mensaje traducido (B5)', async () => {
+    // Un 5xx de Google viene en inglés («This model is currently experiencing
+    // high demand…»). La UI es en castellano: no se enseña el texto crudo.
+    const f = makeFetch(
+      { error: { code: 503, message: 'This model is currently experiencing high demand.' } },
+      503,
+    );
+    const err = await generate(opts(), f).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GeminiError);
+    expect(err).toMatchObject({ kind: 'http', status: 503 });
+    expect((err as GeminiError).message).toContain('saturado o no disponible');
+    expect((err as GeminiError).message).not.toContain('high demand');
+  });
+
+  it('4xx http (400) conserva el detalle pero con prefijo traducido (B5)', async () => {
+    const f = makeFetch({ error: { code: 400, message: 'Invalid JSON payload received.' } }, 400);
+    const err = await generate(opts(), f).catch((e: unknown) => e);
+    expect(err).toMatchObject({ kind: 'http', status: 400 });
+    expect((err as GeminiError).message).toContain('rechazó la petición (HTTP 400)');
+    expect((err as GeminiError).message).toContain('Invalid JSON payload received.');
+  });
+
   it('promptFeedback.blockReason → kind blocked, nombrando el motivo', async () => {
     const f = makeFetch(reply({ candidates: [], promptFeedback: { blockReason: 'SAFETY' } }));
     await expect(generate(opts(), f)).rejects.toBeInstanceOf(GeminiError);

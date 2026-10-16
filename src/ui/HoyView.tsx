@@ -29,7 +29,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, totals, volumeOf } from '@/domain/analytics';
-import { groupColor, groupLabel } from '@/domain/data';
+import { groupColor, groupLabel, resolveExercise } from '@/domain/data';
 import { label as dateLabel, dowLong, today } from '@/domain/dates';
 import { fmtDur, fmtMmss, fmtN, fmtVol, fmtW } from '@/domain/format';
 import { matchExercise, unresolvedNames } from '@/domain/match';
@@ -509,7 +509,6 @@ function FreeTimer({ onClose }: { onClose: () => void }) {
 /* ---------- últimas sesiones ---------- */
 
 function SessionDetail({ session }: { session: Session }) {
-  const byId = new Map(exercises.value.map((ex) => [ex.id, ex]));
   return (
     <div class="hy-detail">
       <div class="grid c3">
@@ -528,7 +527,7 @@ function SessionDetail({ session }: { session: Session }) {
       <div class="card flush mt-s">
         <div class="list">
           {session.entries.map((entry, i) => {
-            const ex = byId.get(entry.exId);
+            const ex = resolveExercise(exercises.value, entry.exId);
             const sets = Array.isArray(entry.sets) ? entry.sets : [];
             const text = sets
               .map((set) => {
@@ -572,8 +571,6 @@ function LastSessions({
   onToggle: (id: string) => void;
   onRepeat: (session: Session) => void;
 }) {
-  const byId = new Map(exercises.value.map((ex) => [ex.id, ex]));
-
   return (
     <section class="mt">
       <SectionHead
@@ -595,7 +592,7 @@ function LastSessions({
                 ...new Set(
                   session.entries
                     .map((entry) => {
-                      const ex = byId.get(entry.exId);
+                      const ex = resolveExercise(exercises.value, entry.exId);
                       return ex ? groupLabel(ex.group) : '';
                     })
                     .filter(Boolean),

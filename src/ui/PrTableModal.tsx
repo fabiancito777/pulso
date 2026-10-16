@@ -11,7 +11,7 @@
 import { useState } from 'preact/hooks';
 
 import { exerciseSeries } from '@/domain/analytics';
-import { findExercise, groupColor } from '@/domain/data';
+import { groupColor, resolveExercise } from '@/domain/data';
 import { label as dateLabel } from '@/domain/dates';
 import { fmtN } from '@/domain/format';
 import { pickExercise } from '@/state/progress';
@@ -35,7 +35,7 @@ export function PrTableModal({ onClose }: { onClose: () => void }) {
         <div class="card flush">
           <div class="list">
             {rows.map((r) => {
-              const info = findExercise(exercises.value, r.exId);
+              const info = resolveExercise(exercises.value, r.exId);
               const hist = exerciseSeries(sessions.value, r.exId).slice(-8);
               return (
                 <button

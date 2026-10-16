@@ -16,6 +16,7 @@
  */
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
+import { resolveExercise } from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
 import { fmtDur, fmtN, fmtRpe, fmtVol } from '@/domain/format';
 import type { Session } from '@/domain/types';
@@ -54,7 +55,6 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
   const session: Session = found;
 
   const date = sessionDate(session);
-  const byId = new Map(exercises.value.map((ex) => [ex.id, ex]));
   const records = newPrs(session, prsBefore(sessions.value, date));
   const prIds = new Set(records.map((r) => r.exId));
 
@@ -127,7 +127,7 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
               <div class="tiny muted">
                 {records
                   .map((r) => {
-                    const ex = byId.get(r.exId);
+                    const ex = resolveExercise(exercises.value, r.exId);
                     return `${ex ? ex.name : r.exId} · ${fmtN(r.weight)}×${fmtN(r.reps)}`;
                   })
                   .join(' · ')}
@@ -140,7 +140,7 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
       <div class="card flush mt">
         <div class="list">
           {session.entries.map((entry, i) => {
-            const ex = byId.get(entry.exId);
+            const ex = resolveExercise(exercises.value, entry.exId);
             const sets = Array.isArray(entry.sets) ? entry.sets : [];
             const text = sets
               .map((set) => {

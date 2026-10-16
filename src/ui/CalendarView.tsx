@@ -39,6 +39,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
+import { resolveExercise } from '@/domain/data';
 import {
   addDays,
   addMonths,
@@ -60,7 +61,6 @@ import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
 import {
   equipment,
   exercises,
-  findExercise,
   findRoutine,
   routines,
   schedule,
@@ -485,7 +485,7 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
           <div class="label">Ejercicios de {routine.name}</div>
           <div class="cal-items">
             {routine.items.map((item, i) => {
-              const ex = findExercise(item.exId);
+              const ex = resolveExercise(exercises.value, item.exId);
               return (
                 <div key={`${item.exId}-${i}`} class="kv">
                   <span class="k ellipsis">

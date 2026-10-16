@@ -14,7 +14,14 @@
  * pasa como mapa (`{ clave: boolean }`) en vez de leerlo del estado global, que
  * es lo que hacía `S.isAvailable()` en la v1 y obligaba a probarlo en el navegador.
  */
-import { DEFAULT_EQUIPMENT, EQUIPMENT, EQUIP_PRESETS, GOALS, GROUPS } from './catalog';
+import {
+  DEFAULT_EQUIPMENT,
+  EQUIPMENT,
+  EQUIP_PRESETS,
+  GOALS,
+  GROUPS,
+  SEED_EXERCISES,
+} from './catalog';
 import { norm, slug } from './text';
 import type { Exercise, ExerciseType } from './types';
 
@@ -185,6 +192,19 @@ export function equipTags(ex: EquipSource): string[] {
 
 export function findExercise(exercises: readonly Exercise[], id: string): Exercise | null {
   return exercises.find((e) => e.id === id) ?? null;
+}
+
+/**
+ * Resuelve un ejercicio para MOSTRARLO: primero la biblioteca actual (que trae
+ * los ejercicios propios y los flags del usuario) y, si no está, el catálogo
+ * COMPLETO. El historial guarda ejercicios que pueden haber salido de la
+ * biblioteca (la semilla son 24 de los 136), y sin este respaldo Progreso, el
+ * calendario y el detalle de sesión pintarían el id crudo (`zancadas-caminando`)
+ * en vez del nombre. No lo uses para decidir disponibilidad o construir
+ * sesiones: ahí manda la biblioteca real.
+ */
+export function resolveExercise(exercises: readonly Exercise[], id: string): Exercise | null {
+  return findExercise(exercises, id) ?? findExercise(SEED_EXERCISES, id);
 }
 
 export function allowedExercises(exercises: readonly Exercise[]): Exercise[] {

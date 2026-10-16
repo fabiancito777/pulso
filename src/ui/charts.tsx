@@ -34,7 +34,7 @@ import {
   totals,
   weeklySeries,
 } from '@/domain/analytics';
-import { GROUPS, findExercise, groupColor } from '@/domain/data';
+import { GROUPS, groupColor, resolveExercise } from '@/domain/data';
 import { dowIdx, label as dateLabel, today } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { max as maxOf, sum } from '@/domain/num';
@@ -588,7 +588,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
     .sort((a, b) => b.n - a.n)
     .slice(0, 8);
   const activeId = picked ?? top[0]?.id ?? null;
-  const active = activeId ? findExercise(exs, activeId) : null;
+  const active = activeId ? resolveExercise(exs, activeId) : null;
   const pts = activeId ? exerciseSeries(list, activeId) : [];
   const first = pts[0];
   const last = pts[pts.length - 1];
@@ -727,7 +727,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
           />
           <div class="hr-scroll">
             {top.map((ex) => {
-              const info = findExercise(exs, ex.id);
+              const info = resolveExercise(exs, ex.id);
               return (
                 <button
                   key={ex.id}
@@ -812,7 +812,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
           <div class="card flush">
             <div class="list">
               {prList.map((r) => {
-                const info = findExercise(exs, r.exId);
+                const info = resolveExercise(exs, r.exId);
                 const hist = exerciseSeries(list, r.exId).slice(-8);
                 return (
                   <button

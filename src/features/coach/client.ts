@@ -237,6 +237,23 @@ function fallbackMessage(status: number | undefined, raw: string): string {
   return `Respuesta no-JSON (HTTP ${status ?? '?'}): ${raw.slice(0, 160)}`;
 }
 
+/**
+ * Mensaje en castellano para un error `http` (5xx sobre todo). La API contesta
+ * en inglés («This model is currently experiencing high demand…») y la app es en
+ * castellano: no se enseña el texto crudo de Google, se explica qué pasó y qué
+ * hacer. `auth`/`quota` conservan el mensaje de la API (ya suelen venir
+ * traducidos y la UI los clasifica por `kind`).
+ */
+function httpMessage(status: number | undefined, apiMessage: string): string {
+  if (status !== undefined && status >= 500) {
+    return 'El servicio de Gemini está saturado o no disponible ahora mismo. Reinténtalo en unos segundos.';
+  }
+  const detail = apiMessage.trim();
+  return detail
+    ? `La API de Gemini rechazó la petición (HTTP ${status ?? '?'}): ${detail}`
+    : `La API de Gemini devolvió un error (HTTP ${status ?? '?'})`;
+}
+
 /** HTTP con error: 401/403 → clave, 429 → cuota, el resto → http (siempre con `status`). */
 function httpError(status: number | undefined, data: unknown, raw: string): GeminiError {
   const reply = data && typeof data === 'object' ? (data as ApiReply) : null;
@@ -250,7 +267,7 @@ function httpError(status: number | undefined, data: unknown, raw: string): Gemi
       : typeof apiErr?.code === 'string'
         ? apiErr.code
         : '';
-  const message = apiErr?.message || fallbackMessage(status, raw);
+  const rawMessage = apiErr?.message || fallbackMessage(status, raw);
   let kind: GeminiError['kind'] = 'http';
   if (
     code === 401 ||
@@ -260,9 +277,13 @@ function httpError(status: number | undefined, data: unknown, raw: string): Gemi
   )
     kind = 'auth';
   else if (code === 429 || apiStatus === 'RESOURCE_EXHAUSTED') kind = 'quota';
-  /* Solo el 429 puede ser el límite diario; el mensaje lleva la marca para que
-     la UI diga «cuota diaria» en vez de repetir el texto en inglés de Google */
-  const daily = kind === 'quota' && isDailyQuota(apiErr, message);
+  /* Solo el 429 puede ser el límite diario (el texto de Google va en inglés, de
+     ahí que se mire `rawMessage`): el mensaje lleva la marca para que la UI diga
+     «cuota diaria» en vez de repetir ese texto. */
+  const daily = kind === 'quota' && isDailyQuota(apiErr, rawMessage);
+  /* Los `http` (5xx incluidos) se traducen: el usuario no debe leer inglés. */
+  const message =
+    kind === 'http' && apiErr?.message ? httpMessage(code ?? status, apiErr.message) : rawMessage;
   return new GeminiError(
     kind,
     daily ? `Cuota diaria de Gemini agotada: ${message}` : message,

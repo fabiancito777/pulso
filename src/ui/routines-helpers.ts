@@ -22,6 +22,7 @@ import {
   GOAL_SETS,
   groupLabel,
   isAvailable,
+  resolveExercise,
 } from '@/domain/data';
 import type { EquipmentMap } from '@/domain/data';
 import { matchExercise } from '@/domain/match';
@@ -467,7 +468,7 @@ export function detailRows(
   equipment: EquipmentMap,
 ): DetailRow[] {
   return items.map((item) => {
-    const ex = findExercise(library, item.exId);
+    const ex = resolveExercise(library, item.exId);
     return {
       name: ex ? ex.name : item.exId,
       group: ex ? groupLabel(ex.group) : '',
