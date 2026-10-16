@@ -33,7 +33,9 @@ export function avg<T>(arr: readonly T[] | undefined, fn?: (x: T) => number): nu
 }
 
 export function max<T>(arr: readonly T[] | undefined, fn?: (x: T) => number): number {
-  return (arr ?? []).reduce((a, b) => Math.max(a, fn ? fn(b) : num(b)), Number.NEGATIVE_INFINITY);
+  const list = arr ?? [];
+  if (!list.length) return 0;
+  return list.reduce((a, b) => Math.max(a, fn ? fn(b) : num(b)), Number.NEGATIVE_INFINITY);
 }
 
 /** id corto para entidades nuevas (`pulso` · `id_ab12cd34`). */

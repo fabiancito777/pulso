@@ -617,7 +617,7 @@ function normalizeRoutineItems(value: unknown): RoutineItem[] {
     const weight = raw.weight;
     out.push({
       exId: typeof raw.exId === 'string' ? raw.exId : '',
-      sets: int(raw.sets, 3),
+      sets: Math.max(1, int(raw.sets, 3)),
       repMin: int(raw.repMin, 8),
       repMax: int(raw.repMax, 12),
       rest: int(raw.rest, 90),

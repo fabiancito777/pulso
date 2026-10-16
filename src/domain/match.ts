@@ -247,7 +247,18 @@ export function unresolvedName(name: string, match: MatchResult): UnresolvedName
   return out;
 }
 
-/** Los nombres sin resolver como texto para un aviso: «a», «b» y «c». */
+/**
+ * Los nombres sin resolver como texto para un aviso: «a», «b» y «c».
+ * Deduplica conservando el orden: un mismo nombre puede llegar repetido (varios
+ * items del plan que no casan) y el toast no debe repetir el mismo aviso.
+ */
 export function unresolvedNames(items: readonly UnresolvedName[]): string {
-  return items.map((item) => `«${item.name}»`).join(', ');
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    if (seen.has(item.name)) continue;
+    seen.add(item.name);
+    out.push(`«${item.name}»`);
+  }
+  return out.join(', ');
 }

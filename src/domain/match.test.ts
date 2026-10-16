@@ -286,4 +286,14 @@ describe('unresolvedName / unresolvedNames', () => {
     ).toBe('«Kroc Row», «Press con oso polar»');
     expect(unresolvedNames([])).toBe('');
   });
+
+  it('deduplica nombres repetidos (el aviso no se repite)', () => {
+    expect(
+      unresolvedNames([
+        { name: 'Kroc Row', reason: 'x' },
+        { name: 'Kroc Row', reason: 'y' },
+        { name: 'Press con oso polar', reason: 'z' },
+      ]),
+    ).toBe('«Kroc Row», «Press con oso polar»');
+  });
 });

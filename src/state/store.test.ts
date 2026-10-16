@@ -70,6 +70,13 @@ describe('rutinas', () => {
     expect(persistedRoutines().map((r) => r.id)).toContain(creada.id);
   });
 
+  it('normaliza sets a >= 1 (no se puede prescribir un número negativo de series)', () => {
+    const negativa = store.addRoutine({ name: 'x', items: [{ exId: 'press-banca', sets: -3 }] });
+    expect(negativa.items[0]?.sets).toBe(1);
+    const cero = store.addRoutine({ name: 'y', items: [{ exId: 'press-banca', sets: 0 }] });
+    expect(cero.items[0]?.sets).toBe(1);
+  });
+
   it('addRoutine respeta el id que traiga (así el coach puede nombrar su plan)', () => {
     const propia = store.addRoutine({ id: 'rt-coach-1', name: 'Piernas', items: [] });
     expect(propia.id).toBe('rt-coach-1');

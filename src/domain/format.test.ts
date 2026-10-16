@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { addDays, diffDays, dowIdx, iso, parse, startOfWeek, timeAgo, weekDates } from './dates';
 import { fmtClock, fmtDur, fmtMmss, fmtN, fmtVol, inputNum } from './format';
-import { num, round, sum } from './num';
+import { max, num, round, sum } from './num';
 import { fromKg, roundToStep, toKg, unitIncrement } from './units';
 
 describe('números', () => {
@@ -16,6 +16,12 @@ describe('números', () => {
     expect(round(2.4999999)).toBe(2.5);
     expect(round(1.005, 2)).toBe(1.01);
     expect(sum([{ v: 1 }, { v: 2 }], (x) => x.v)).toBe(3);
+  });
+
+  it('los agregados sobre una lista vacía devuelven 0 (no -Infinity)', () => {
+    expect(sum([])).toBe(0);
+    expect(max([])).toBe(0);
+    expect(max([{ v: 3 }, { v: 7 }], (x) => x.v)).toBe(7);
   });
 });
 

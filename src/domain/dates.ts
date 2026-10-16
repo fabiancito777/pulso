@@ -53,9 +53,18 @@ export function addDays(isoDate: string, n: number): string {
   return iso(x);
 }
 
+/**
+ * Suma meses ACOTANDO el día al último del mes destino: `Date.setMonth` desborda
+ * (31 ene + 1 mes → 3 mar), y avanzar de mes no puede saltar al siguiente. Por eso
+ * se fija el día a 1, se mueve el mes y luego se repone `min(día, último del mes)`.
+ */
 export function addMonths(isoDate: string, n: number): string {
   const x = parse(isoDate);
+  const day = x.getDate();
+  x.setDate(1);
   x.setMonth(x.getMonth() + int(n));
+  const lastDay = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
+  x.setDate(Math.min(day, lastDay));
   return iso(x);
 }
 
@@ -91,7 +100,7 @@ export function label(isoDate: string, style?: DateStyle): string {
 }
 
 export function relative(isoDate: string): string {
-  const n = diffDays(isoDate, today());
+  const n = diffDays(today(), isoDate);
   if (n === 0) return 'hoy';
   if (n === 1) return 'ayer';
   if (n === -1) return 'mañana';
