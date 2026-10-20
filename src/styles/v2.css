@@ -304,7 +304,7 @@
 .ex-fav.on {
   background: var(--accent-soft);
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ★ de favorito: en móvil sube al mínimo táctil de 34 px. Va DESPUÉS de la regla
@@ -319,7 +319,7 @@
 
 /* ★ suelto antes del nombre (fila del picker) */
 .ex-star {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* `base.css` solo estiliza `.li-title`/`.li-sub` DENTRO de `.list-item`, y la
@@ -342,7 +342,7 @@
 
 /* `hace 3d · PR 62 kg · ×12`: la métrica nueva resalta sobre el resto */
 .ex-pick .ex-metrics {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 

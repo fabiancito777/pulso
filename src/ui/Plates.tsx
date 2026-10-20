@@ -74,7 +74,10 @@ export function Plates({
     () => (hasTarget ? solvePlates(Number(target), { plates, bars, mode, unit, barKey }) : null),
     [hasTarget, target, plates, bars, mode, unit, barKey],
   );
-  const max = useMemo(() => maxLoadable({ plates, bars, mode, barKey }), [plates, bars, mode, barKey]);
+  const max = useMemo(
+    () => maxLoadable({ plates, bars, mode, barKey }),
+    [plates, bars, mode, barKey],
+  );
 
   const usable = res ? Math.round(fromKg(res.achieveKg, unit) * 100) / 100 : null;
 
@@ -107,6 +110,7 @@ export function Plates({
               type="button"
               class={`chip ${key === mode ? 'accent' : ''}`}
               title={PLATE_MODES[key].hint}
+              aria-pressed={key === mode}
               onClick={() => pickMode(key)}
             >
               {PLATE_MODES[key].label}
@@ -134,6 +138,7 @@ export function Plates({
           {mode === 'bar' ? (
             <select
               class="select"
+              aria-label={mode === 'bar' ? 'Barra' : 'Mango'}
               value={barKey}
               onChange={(e) => setBarKey(e.currentTarget.value as 'olimpica' | 'ez')}
             >
@@ -228,26 +233,26 @@ export function Plates({
           <LoadView res={res} unit={unit} />
 
           {res.usage.length ? (
-            <div class="tiny muted">
-              De tu inventario: {usageWords(res)}
-            </div>
+            <div class="tiny muted">De tu inventario: {usageWords(res)}</div>
           ) : null}
 
           {res.noPlates || res.exact ? null : (
             <>
               <div class="tiny muted">También puedes cargar:</div>
               <div class="hr-scroll">
-                {[res.belowKg, res.aboveKg].filter((v): v is number => v !== null).map((kg) => (
-                  <button
-                    key={kg}
-                    type="button"
-                    class="chip"
-                    onClick={() => setTarget(inputNum(Math.round(fromKg(kg, unit) * 100) / 100))}
-                  >
-                    {fmtN(Math.round(fromKg(kg, unit) * 100) / 100, 2)} {label} ·{' '}
-                    {kg < res.achieveKg ? 'más ligero' : 'más pesado'}
-                  </button>
-                ))}
+                {[res.belowKg, res.aboveKg]
+                  .filter((v): v is number => v !== null)
+                  .map((kg) => (
+                    <button
+                      key={kg}
+                      type="button"
+                      class="chip"
+                      onClick={() => setTarget(inputNum(Math.round(fromKg(kg, unit) * 100) / 100))}
+                    >
+                      {fmtN(Math.round(fromKg(kg, unit) * 100) / 100, 2)} {label} ·{' '}
+                      {kg < res.achieveKg ? 'más ligero' : 'más pesado'}
+                    </button>
+                  ))}
               </div>
             </>
           )}

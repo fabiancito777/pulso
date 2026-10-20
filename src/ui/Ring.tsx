@@ -23,6 +23,8 @@ export function Ring({ frac, size = 96, width = 6.5, over = false, class: cls }:
   return (
     <svg
       class={[cls ?? 'rest-ring', over ? 'over' : ''].filter(Boolean).join(' ')}
+      aria-hidden="true"
+      focusable="false"
       viewBox={`0 0 ${size} ${size}`}
     >
       <circle class="bg" cx={center} cy={center} r={r} />

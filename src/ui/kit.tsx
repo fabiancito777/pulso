@@ -95,6 +95,7 @@ export function NumRow({
         step={step}
         min={min}
         max={max}
+        aria-label={label}
         onChange={(e) => {
           const raw = Number(e.currentTarget.value);
           onChange(Number.isFinite(raw) ? raw : min);
@@ -160,7 +161,12 @@ export function SelectRow({
   onChange: (next: string) => void;
 }) {
   const select = (
-    <select class="select" value={value} onChange={(e) => onChange(e.currentTarget.value)}>
+    <select
+      class="select"
+      value={value}
+      aria-label={label}
+      onChange={(e) => onChange(e.currentTarget.value)}
+    >
       {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}

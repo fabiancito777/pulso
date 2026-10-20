@@ -166,7 +166,7 @@ export function ExerciseGenModal({
       >
         <section class="card accent">
           <div class="row">
-            <span class="ico" style="color:var(--accent)">
+            <span class="ico" style="color:var(--accent-text)">
               <Icon name="key" />
             </span>
             <div class="grow">
@@ -259,7 +259,7 @@ export function ExerciseGenModal({
       {advice ? (
         <section class="card accent mt-s">
           <div class="row" style="gap:9px;align-items:flex-start">
-            <span class="ico" style="color:var(--accent)">
+            <span class="ico" style="color:var(--accent-text)">
               <Icon name="sparkles" />
             </span>
             <div class="grow">

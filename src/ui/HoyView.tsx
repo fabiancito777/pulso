@@ -369,7 +369,11 @@ function SuggestCard({
           </>
         ) : null}
         {notice ? (
-          <div class={`tiny ${notice.kind === 'err' ? 'danger' : notice.kind} mt-s`}>
+          <div
+            class={`tiny ${notice.kind === 'err' ? 'danger' : notice.kind} mt-s`}
+            role={notice.kind === 'err' ? 'alert' : 'status'}
+            aria-live={notice.kind === 'err' ? 'assertive' : 'polite'}
+          >
             {notice.text}
           </div>
         ) : null}
@@ -469,6 +473,7 @@ function FreeTimer({ onClose }: { onClose: () => void }) {
             key={preset}
             type="button"
             class={`chip${sec === preset ? ' accent' : ''}`}
+            aria-pressed={sec === preset}
             onClick={() => setSec(preset)}
           >
             {fmtMmss(preset)}
@@ -603,32 +608,33 @@ function LastSessions({
               const open = openId === session.id;
               return (
                 <div key={session.id} class={open ? 'hy-session-open' : undefined}>
-                  <button
-                    type="button"
-                    class="list-item tappable"
-                    onClick={() => onToggle(session.id)}
-                  >
-                    <div class="li-main">
-                      <div class="li-title">{session.name || 'Entrenamiento'}</div>
-                      <div class="li-sub">
-                        {dateLabel(sessionDate(session), 'medium')} · {fmtVol(volumeOf(session))} kg
-                        · {fmtDur(durationOf(session))}
-                        {groups ? ` · ${groups}` : ''}
-                      </div>
-                    </div>
-                    <span
+                  <div class="list-item hy-session-row">
+                    <button
+                      type="button"
+                      class="hy-session-main"
+                      aria-expanded={open}
+                      onClick={() => onToggle(session.id)}
+                    >
+                      <span class="li-main">
+                        <span class="li-title">{session.name || 'Entrenamiento'}</span>
+                        <span class="li-sub">
+                          {dateLabel(sessionDate(session), 'medium')} · {fmtVol(volumeOf(session))}{' '}
+                          kg · {fmtDur(durationOf(session))}
+                          {groups ? ` · ${groups}` : ''}
+                        </span>
+                      </span>
+                      <Icon name="chev-r" />
+                    </button>
+                    <button
+                      type="button"
                       class="icon-btn"
-                      role="button"
                       title="Repetir"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRepeat(session);
-                      }}
+                      aria-label={`Repetir ${session.name || 'este entrenamiento'}`}
+                      onClick={() => onRepeat(session)}
                     >
                       <Icon name="refresh" />
-                    </span>
-                    <Icon name="chev-r" />
-                  </button>
+                    </button>
+                  </div>
                   {open ? <SessionDetail session={session} /> : null}
                 </div>
               );
@@ -714,7 +720,7 @@ export function HoyView() {
         sessions: list,
         todayIso: now,
       }),
-    [list.length, nonce],
+    [s, library, equipment.value, list, now, nonce],
   );
   const localSug = useMemo(() => toSuggestion(localRaw, library), [localRaw, library]);
 

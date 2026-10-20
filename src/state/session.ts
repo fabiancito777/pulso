@@ -82,6 +82,7 @@ import {
   commitSession,
   exercises,
   findRoutine,
+  onStateReplaced,
   readStored,
   sessions,
   settings,
@@ -377,20 +378,25 @@ export function toggleSetAt(index: number, setIndex: number, on?: boolean): void
   }
 }
 
+/** Resultado de cerrar la sesión: guardada o el motivo por el que no se pudo. */
+export type FinishResult =
+  | { ok: true; session: Session }
+  | { ok: false; reason: 'empty' | 'save' };
+
 /**
  * Cierra la sesión: la apila en el historial, marca el día como hecho y limpia el
- * estado. Devuelve `null` si no había ninguna serie marcada (entonces no se guarda
- * nada y quien llama lo dice).
+ * estado. Devuelve `empty` si no hay sesión o ninguna serie marcada, y `save` si
+ * no se pudo persistir (entonces la sesión sigue activa y el descanso intacto).
  */
-export function finishSession(notes?: string): Session | null {
+export function finishSession(notes?: string): FinishResult {
   const current = active.value;
-  if (!current) return null;
+  if (!current) return { ok: false, reason: 'empty' };
   const done = finishActive(current, { notes });
-  if (!done) return null;
+  if (!done) return { ok: false, reason: 'empty' };
   const volume = sessionProgress(current).volume;
   /* apila la sesión y marca el día: dos cosas que en la v1 hacía el store
      (`commitSession` también limpia `active`, la signal única) */
-  commitSession(done);
+  if (!commitSession(done)) return { ok: false, reason: 'save' };
   sessionSeconds.value = 0;
   stopRestTimer();
   beep('done', settings.value);
@@ -403,7 +409,7 @@ export function finishSession(notes?: string): Session | null {
     const sent = postToSW({ type: 'notify', title, body, tag: REST_NOTICE_TAG });
     if (!sent) pageNotify(title, body);
   }
-  return done;
+  return { ok: true, session: done };
 }
 
 export function discardSession(): void {
@@ -477,7 +483,7 @@ function keepAliveWith(): void {
 export const TEST_NOTICE_SEC = 5;
 
 /** Qué devuelve `testRestNotice`: la UI traduce cada caso a su toast. */
-export type TestNoticeResult = 'rest-running' | 'notify-off' | 'ok';
+export type TestNoticeResult = 'rest-running' | 'notify-off' | 'no-sw' | 'ok';
 
 /** Tag propio: no puede ser el del descanso, o sustituiría el aviso real. */
 const TEST_NOTICE_TAG = 'pulso-test';
@@ -496,14 +502,16 @@ export function testRestNotice(sec: number = TEST_NOTICE_SEC): TestNoticeResult 
   if (rest.value.running) return 'rest-running';
   if (settings.value.notify === false) return 'notify-off';
   requestNotifyPermission();
-  postToSW({
+  /* sin controlador el SW no recibe nada: decirlo en vez de dar 'ok' y que el
+     usuario espere un aviso que no va a llegar (en dev no hay SW a propósito) */
+  const sent = postToSW({
     type: 'schedule-rest',
     at: NOW() + secs * 1000,
     title: 'Aviso de prueba',
     body: 'Si ves esto con el móvil bloqueado, el aviso del descanso funciona',
     tag: TEST_NOTICE_TAG,
   });
-  return 'ok';
+  return sent ? 'ok' : 'no-sw';
 }
 
 /* Al abrir la app con un descanso en marcha se vuelve a programar en el SW: si no,
@@ -586,3 +594,17 @@ export function startLoop(intervalMs = 500): () => void {
   const id = window.setInterval(loop, intervalMs);
   return () => window.clearInterval(id);
 }
+
+/**
+ * Tras importar o borrar todo, el descanso vive fuera de `pulso.state`: se
+ * detiene y se limpia para que no siga corriendo uno de la etapa anterior.
+ */
+function resetRest(): void {
+  setRest(stopRest());
+  cancelRestNotice();
+  keepAliveOff();
+  wakeLockOff();
+  sessionSeconds.value = 0;
+}
+
+onStateReplaced(resetRest);

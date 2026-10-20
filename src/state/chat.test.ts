@@ -129,6 +129,19 @@ describe('persistencia', () => {
     expect(chat.chat.value).toEqual([]);
   });
 
+  it('resetAll e importState recargan la señal vía onStateReplaced', () => {
+    chat.addChat({ role: 'user', text: 'hola' });
+
+    store.resetAll();
+    expect(chat.chat.value).toEqual([]);
+
+    const importado = store.defaultState();
+    importado.chat = [{ role: 'user', text: 'importado' }];
+    store.importState(importado);
+
+    expect(chat.chat.value).toEqual([{ role: 'user', text: 'importado' }]);
+  });
+
   it('markApplied marca SOLO el mensaje indicado', () => {
     chat.addChat({ role: 'model', text: 'plan', payload: { title: 'X', days: [] } });
     chat.addChat({ role: 'model', text: 'otra', payload: { title: 'Y' } });

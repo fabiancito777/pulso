@@ -42,19 +42,19 @@
 .rt-notice.ok {
   border-color: color-mix(in srgb, var(--ok) 45%, var(--border));
   background: color-mix(in srgb, var(--ok) 10%, var(--surface));
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .rt-notice.warn {
   border-color: color-mix(in srgb, var(--warn) 45%, var(--border));
   background: color-mix(in srgb, var(--warn) 10%, var(--surface));
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .rt-notice.err {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
   background: color-mix(in srgb, var(--danger) 10%, var(--surface));
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* el texto del aviso es el que manda; los botones quedan a su derecha */
@@ -206,7 +206,7 @@
 .rt-result .ico {
   width: 16px;
   height: 16px;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .rt-result .grow {

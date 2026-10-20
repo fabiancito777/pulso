@@ -24,7 +24,7 @@ import { norm } from '@/domain/text';
 import type { ChatMsg } from '@/features/coach/client';
 import { asProposal } from '@/features/coach/parse';
 
-import { readState, setChat } from './store';
+import { onStateReplaced, readState, setChat } from './store';
 
 /** Botón que un aviso del sistema puede llevar (p. ej. ir a Ajustes → Coach AI). */
 export interface ChatAction {
@@ -159,6 +159,8 @@ export function clearChat(): void {
 export function reloadChat(): void {
   chat.value = asChatLines(readState().chat);
 }
+
+onStateReplaced(reloadChat);
 
 /**
  * Marca el mensaje `index` como ya aplicado (la tarjeta de `suggest`/`plan`

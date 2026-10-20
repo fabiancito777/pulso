@@ -90,13 +90,39 @@ export function defaultState(): AppState {
   };
 }
 
+/** Guarda una copia del estado corrupto sin pisar las anteriores. */
+function preserveCorrupt(raw: string): void {
+  if (!storageAvailable) return;
+  try {
+    const stamp = Date.now();
+    let key = `pulso.state.corrupt.${stamp}`;
+    for (let i = 1; localStorage.getItem(key) !== null; i++) {
+      key = `pulso.state.corrupt.${stamp}.${i}`;
+    }
+    localStorage.setItem(key, raw);
+  } catch (err) {
+    console.warn('[pulso] no se pudo conservar el estado corrupto', err);
+  }
+}
+
 export function readState(): AppState {
   if (!storageAvailable) return defaultState();
   try {
     const raw = localStorage.getItem(STATE_KEY);
     if (!raw) return defaultState();
-    const parsed: unknown = JSON.parse(raw);
-    if (!isPlainObject(parsed)) return defaultState();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      preserveCorrupt(raw);
+      console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
+      return defaultState();
+    }
+    if (!isPlainObject(parsed)) {
+      preserveCorrupt(raw);
+      console.warn('[pulso] estado con forma inválida, se usan los valores por defecto');
+      return defaultState();
+    }
     const settings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
     return {
       ...(parsed as AppState),
@@ -137,10 +163,11 @@ function forStorage(state: AppState): AppState {
   return { ...state, settings: { ...settings, plates: normalizePlates(settings.plates) } };
 }
 
-export function writeState(state: AppState): void {
-  if (!storageAvailable) return;
+export function writeState(state: AppState): boolean {
+  if (!storageAvailable) return false;
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify(forStorage(state)));
+    return true;
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
     if (!writeWarned) {
@@ -150,6 +177,7 @@ export function writeState(state: AppState): void {
         ms: 6000,
       });
     }
+    return false;
   }
 }
 
@@ -166,13 +194,15 @@ export function readStored<T = unknown>(key: string): T | null {
 }
 
 /** Escribe (o borra, con `null`) una clave suelta. Mismo formato que la v1. */
-export function writeStored(key: string, value: unknown): void {
-  if (!storageAvailable) return;
+export function writeStored(key: string, value: unknown): boolean {
+  if (!storageAvailable) return false;
   try {
     if (value === null || value === undefined) localStorage.removeItem(key);
     else localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (err) {
     console.warn('[pulso] no se pudo guardar', key, err);
+    return false;
   }
 }
 
@@ -425,8 +455,8 @@ export function loadInitialState(): AppState {
   const seeded = seedPersonalRoutines(state);
   /* primero el estado y después la clave de guardia: si la escritura falla,
      la próxima carga vuelve a sembrar en vez de perder la rutina */
-  if (seeded.changed) writeState(state);
-  if (seeded.marked) writeStored(SEED_KEY, seeded.done);
+  const saved = seeded.changed ? writeState(state) : true;
+  if (saved && seeded.marked) writeStored(SEED_KEY, seeded.done);
   return state;
 }
 
@@ -887,22 +917,65 @@ export function looksLikeState(value: unknown): boolean {
 }
 
 /**
+ * Callbacks que se ejecutan cuando `resetAll` o `importState` reemplazan el estado.
+ * Sirven para limpiar lo que vive fuera de `pulso.state` (descanso, chat…).
+ */
+const stateReplacedHooks: (() => void)[] = [];
+
+/** Registra un callback para cuando se reemplaza el estado entero. */
+export function onStateReplaced(fn: () => void): void {
+  stateReplacedHooks.push(fn);
+}
+
+function runStateReplacedHooks(): void {
+  for (const fn of stateReplacedHooks) {
+    try {
+      fn();
+    } catch (err) {
+      console.warn('[pulso] fallo al limpiar tras reemplazar el estado', err);
+    }
+  }
+}
+
+/** Deja el inventario solo con las claves conocidas (las demás se descartan). */
+function normalizeEquipment(value: unknown): EquipmentMap {
+  const base = defaultEquipment();
+  if (!isPlainObject(value)) return base;
+  const out: EquipmentMap = { ...base };
+  for (const key of Object.keys(out)) {
+    if (typeof value[key] === 'boolean') out[key] = value[key];
+  }
+  return out;
+}
+
+/**
  * Reemplaza el estado entero (importación). Se conserva tal cual lo que traiga el
  * archivo, porque el formato es el mismo de la v1: importar una copia hecha en
  * `main` tiene que dejar los datos igual que allí. Única excepción:
  * `meta.onboarded = true` (lo que hacía la v1, `store.js:197`) y el inventario
  * de discos, que se migra a unidades (`discs`) antes de persistirlo.
+ *
+ * Los ajustes se completan con `withDefaults` y el material se filtra contra las
+ * claves conocidas. Si la copia trae la key del coach vacía se conserva la actual:
+ * los backups la exportan redactada (A2) y no deben borrar la del usuario.
  */
 export function importState(raw: unknown): AppState {
   if (!looksLikeState(raw)) throw new Error('El archivo no parece una copia de Pulso');
   const incoming = raw as AppState;
+  const currentKey = readState().settings.ai.apiKey;
+  const merged = withDefaults(incoming.settings, DEFAULT_SETTINGS);
+  const incomingKey = typeof merged.ai.apiKey === 'string' ? merged.ai.apiKey.trim() : '';
   /* el inventario de la copia se migra ANTES de persistir: una copia de la v1
      (solo `pairs`) entra en unidades y el espejo `pairs` sale ya recalculado */
-  const settings: Settings = { ...incoming.settings };
-  if (Array.isArray(settings.plates)) settings.plates = normalizePlates(settings.plates);
+  const settings: Settings = {
+    ...merged,
+    ai: { ...merged.ai, apiKey: incomingKey || currentKey },
+    plates: normalizePlates(merged.plates),
+  };
   const next: AppState = {
     ...incoming,
     settings,
+    equipment: normalizeEquipment(incoming.equipment),
     version: STATE_VERSION,
     createdAt:
       typeof incoming.createdAt === 'string' ? incoming.createdAt : new Date().toISOString(),
@@ -912,11 +985,32 @@ export function importState(raw: unknown): AppState {
   };
   writeState(next);
   refresh();
-  return next;
+  runStateReplacedHooks();
+  return readState();
 }
 
-export function exportState(): AppState {
-  return readState();
+/** Opciones de `exportState`: por defecto la key del coach NO viaja en la copia. */
+export interface ExportOptions {
+  /** Incluye `settings.ai.apiKey` tal cual (solo si el usuario lo pide). */
+  includeApiKey?: boolean;
+}
+
+/**
+ * Copia para backup: igual que el estado guardado, pero sin la key del coach
+ * salvo que se pida explícitamente (`includeApiKey`). La key es un secreto y un
+ * backup se comparte/exporta con facilidad; el import conserva la actual si la
+ * copia viene redactada.
+ */
+export function exportState(opts: ExportOptions = {}): AppState {
+  const state = readState();
+  if (opts.includeApiKey) return state;
+  return {
+    ...state,
+    settings: {
+      ...state.settings,
+      ai: { ...state.settings.ai, apiKey: '' },
+    },
+  };
 }
 
 /**
@@ -938,6 +1032,7 @@ export function resetAll(): void {
     for (const key of keys) localStorage.removeItem(key);
   }
   refresh();
+  runStateReplacedHooks();
 }
 
 /** Relee el estado de `localStorage` y refresca todos los signals. */
@@ -990,11 +1085,12 @@ function asActive(value: unknown): ActiveSession | null {
 }
 
 /** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee la v1. */
-export function writeActive(next: ActiveSession | null): void {
+export function writeActive(next: ActiveSession | null): boolean {
   const state = readState();
   state.active = next;
-  writeState(state);
+  const saved = writeState(state);
   active.value = next;
+  return saved;
 }
 
 /**
@@ -1002,12 +1098,20 @@ export function writeActive(next: ActiveSession | null): void {
  * `S.addSession` + `S.setDay(iso, {status:'done'})` en la v1, así que el calendario
  * de la rama `main` ve el día igual que si lo hubieras entrenado allí.
  */
-/** Misma ordenación que la v1: `startedAt` descendente (lo más reciente arriba). */
+/** Misma ordenación que la v1: `startedAt` descendente y empate resuelto por `id`. */
 function byStartedAtDesc(a: Session, b: Session): number {
-  return (a.startedAt ?? '') < (b.startedAt ?? '') ? 1 : -1;
+  const sa = a.startedAt ?? '';
+  const sb = b.startedAt ?? '';
+  if (sa < sb) return 1;
+  if (sa > sb) return -1;
+  const ia = a.id ?? '';
+  const ib = b.id ?? '';
+  if (ia < ib) return -1;
+  if (ia > ib) return 1;
+  return 0;
 }
 
-export function commitSession(session: Session): void {
+export function commitSession(session: Session): boolean {
   const state = readState();
   const all = [session, ...asSessions(state.sessions)].sort(byStartedAtDesc);
   state.sessions = all;
@@ -1023,10 +1127,11 @@ export function commitSession(session: Session): void {
   };
   state.schedule = plan;
   state.active = null;
-  writeState(state);
+  if (!writeState(state)) return false;
   sessions.value = all;
   schedule.value = plan;
   active.value = null;
+  return true;
 }
 
 /**

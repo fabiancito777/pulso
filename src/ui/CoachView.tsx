@@ -539,8 +539,16 @@ function Bubble({
 
   if (line.role === 'sys') {
     const action = line.action;
+    const isError =
+      /^(Error|No pude|No hay conexión|Cuota|La API bloqueó|Gemini devolvió|No entendí|No entendi)/u.test(
+        line.text,
+      );
     return (
-      <div class="msg sys">
+      <div
+        class="msg sys"
+        role={isError ? 'alert' : undefined}
+        aria-live={isError ? 'assertive' : undefined}
+      >
         <div>{line.text}</div>
         {action ? (
           <button
@@ -638,7 +646,7 @@ function StatusCard() {
     return (
       <section class="card accent">
         <div class="row">
-          <span class="ico" style="color:var(--accent)">
+          <span class="ico" style="color:var(--accent-text)">
             <Icon name="key" />
           </span>
           <div class="grow">
@@ -685,7 +693,13 @@ function StatusCard() {
           </div>
         </div>
         <div class="row coach-test" style="gap:8px">
-          <span class={`badge ${result && !result.ok ? 'danger' : 'ok'}`}>{testBadge(result)}</span>
+          <span
+            class={`badge ${result && !result.ok ? 'danger' : 'ok'}`}
+            role="status"
+            aria-live={result && !result.ok ? 'assertive' : 'polite'}
+          >
+            {testBadge(result)}
+          </span>
           <button
             type="button"
             class="btn sm ghost"
@@ -1151,7 +1165,7 @@ export function CoachView() {
         ) : null}
       </div>
 
-      <div class="chat" ref={scroller}>
+      <div class="chat" role="log" aria-live="polite" aria-relevant="additions" ref={scroller}>
         {msgs.length ? (
           msgs.map((line, i) => (
             <Bubble

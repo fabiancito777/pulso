@@ -311,6 +311,7 @@ function EntryCard(props: {
           <input
             class="input sm mt-s"
             placeholder="Nota del ejercicio (superserie, cómo lo sentiste…)"
+            aria-label="Nota del ejercicio"
             value={en.notes}
             onChange={(event: Event) =>
               setNotes(i, (event.currentTarget as HTMLInputElement).value)
@@ -379,19 +380,31 @@ function EntryCard(props: {
   );
 }
 
+type Message = { text: string; tone: 'ok' | 'warn' };
+
 export function SessionCard() {
   const s = settingsSignal.value;
   const session = active.value;
   const [view, setView] = useState<'rest' | 'summary'>('rest');
   const [renaming, setRenaming] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<Message | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [routinesOpen, setRoutinesOpen] = useState(false);
   const [platesFor, setPlatesFor] = useState<number | null>(null);
   /* índice del último ejercicio añadido (señal compartida: RoutinesView también la usa) */
   const highlight = justAdded.value;
   const resting = rest.value.running;
+  const sessionId = session?.id ?? null;
+  const previousId = useRef(sessionId);
+
+  /* Al empezar/cambiar de sesión se limpia el aviso anterior. Al terminarla no:
+     el mensaje de «Sesión guardada» se pinta ya en la vista sin sesión. */
+  useEffect(() => {
+    if (sessionId === previousId.current) return;
+    previousId.current = sessionId;
+    if (sessionId !== null) setMessage(null);
+  }, [sessionId]);
 
   if (!session) {
     /* Descanso/temporizador libre SIN sesión: el gate de `App.tsx` monta esta
@@ -412,7 +425,7 @@ export function SessionCard() {
             <b>Entrenar</b>
             <HelpBtn id="tab.entrenar" title="Entrenar" />
           </div>
-          <span class="tiny muted">sesión en curso</span>
+          <span class="tiny muted">sin sesión activa</span>
         </div>
         <div class="between mb-s">
           <div class="tiny muted grow">
@@ -430,7 +443,15 @@ export function SessionCard() {
             Empezar en blanco
           </button>
         </div>
-        {message ? <div class="tiny warn mt-s">{message}</div> : null}
+        {message ? (
+          <div
+            class={`tiny ${message.tone} mt-s`}
+            role="status"
+            aria-live={message.tone === 'warn' ? 'assertive' : 'polite'}
+          >
+            {message.text}
+          </div>
+        ) : null}
         {pickerOpen ? (
           <ExercisePickerModal
             onClose={() => setPickerOpen(false)}
@@ -446,13 +467,23 @@ export function SessionCard() {
 
   const prog = sessionProgress(session);
   const finish = () => {
-    const saved = finishSession();
+    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
+    const volume = sessionProgress(session).volume;
+    const result = finishSession();
     setNotesOpen(false);
-    setMessage(
-      saved
-        ? `Sesión guardada · ${fmtVol(prog.volume)} kg de volumen.`
-        : 'No marcaste ninguna serie: la sesión no se guardó.',
-    );
+    if (result.ok) {
+      setMessage({ text: `Sesión guardada · ${fmtVol(volume)} kg de volumen.`, tone: 'ok' });
+    } else if (result.reason === 'empty') {
+      setMessage({
+        text: 'No marcaste ninguna serie: la sesión no se guardó.',
+        tone: 'warn',
+      });
+    } else {
+      setMessage({
+        text: 'No se pudo guardar la sesión. Inténtalo de nuevo.',
+        tone: 'warn',
+      });
+    }
   };
 
   return (
@@ -478,6 +509,7 @@ export function SessionCard() {
                 {renaming ? (
                   <input
                     class="input"
+                    aria-label="Nombre de la sesión"
                     value={session.name}
                     onChange={(event: Event) =>
                       renameSession((event.currentTarget as HTMLInputElement).value)
@@ -586,6 +618,7 @@ export function SessionCard() {
           <input
             class="input mt-s"
             placeholder="Cómo fue la sesión (se guarda con ella)"
+            aria-label="Nota de la sesión"
             value={session.notes}
             onChange={(event: Event) =>
               setSessionNotes((event.currentTarget as HTMLInputElement).value)
@@ -594,7 +627,15 @@ export function SessionCard() {
         ) : session.notes ? (
           <div class="tiny muted mt-s">Nota: {session.notes}</div>
         ) : null}
-        {message ? <div class="tiny ok mt-s">{message}</div> : null}
+        {message ? (
+          <div
+            class={`tiny ${message.tone} mt-s`}
+            role="status"
+            aria-live={message.tone === 'warn' ? 'assertive' : 'polite'}
+          >
+            {message.text}
+          </div>
+        ) : null}
         <div class="tiny muted mt-s">
           {s.autoRest ? 'Descanso automático al marcar serie' : 'Descanso automático apagado'} · RPE{' '}
           {s.showRpe ? 'on' : 'off'}
@@ -609,8 +650,11 @@ export function SessionCard() {
             const added = addExercises(ids);
             setMessage(
               added === null
-                ? 'Ese ejercicio ya está en la sesión.'
-                : `${fmtN(ids.length, 0)} ${ids.length === 1 ? 'ejercicio añadido' : 'ejercicios añadidos'}.`,
+                ? { text: 'Ese ejercicio ya está en la sesión.', tone: 'warn' }
+                : {
+                    text: `${fmtN(ids.length, 0)} ${ids.length === 1 ? 'ejercicio añadido' : 'ejercicios añadidos'}.`,
+                    tone: 'ok',
+                  },
             );
           }}
         />
@@ -622,7 +666,9 @@ export function SessionCard() {
             setRoutinesOpen(false);
             const added = addRoutineToSession(routineId);
             setMessage(
-              added === null ? 'No se pudo añadir la rutina.' : 'Rutina añadida a la sesión.',
+              added === null
+                ? { text: 'No se pudo añadir la rutina.', tone: 'warn' }
+                : { text: 'Rutina añadida a la sesión.', tone: 'ok' },
             );
           }}
         />
@@ -637,7 +683,10 @@ export function SessionCard() {
             if (!entry) return;
             applyPlateWeight(platesFor, kg);
             setPlatesFor(null);
-            setMessage(`${fmtN(kg, 2)} ${session.unit} cargados en ${entry.name}`);
+            setMessage({
+              text: `${fmtN(kg, 2)} ${session.unit} cargados en ${entry.name}`,
+              tone: 'ok',
+            });
           }}
         />
       ) : null}

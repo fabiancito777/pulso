@@ -138,19 +138,19 @@ describe('finishSession', () => {
     /* marcar una serie arranca el descanso automático (lo comprueba el dominio) */
     expect(session.rest.value.running).toBe(true);
 
-    const guardada = session.finishSession();
+    const resultado = session.finishSession();
 
-    expect(guardada).not.toBeNull();
-    expect(guardada?.date).toBe('2026-09-28');
+    expect(resultado.ok).toBe(true);
+    if (!resultado.ok) return;
+    const guardada = resultado.session;
+    expect(guardada.date).toBe('2026-09-28');
     /* la v1 también estrena id al cerrar (`T.finish` → `U.uid('s')`) */
-    expect(guardada?.id).not.toBe(creada.id);
-    expect(store.sessions.value.map((s) => s.id)).toEqual([guardada?.id]);
-    expect((store.readState().sessions as { id: string }[]).map((s) => s.id)).toEqual([
-      guardada?.id,
-    ]);
+    expect(guardada.id).not.toBe(creada.id);
+    expect(store.sessions.value.map((s) => s.id)).toEqual([guardada.id]);
+    expect((store.readState().sessions as { id: string }[]).map((s) => s.id)).toEqual([guardada.id]);
     expect(store.schedule.value['2026-09-28']).toMatchObject({
       status: 'done',
-      sessionId: guardada?.id,
+      sessionId: guardada.id,
     });
     expect(session.active.value).toBeNull();
     expect(store.readState().active).toBeNull();
@@ -158,14 +158,55 @@ describe('finishSession', () => {
     expect(session.sessionSeconds.value).toBe(0);
   });
 
-  it('sin ninguna serie marcada no se guarda nada y el día no se toca', () => {
+  it('sin ninguna serie marcada devuelve `empty` y el día no se toca', () => {
     session.startFromPlan([{ exId: firstId(), sets: 2 }], { dayIso: '2026-09-28' });
 
-    expect(session.finishSession()).toBeNull();
+    expect(session.finishSession()).toEqual({ ok: false, reason: 'empty' });
 
     expect(store.sessions.value).toHaveLength(0);
     expect(store.schedule.value['2026-09-28']).toBeUndefined();
     expect(session.active.value).not.toBeNull();
+  });
+
+  it('sin sesión activa devuelve `empty`', () => {
+    expect(session.finishSession()).toEqual({ ok: false, reason: 'empty' });
+  });
+
+  it('si falla la persistencia devuelve `save` y mantiene sesión y descanso', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }], { dayIso: '2026-09-28' });
+    session.toggleSetAt(0, 0);
+    expect(session.rest.value.running).toBe(true);
+
+    const setItem = localStorage.setItem.bind(localStorage);
+    const roto = vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === store.STATE_KEY) throw new Error('QuotaExceededError');
+      setItem(key, value);
+    });
+
+    try {
+      expect(session.finishSession()).toEqual({ ok: false, reason: 'save' });
+
+      expect(session.active.value).not.toBeNull();
+      expect(store.readState().active).not.toBeNull();
+      expect(store.sessions.value).toHaveLength(0);
+      expect(store.schedule.value['2026-09-28']).toBeUndefined();
+      expect(session.rest.value.running).toBe(true);
+    } finally {
+      roto.mockRestore();
+      session.stopRestTimer();
+    }
+  });
+
+  it('resetAll (importar/borrar) limpia también descanso y temporizadores', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }]);
+    session.toggleSetAt(0, 0);
+    expect(session.rest.value.running).toBe(true);
+
+    store.resetAll();
+
+    expect(session.active.value).toBeNull();
+    expect(session.rest.value.running).toBe(false);
+    expect(session.sessionSeconds.value).toBe(0);
   });
 
   it('descartar la sesión no deja ni rastro en el historial', () => {

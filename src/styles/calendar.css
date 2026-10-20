@@ -62,7 +62,7 @@
 }
 
 .cal-notice.ok .ico {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 
 .cal-notice.warn {
@@ -70,7 +70,7 @@
 }
 
 .cal-notice.warn .ico {
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .cal-notice.err {
@@ -78,7 +78,7 @@
 }
 
 .cal-notice.err .ico {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .cal-loading {
@@ -101,7 +101,7 @@
 }
 
 .cal-hint .ico {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .cal-empty .btn {
@@ -212,7 +212,7 @@
 .cal-session .ico {
   width: 16px;
   height: 16px;
-  color: var(--ok);
+  color: var(--ok-text);
   flex: none;
 }
 
@@ -304,7 +304,7 @@
   background: transparent;
   border-style: dashed;
   border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .cal-view .month-grid .month-cell.cal-sel {

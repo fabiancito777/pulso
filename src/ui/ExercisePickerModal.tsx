@@ -104,6 +104,7 @@ export function ExercisePickerModal({
           class="input"
           type="search"
           placeholder="Buscar…"
+          aria-label="Buscar ejercicio"
           autocomplete="off"
           value={query}
           onInput={(event) => setQuery(event.currentTarget.value)}
@@ -111,7 +112,12 @@ export function ExercisePickerModal({
       </div>
 
       <div class="seg mt-s">
-        <button type="button" class={group ? '' : 'on'} onClick={() => setGroup('')}>
+        <button
+          type="button"
+          class={group ? '' : 'on'}
+          aria-pressed={group === ''}
+          onClick={() => setGroup('')}
+        >
           Todos
         </button>
         {groups.map((g) => (
@@ -119,6 +125,7 @@ export function ExercisePickerModal({
             key={g.key}
             type="button"
             class={group === g.key ? 'on' : ''}
+            aria-pressed={group === g.key}
             onClick={() => setGroup(g.key)}
           >
             {g.label}
@@ -149,6 +156,7 @@ export function ExercisePickerModal({
                 key={ex.id}
                 type="button"
                 class={`ex-pick${on ? ' on' : ''}`}
+                aria-pressed={on}
                 onClick={() => toggle(ex.id)}
               >
                 <div class="grow" style="min-width:0">

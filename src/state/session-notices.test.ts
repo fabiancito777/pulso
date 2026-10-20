@@ -22,6 +22,7 @@ const calls = vi.hoisted(() => ({
   on: [] as string[],
   off: 0,
   sw: [] as Record<string, unknown>[],
+  swOk: true,
 }));
 
 vi.mock('@/platform/keepAlive', async (importOriginal) => {
@@ -40,7 +41,7 @@ vi.mock('@/platform/keepAlive', async (importOriginal) => {
 vi.mock('@/platform/sw', () => ({
   postToSW: (message: Record<string, unknown>): boolean => {
     calls.sw.push(message);
-    return true;
+    return calls.swOk;
   },
   registerSW: (): void => undefined,
 }));
@@ -91,6 +92,7 @@ beforeEach(() => {
   calls.on.length = 0;
   calls.off = 0;
   calls.sw.length = 0;
+  calls.swOk = true;
 });
 
 afterEach(() => {
@@ -274,5 +276,11 @@ describe('testRestNotice (botón «Probar aviso» de Ajustes)', () => {
   it('mínimo 3 segundos (igual que la v1: `Math.max(3, …)`)', () => {
     expect(session.testRestNotice(1)).toBe('ok');
     expect(calls.sw.at(-1)).toMatchObject({ at: T0 + 3000 });
+  });
+
+  it('sin service worker no dice «ok» (el aviso no llegaría)', () => {
+    calls.swOk = false;
+
+    expect(session.testRestNotice()).toBe('no-sw');
   });
 });

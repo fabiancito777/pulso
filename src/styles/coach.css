@@ -87,7 +87,7 @@
 }
 
 .coach-view .msg a {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Pie sutil bajo un mensaje del modelo: «consultó: …» y modelo · ms · tokens. */

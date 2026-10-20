@@ -14,7 +14,7 @@
   border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
   background: color-mix(in srgb, var(--danger) 10%, transparent);
   border-radius: var(--radius);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 12.5px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -94,7 +94,7 @@
 .exgen-warn {
   font-size: 12px;
   line-height: 1.4;
-  color: var(--warn);
+  color: var(--warn-text);
   overflow-wrap: anywhere;
 }
 

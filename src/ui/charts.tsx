@@ -626,6 +626,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
               key={o.k}
               type="button"
               class={range === o.k ? 'on' : ''}
+              aria-pressed={range === o.k}
               onClick={() => setRange(o.k)}
             >
               {o.l}
@@ -733,6 +734,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
                   key={ex.id}
                   type="button"
                   class={activeId === ex.id ? 'chip accent' : 'chip'}
+                  aria-pressed={activeId === ex.id}
                   onClick={() => pickExercise(ex.id)}
                 >
                   {info ? info.name : ex.id}

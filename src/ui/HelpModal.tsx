@@ -149,6 +149,7 @@ export function GuideIndex() {
           class="input"
           type="search"
           placeholder="Buscar: 1RM, descanso, racha…"
+          aria-label="Buscar en la ayuda"
           autocomplete="off"
           value={q}
           onInput={(event) => setQ(event.currentTarget.value)}

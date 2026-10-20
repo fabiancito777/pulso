@@ -711,7 +711,14 @@ export function CalendarView() {
   );
 
   function move(delta: number): void {
+    setSelected(null);
     setCursor(mode === 'week' ? addDays(cursor, delta * 7) : addMonths(cursor, delta));
+  }
+
+  /** Cambiar de semana/mes deja fuera de la vista el día seleccionado. */
+  function changeMode(next: ViewMode): void {
+    setSelected(null);
+    setMode(next);
   }
 
   function selectDay(iso: string): void {
@@ -787,7 +794,10 @@ export function CalendarView() {
       if (engine === 'ia') {
         const first = parsed.preview.days[0]?.iso;
         /* la IA planifica la semana de hoy: la vista salta ahí para verlo */
-        if (first) setCursor(first);
+        if (first) {
+          setSelected(null);
+          setCursor(first);
+        }
       }
     } catch (err) {
       setNotice({
@@ -833,7 +843,11 @@ export function CalendarView() {
       </div>
 
       {notice ? (
-        <div class={`cal-notice ${notice.kind}`}>
+        <div
+          class={`cal-notice ${notice.kind}`}
+          role={notice.kind === 'err' ? 'alert' : 'status'}
+          aria-live={notice.kind === 'err' ? 'assertive' : 'polite'}
+        >
           <Icon name={notice.kind === 'ok' ? 'check-circle' : 'alert'} />
           <span class="grow">{notice.text}</span>
           <button type="button" class="icon-btn" onClick={() => setNotice(null)} title="Cerrar">
@@ -883,14 +897,16 @@ export function CalendarView() {
           <button
             type="button"
             class={mode === 'week' ? 'on accent' : ''}
-            onClick={() => setMode('week')}
+            aria-pressed={mode === 'week'}
+            onClick={() => changeMode('week')}
           >
             Semana
           </button>
           <button
             type="button"
             class={mode === 'month' ? 'on accent' : ''}
-            onClick={() => setMode('month')}
+            aria-pressed={mode === 'month'}
+            onClick={() => changeMode('month')}
           >
             Mes
           </button>

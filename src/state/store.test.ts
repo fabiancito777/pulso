@@ -192,6 +192,79 @@ describe('writeState con setItem roto', () => {
       roto.mockRestore();
     }
   });
+
+  it('writeState y writeStored devuelven false cuando el setItem falla', () => {
+    const roto = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+
+    try {
+      expect(store.writeState(store.defaultState())).toBe(false);
+      expect(store.writeStored('pulso.prueba', { a: 1 })).toBe(false);
+    } finally {
+      roto.mockRestore();
+    }
+  });
+
+  it('writeState y writeStored devuelven true tras persistir', () => {
+    expect(store.writeState(store.defaultState())).toBe(true);
+    expect(store.writeStored('pulso.prueba', { a: 1 })).toBe(true);
+  });
+
+  it('commitSession devuelve false y no toca los signals si no puede guardar', () => {
+    const antes = store.sessions.value;
+    const roto = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError');
+    });
+
+    try {
+      expect(store.commitSession(realSession('s_fallo'))).toBe(false);
+      expect(store.sessions.value).toBe(antes);
+      expect(store.schedule.value['2026-09-01']).toBeUndefined();
+      expect(store.active.value).toBeNull();
+    } finally {
+      roto.mockRestore();
+    }
+  });
+});
+
+/* ---------- estado corrupto ---------- */
+
+const corruptKeys = (): string[] =>
+  [...mem.keys()].filter((key) => key.startsWith('pulso.state.corrupt.'));
+
+describe('estado corrupto', () => {
+  it('conserva el JSON roto antes de devolver los valores por defecto', () => {
+    mem.set(store.STATE_KEY, '{roto');
+
+    const out = store.readState();
+
+    expect(out.version).toBe(store.STATE_VERSION);
+    const keys = corruptKeys();
+    expect(keys).toHaveLength(1);
+    expect(mem.get(keys[0])).toBe('{roto');
+  });
+
+  it('también conserva un JSON válido con forma inválida', () => {
+    mem.set(store.STATE_KEY, '[]');
+
+    store.readState();
+
+    const keys = corruptKeys();
+    expect(keys).toHaveLength(1);
+    expect(mem.get(keys[0])).toBe('[]');
+  });
+
+  it('no pisa una copia corrupta anterior', () => {
+    mem.set(store.STATE_KEY, '{uno');
+    store.readState();
+    mem.set(store.STATE_KEY, '{dos');
+    store.readState();
+
+    const keys = corruptKeys();
+    expect(keys).toHaveLength(2);
+    expect(keys.map((key) => mem.get(key))).toEqual(expect.arrayContaining(['{uno', '{dos']));
+  });
 });
 
 /* ---------- ejercicios propios (Ajustes → Ejercicios) ---------- */
@@ -426,6 +499,16 @@ describe('datos de ejemplo', () => {
     expect(store.clearDemo()).toBe(0);
   });
 
+  it('appendSessions ordena por startedAt y desempata por id', () => {
+    const mismo = '2026-09-01T18:00:00.000Z';
+    store.appendSessions([
+      { ...realSession('s_b'), startedAt: mismo },
+      { ...realSession('s_a'), startedAt: mismo },
+    ]);
+
+    expect(store.sessions.value.map((s) => s.id)).toEqual(['s_a', 's_b']);
+  });
+
   it('appendSessions no toca el calendario (a diferencia de commitSession)', () => {
     const antes = store.schedule.value;
     store.appendSessions([realSession('s_real')]);
@@ -585,6 +668,49 @@ describe('export / import', () => {
     expect(store.schedule.value['2026-09-28']).toMatchObject({ status: 'planned', title: 'Ciclo' });
   });
 
+  it('exportState redacta la key del coach sin tocar lo guardado', () => {
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: 'secreta' } });
+
+    const copia = store.exportState();
+
+    expect(copia.settings.ai.apiKey).toBe('');
+    expect(store.readState().settings.ai.apiKey).toBe('secreta');
+  });
+
+  it('exportState incluye la key si se pide explícitamente', () => {
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: 'secreta' } });
+
+    expect(store.exportState({ includeApiKey: true }).settings.ai.apiKey).toBe('secreta');
+    expect(store.readState().settings.ai.apiKey).toBe('secreta');
+  });
+
+  it('importState completa ajustes, filtra material y devuelve lo persistido', () => {
+    const known = Object.keys(store.equipment.value)[0] ?? 'mancuernas';
+    const copia = {
+      settings: { name: 'Copia' },
+      equipment: { [known]: false, inventado: true },
+    };
+
+    const importado = store.importState(copia);
+
+    expect(importado.settings.name).toBe('Copia');
+    expect(importado.settings.ai.model).toBe(store.settings.value.ai.model);
+    expect(importado.equipment).toMatchObject({ [known]: false });
+    expect(importado.equipment).not.toHaveProperty('inventado');
+    expect(importado).toEqual(store.readState());
+  });
+
+  it('importState conserva la key actual si la copia la trae vacía', () => {
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: 'secreta' } });
+
+    const importado = store.importState({
+      settings: { ai: { apiKey: '' }, plates: [] },
+    });
+
+    expect(importado.settings.ai.apiKey).toBe('secreta');
+    expect(store.readState().settings.ai.apiKey).toBe('secreta');
+  });
+
   it('importState fija meta.onboarded y conserva las claves que traiga', () => {
     const copia = {
       ...store.exportState(),
@@ -649,6 +775,23 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
       status: 'planned',
       source: 'manual',
     });
+  });
+
+  it('si falla la escritura del estado NO marca la semilla (la próxima carga reintenta)', () => {
+    mem.clear();
+    const setItem = localStorage.setItem.bind(localStorage);
+    const roto = vi.spyOn(localStorage, 'setItem').mockImplementation((key, value) => {
+      if (key === store.STATE_KEY) throw new Error('QuotaExceededError');
+      setItem(key, value);
+    });
+
+    try {
+      store.loadInitialState();
+    } finally {
+      roto.mockRestore();
+    }
+
+    expect(store.readStored(store.SEED_KEY)).toBeNull();
   });
 
   it('la segunda carga no duplica ni la rutina ni el día', () => {

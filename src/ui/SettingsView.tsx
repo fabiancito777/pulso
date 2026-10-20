@@ -9,7 +9,6 @@
  * Nota: los ajustes SIN `onInput` se guardan al perder el foco (su `onChange` de
  * Preact es el evento `change` del navegador), igual que hacía la v1.
  */
-import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { EQUIPMENT } from '@/domain/catalog';
@@ -81,6 +80,7 @@ import { TEST_NOTICE_SEC, testRestNotice } from '@/state/session';
 import { ExerciseGenModal } from '@/ui/ExerciseGenModal';
 import { Icon } from '@/ui/Icon';
 import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
+import { Modal } from '@/ui/Modal';
 import {
   InfoCard,
   Kpi,
@@ -114,48 +114,6 @@ type SubKey = (typeof SUBS)[number]['key'];
  * onboarding.md hueco 5).
  */
 const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '2.0';
-
-/**
- * Carcasa de los tres modales de Ajustes (`modal-scrim`/`modal` de `base.css`):
- * se cierra tocando fuera del recuadro y siempre con Escape/la X, nunca con
- * botones del propio form dentro de `modal-body`.
- */
-function Modal({
-  title,
-  sub,
-  onClose,
-  children,
-  foot,
-}: {
-  title: string;
-  sub?: string;
-  onClose: () => void;
-  children: ComponentChildren;
-  foot: ComponentChildren;
-}) {
-  return (
-    <div
-      class="modal-scrim"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
-        <div class="modal-head">
-          <div>
-            <div class="h3">{title}</div>
-            {sub ? <div class="tiny muted">{sub}</div> : null}
-          </div>
-          <button type="button" class="icon-btn" aria-label="Cerrar" onClick={onClose}>
-            <Icon name="x" />
-          </button>
-        </div>
-        <div class="modal-body">{children}</div>
-        <div class="modal-foot">{foot}</div>
-      </div>
-    </div>
-  );
-}
 
 /* ---------- perfil ---------- */
 
@@ -352,6 +310,13 @@ function SecApariencia() {
               });
               return;
             }
+            if (result === 'no-sw') {
+              toast('El aviso con el móvil bloqueado necesita la app instalada (o servida en producción)', {
+                kind: 'warn',
+                ms: 6000,
+              });
+              return;
+            }
             toast(`Bloquea el móvil: el aviso llega en ${TEST_NOTICE_SEC} s`, {
               kind: 'ok',
               ms: 4000,
@@ -385,7 +350,7 @@ function SecEntreno() {
           step={0.5}
           min={0.5}
           max={20}
-          suffix="kg"
+          suffix={st.units}
           onChange={(v) => setSettingsPath('increment', v)}
         />
         <SwitchRow
@@ -464,6 +429,7 @@ function SecEquipo() {
                     type="button"
                     title={item.hint}
                     class={`toggle-pill ${eq[item.key] ? 'on' : 'off'}`}
+                    aria-pressed={eq[item.key] === true}
                     onClick={() => applyEquipment({ ...eq, [item.key]: !eq[item.key] })}
                   >
                     <Icon name={eq[item.key] ? 'check' : 'plus'} />
@@ -532,11 +498,18 @@ function PlateRow({ plate, index }: { plate: PlateStock; index: number }) {
       <button
         type="button"
         class={`toggle-pill ${plate.on !== false ? 'on' : 'off'}`}
+        aria-pressed={plate.on !== false}
+        aria-label={plate.on !== false ? 'Desactivar este disco' : 'Activar este disco'}
         onClick={() => togglePlate(index)}
       >
         <Icon name={plate.on !== false ? 'check' : 'x'} />
       </button>
-      <button type="button" class="icon-btn" onClick={() => removePlate(index)}>
+      <button
+        type="button"
+        class="icon-btn"
+        aria-label="Eliminar este disco"
+        onClick={() => removePlate(index)}
+      >
         <Icon name="x" />
       </button>
     </div>
@@ -589,7 +562,7 @@ function SecDiscos() {
       <div class="card flush mt">
         <div class="list">
           {plates.length ? (
-            plates.map((p, i) => <PlateRow key={`${p.w}-${p.unit}-${i}`} plate={p} index={i} />)
+            plates.map((p, i) => <PlateRow key={`plate-${i}`} plate={p} index={i} />)
           ) : (
             <div class="empty">Sin discos configurados</div>
           )}
@@ -825,6 +798,7 @@ function SecEjercicios() {
           <input
             class="input"
             placeholder="Buscar ejercicio…"
+            aria-label="Buscar ejercicio"
             value={q}
             onInput={(e) => setQ(e.currentTarget.value)}
           />
@@ -835,6 +809,7 @@ function SecEjercicios() {
               key={s.key}
               type="button"
               class={segment === s.key ? 'on' : ''}
+              aria-pressed={segment === s.key}
               onClick={() => setSegment(s.key)}
             >
               {s.label}
@@ -1436,8 +1411,9 @@ function SecCoach() {
           <input
             class="input"
             type={showKey ? 'text' : 'password'}
-            value={showKey ? key : ''}
+            value={key}
             placeholder={key ? masked : 'AIza…'}
+            aria-label="API key de Gemini"
             autocomplete="off"
             spellcheck={false}
             onChange={(e) => setSettingsPath('ai.apiKey', e.currentTarget.value)}
@@ -1553,6 +1529,7 @@ function SecCoach() {
               class="input"
               style="min-height:150px"
               placeholder="Vacío = usa el prompt por defecto de Pulso"
+              aria-label="Instrucciones del sistema"
               value={ai.systemPrompt ?? ''}
               onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
             />
@@ -1677,6 +1654,7 @@ function PromptModal({ value, onClose }: { value: string; onClose: () => void })
       <textarea
         class="input"
         style="min-height:240px"
+        aria-label="Instrucciones del sistema"
         value={text}
         onChange={(e) => apply(e.currentTarget.value)}
       />
@@ -1697,6 +1675,7 @@ function countOf(value: unknown): number {
 function SecDatos() {
   const [msg, setMsg] = useState('');
   const [howto, setHowto] = useState(false);
+  const [includeKey, setIncludeKey] = useState(false);
   /* lee el signal: si el navegador emite `beforeinstallprompt` con Ajustes ya
      abierto, la fila se actualiza sola (espec. hueco 3) */
   const disponible = installable.value;
@@ -1760,9 +1739,19 @@ function SecDatos() {
           help="opt.export"
           onClick={() => {
             /* mismo prefijo que la v1 (`pulso-backup-<fecha>.json`) */
-            downloadJSON(exportState(), 'pulso-backup');
-            setMsg('Copia descargada.');
+            downloadJSON(exportState({ includeApiKey: includeKey }), 'pulso-backup');
+            setMsg(
+              includeKey
+                ? 'Copia descargada, incluida la API key del coach.'
+                : 'Copia descargada (sin la API key del coach).',
+            );
           }}
+        />
+        <SwitchRow
+          label="Incluir la API key en la copia"
+          hint="Solo si la copia va a quedar en un sitio seguro: el archivo llevará tu clave de Gemini."
+          value={includeKey}
+          onChange={setIncludeKey}
         />
         <ListButton
           icon="upload"
@@ -1932,6 +1921,7 @@ export function SettingsView({ sub }: { sub: string | null }) {
               key={s.key}
               type="button"
               class={key === s.key ? 'on' : ''}
+              aria-current={key === s.key ? 'page' : undefined}
               onClick={() => go('ajustes', s.key)}
             >
               {s.label}
