@@ -56,6 +56,11 @@ export interface GenOpts {
   maxOutputTokens?: number;
   /** Para cancelar la llamada desde la UI. */
   signal?: AbortSignal;
+  /**
+   * Tiempo máximo por intento en ms (`REQUEST_TIMEOUT_MS` por defecto). Se
+   * expone para los tests y para que un caller pueda acortarlo.
+   */
+  timeoutMs?: number;
 }
 
 /** Resultado de una llamada correcta. */
@@ -97,6 +102,70 @@ export class GeminiError extends Error {
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+
+/** Tiempo máximo de cada petición HTTP (una llamada colgada no bloquea la app). */
+export const REQUEST_TIMEOUT_MS = 60_000;
+
+/** Tope de páginas de `GET /models`: un `nextPageToken` repetido no hace un bucle. */
+export const MAX_MODEL_PAGES = 10;
+
+/**
+ * Señal de un intento: externa (cancelación de la UI) + temporizador propio.
+ * Se combinan con `AbortSignal.any` cuando existe; si no, se reenvía el abort
+ * con listeners. `timedOut` distingue el vencimiento del aborto del usuario.
+ */
+interface Deadline {
+  signal: AbortSignal;
+  timedOut: () => boolean;
+  dispose: () => void;
+}
+
+function deadline(external: AbortSignal | undefined, timeoutMs: number): Deadline {
+  const timerController = new AbortController();
+  let expired = false;
+  const timer = setTimeout(
+    () => {
+      expired = true;
+      timerController.abort();
+    },
+    Math.max(1, timeoutMs),
+  );
+
+  const signals: AbortSignal[] = [];
+  if (external) signals.push(external);
+  signals.push(timerController.signal);
+
+  let signal: AbortSignal;
+  let detach = (): void => undefined;
+  if (typeof AbortSignal.any === 'function') {
+    signal = AbortSignal.any(signals);
+  } else {
+    const relay = new AbortController();
+    const listeners = signals.map((source) => {
+      const onAbort = (): void => relay.abort(source.reason);
+      if (source.aborted) onAbort();
+      else source.addEventListener('abort', onAbort);
+      return () => source.removeEventListener('abort', onAbort);
+    });
+    signal = relay.signal;
+    detach = () => listeners.forEach((off) => off());
+  }
+
+  return {
+    signal,
+    timedOut: () => expired,
+    dispose: () => {
+      clearTimeout(timer);
+      detach();
+    },
+  };
+}
+
+/** Error de vencimiento: `network` para que la UI lo trate como caída de red. */
+function timeoutError(timeoutMs: number): GeminiError {
+  const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+  return new GeminiError('network', `Gemini no respondió a tiempo (${seconds} s)`);
+}
 
 /** Cuerpo de la respuesta, leído campo a campo y de forma tolerante. */
 interface ApiPart {
@@ -193,11 +262,14 @@ function normalizeContents(
   for (const m of o.history ?? []) push(m);
   /* Un inicio de conversación del modelo no es válido: se corta por la base */
   while (turns.length && turns[0].role !== 'user') turns.shift();
-  /* El turno actual SIEMPRE cierra la petición como `user`: aunque el prompt
-     venga en blanco (bug del caller, no de la conversación) no se puede acabar
-     en `model`, y ese caso ya fallaba igual en la v1 */
-  push({ role: 'user', text: o.prompt });
-  if (turns[turns.length - 1]?.role !== 'user') turns.push({ role: 'user', text: '' });
+  /* El turno actual SIEMPRE cierra la petición como `user`. Un prompt vacío es
+     un bug del caller: la API lo rechazaría con un 400 seguro, así que se corta
+     aquí con un error claro en vez de mandar `parts: [{ text: '' }]`. */
+  const prompt = String(o.prompt ?? '').trim();
+  if (!prompt) {
+    throw new GeminiError('parse', 'La petición no tiene texto: el prompt está vacío');
+  }
+  push({ role: 'user', text: prompt });
   return turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
 }
 
@@ -231,10 +303,15 @@ export function buildBody(o: GenOpts, opts: { dropThinking?: boolean } = {}): un
   };
 }
 
-/** Fallback de mensaje cuando la API no devuelve `error.message` (p. ej. una página HTML). */
+/**
+ * Fallback de mensaje cuando la API no devuelve `error.message` (p. ej. una
+ * página HTML de un proxy). El texto crudo NO se enseña al usuario: puede traer
+ * HTML o detalles internos de Google. Va a `console.warn` para diagnosticar.
+ */
 function fallbackMessage(status: number | undefined, raw: string): string {
-  if (!raw) return `HTTP ${status ?? '?'}`;
-  return `Respuesta no-JSON (HTTP ${status ?? '?'}): ${raw.slice(0, 160)}`;
+  const code = status ?? '?';
+  if (raw) console.warn(`[coach] Respuesta no-JSON de Gemini (HTTP ${code}):`, raw.slice(0, 500));
+  return `Gemini devolvió una respuesta no válida (HTTP ${code})`;
 }
 
 /**
@@ -435,16 +512,21 @@ async function requestOnce(
   call: (url: string, init: RequestInit) => Promise<unknown>,
   dropThinking: boolean,
   t0: number,
+  signal: AbortSignal | undefined,
 ): Promise<GenResult> {
+  /* El body se monta fuera del try: un prompt vacío lanza `GeminiError('parse')`
+     y no debe confundirse con un fallo de red. */
+  const body = JSON.stringify(buildBody(o, { dropThinking }));
   let fetched: unknown;
   try {
     fetched = await call(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify(buildBody(o, { dropThinking })),
-      signal: o.signal,
+      body,
+      signal: signal ?? o.signal,
     });
   } catch (err) {
+    if (err instanceof GeminiError) throw err;
     throw networkError(err);
   }
   const res = fetched as LooseResponse;
@@ -553,11 +635,17 @@ export async function generate(o: GenOpts, fetchFn?: typeof fetch): Promise<GenR
   const t0 = Date.now();
   const call: (url: string, init: RequestInit) => Promise<unknown> = fetchFn ?? fetch;
 
+  const timeoutMs = o.timeoutMs ?? REQUEST_TIMEOUT_MS;
   let dropThinking = false;
   for (let attempt = 0; ; attempt++) {
+    const gate = deadline(o.signal, timeoutMs);
     try {
-      return await requestOnce(o, url, key, model, call, dropThinking, t0);
+      return await requestOnce(o, url, key, model, call, dropThinking, t0, gate.signal);
     } catch (err) {
+      /* Un vencimiento o un aborto del usuario no se reintenta: solo alargaría
+         la espera. */
+      if (gate.timedOut()) throw timeoutError(timeoutMs);
+      if (o.signal?.aborted) throw new GeminiError('network', 'Llamada a Gemini cancelada');
       if (!(err instanceof GeminiError)) throw err;
       const reason = retryReason(err);
       if (!reason) throw err;
@@ -571,6 +659,8 @@ export async function generate(o: GenOpts, fetchFn?: typeof fetch): Promise<GenR
       if (reason === 'unusable') dropThinking = true;
       const wait = backoff(fetchFn, reason, attempt);
       if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+    } finally {
+      gate.dispose();
     }
   }
 }
@@ -640,38 +730,66 @@ const MODEL_EXCLUDE = /embedding|aqa|imagen|veo|tts|live/i;
  * falla o viene vacío, la UI sigue con el catálogo `AI_MODELS`.
  *
  * Lanza `GeminiError`: `auth` sin key o con 401/403, `quota` con 429, `http`
- * para el resto de errores HTTP, `network` si no hay conexión y `empty` si la
- * cuenta no devuelve ningún modelo utilizable. Con `fetchFn` mockeado (tests)
- * no se espera entre páginas y no se toca la red.
+ * para el resto de errores HTTP, `network` si no hay conexión (o vence el
+ * timeout por petición) y `empty` si la cuenta no devuelve ningún modelo
+ * utilizable. Con `fetchFn` mockeado (tests) no se espera entre páginas y no se
+ * toca la red.
+ *
+ * `nextPageToken` se recuerda: un token repetido (API que no avanza) corta el
+ * bucle, igual que el tope `MAX_MODEL_PAGES`, para que el selector no se quede
+ * girando indefinidamente.
  */
-export async function listModels(apiKey: string, fetchFn?: typeof fetch): Promise<ModelOption[]> {
+export interface ListModelsOpts {
+  /** Tiempo máximo por petición en ms (`REQUEST_TIMEOUT_MS` por defecto). */
+  timeoutMs?: number;
+  /** Cancelación externa opcional. */
+  signal?: AbortSignal;
+}
+
+export async function listModels(
+  apiKey: string,
+  fetchFn?: typeof fetch,
+  opts: ListModelsOpts = {},
+): Promise<ModelOption[]> {
   const key = String(apiKey ?? '').trim();
   if (!key) throw new GeminiError('auth', 'Falta la API key de Gemini (Ajustes → Coach AI)');
   const call: (url: string, init: RequestInit) => Promise<unknown> = fetchFn ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
 
   const out: ModelOption[] = [];
+  const seen = new Set<string>();
   let token = '';
-  for (;;) {
+  for (let pageNo = 0; pageNo < MAX_MODEL_PAGES; pageNo++) {
     const url = `${BASE}/models?pageSize=200${
       token ? `&pageToken=${encodeURIComponent(token)}` : ''
     }`;
+    const gate = deadline(opts.signal, timeoutMs);
     let fetched: unknown;
-    try {
-      fetched = await call(url, { headers: { 'x-goog-api-key': key } });
-    } catch (err) {
-      throw networkError(err);
-    }
-
-    const res = fetched as LooseResponse;
-    const status = typeof res.status === 'number' ? res.status : undefined;
+    let res: LooseResponse;
+    let status: number | undefined;
     let data: unknown = null;
     let raw = '';
     try {
-      if (typeof res.text === 'function') raw = await res.text();
-      else if (typeof res.json === 'function') data = await res.json();
-    } catch (err) {
-      throw networkError(err);
+      try {
+        fetched = await call(url, { headers: { 'x-goog-api-key': key }, signal: gate.signal });
+      } catch (err) {
+        if (gate.timedOut()) throw timeoutError(timeoutMs);
+        throw networkError(err);
+      }
+
+      res = fetched as LooseResponse;
+      status = typeof res.status === 'number' ? res.status : undefined;
+      try {
+        if (typeof res.text === 'function') raw = await res.text();
+        else if (typeof res.json === 'function') data = await res.json();
+      } catch (err) {
+        if (gate.timedOut()) throw timeoutError(timeoutMs);
+        throw networkError(err);
+      }
+    } finally {
+      gate.dispose();
     }
+
     if (raw.trim()) {
       try {
         data = JSON.parse(raw);
@@ -702,6 +820,8 @@ export async function listModels(apiKey: string, fetchFn?: typeof fetch): Promis
 
     token = String(page.nextPageToken ?? '');
     if (!token || out.length >= MODELS_LIMIT) break;
+    if (seen.has(token)) break;
+    seen.add(token);
   }
 
   if (!out.length)

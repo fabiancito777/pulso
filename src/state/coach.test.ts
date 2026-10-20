@@ -22,7 +22,7 @@ import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
 import type { GenOpts, GenResult } from '@/features/coach/client';
 import { queryHistory } from '@/features/coach/history';
-import { HISTORY_MODEL_LIMIT } from '@/features/coach/prompts';
+import { HISTORY_MODEL_LIMIT, PROMPT_HISTORY_LIMIT } from '@/features/coach/prompts';
 import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from '@/features/coach/schema';
 import type { Routine } from './store';
 
@@ -997,5 +997,42 @@ describe('material (v1: «equipo: detecta material faltante» / «disponible al 
     store.refresh();
     expect(store.equipment.value.mancuernas_ajustables).toBe(true);
     expect(store.equipment.value.mancuernas_fijas).toBe(false);
+  });
+});
+
+describe('D4: bucle de consultas acotado', () => {
+  it('consultRounds se limita y el historial nunca supera el tope de la tarea', async () => {
+    seedSessions([SESION]);
+    const gen = makeGen([
+      res(`Miro tu historial.\n\`\`\`consulta\n{"ejercicio":"${NOMBRE}"}\n\`\`\``),
+    ]);
+
+    const out = await coach.runCoachTask(
+      'analyze',
+      { userText: '¿cómo voy?', consultRounds: 99 },
+      { generateFn: gen },
+    );
+
+    expect(gen).toHaveBeenCalledTimes(coach.MAX_CONSULT_ROUNDS + 1);
+    expect(out.consulted).toHaveLength(coach.MAX_CONSULT_ROUNDS);
+    for (const call of gen.mock.calls) {
+      expect(call[0].history?.length ?? 0).toBeLessThanOrEqual(PROMPT_HISTORY_LIMIT);
+    }
+  });
+
+  it('propaga el AbortSignal de las opciones y el de las dependencias', async () => {
+    const fromOpts = new AbortController().signal;
+    const optsGen = makeGen([res('ok')]);
+    await coach.runCoachTask('chat', { userText: 'hola', signal: fromOpts }, { generateFn: optsGen });
+    expect(optsGen.mock.calls[0]?.[0].signal).toBe(fromOpts);
+
+    const fromDeps = new AbortController().signal;
+    const depsGen = makeGen([res('ok')]);
+    await coach.runCoachTask(
+      'chat',
+      { userText: 'hola' },
+      { generateFn: depsGen, signal: fromDeps },
+    );
+    expect(depsGen.mock.calls[0]?.[0].signal).toBe(fromDeps);
   });
 });

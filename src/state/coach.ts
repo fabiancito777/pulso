@@ -90,6 +90,8 @@ export interface CoachDeps {
   /** inyectable para tests; por defecto el client real */
   generateFn?: typeof generate;
   now?: () => number;
+  /** cancelación opcional para toda la tarea (se reenvía a `generate`) */
+  signal?: AbortSignal;
 }
 
 /** Opciones de una tarea del coach. */
@@ -112,6 +114,8 @@ export interface CoachTaskOpts {
   maxSessions?: number;
   /** rondas de ```consulta``` permitidas (por defecto 1; 0 = sin 2ª llamada) */
   consultRounds?: number;
+  /** cancelación opcional de la tarea (se reenvía a `generate`) */
+  signal?: AbortSignal;
 }
 
 /** Lo que devuelve `runCoachTask`, listo para pintar en la vista del coach. */
@@ -194,6 +198,12 @@ const QUERY_ALIAS: Record<string, keyof HistoryQuery> = {
 
 /** Semanas del análisis (el mismo tope que la v1). */
 const ANALYZE_WEEKS = 6;
+
+/**
+ * Tope de rondas de ```consulta```: el bucle acumula turnos y llamadas caras,
+ * así que un `consultRounds` disparatado del caller no puede encadenar decenas.
+ */
+export const MAX_CONSULT_ROUNDS = 5;
 
 /**
  * Tope de salida en las tareas de JSON (`suggest`/`plan`), sea cual sea el
@@ -595,8 +605,11 @@ export async function runCoachTask(
   /* 3 · llamada (sin key no se llega aquí; el fallo de la PRIMERA llamada en
      suggest/plan se resuelve con el plan local, ver cabecera del módulo) */
   const genFn: typeof generate = deps.generateFn ?? generate;
+  const signal = opts.signal ?? deps.signal;
   const consultable = task === 'chat' || task === 'analyze';
-  const rounds = consultable ? Math.max(0, int(opts.consultRounds ?? 1, 1)) : 0;
+  const rounds = consultable
+    ? Math.min(MAX_CONSULT_ROUNDS, Math.max(0, int(opts.consultRounds ?? 1, 1)))
+    : 0;
   const consulted: string[] = [];
   /* tope de turnos de ESTA tarea (el mismo que ya aplicó `buildRequest`) y
      turnos que AÑADE el bucle de consulta, aparte, para poder reservarles sitio
@@ -609,7 +622,11 @@ export async function runCoachTask(
   let history: ChatMsg[] = kept;
   let res: GenResult;
   try {
-    res = await genFn({ ...base, ...(history.length ? { history } : {}) });
+    res = await genFn({
+      ...base,
+      ...(history.length ? { history } : {}),
+      ...(signal ? { signal } : {}),
+    });
   } catch (err) {
     if (isLocalTask(task) && isFallbackError(err)) {
       return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0, err);
@@ -643,7 +660,6 @@ export async function runCoachTask(
       break;
     }
     const message = `DATOS DE LA CONSULTA:\n${answers.join('\n\n')}\n\nContinúa con tu respuesta.`;
-    kept = boundedHistory(kept, Math.max(0, limit - extra.length - 2));
     /* El turno del usuario entra SIN recortar: es la petición completa (en
        `analyze` trae además las instrucciones de formato), y recortarla dejaría
        la 2ª llamada sin las reglas. La respuesta del modelo sí se acota: solo
@@ -652,9 +668,14 @@ export async function runCoachTask(
       { role: 'user', text: prompt },
       { role: 'model', text: trunc(res.text, HISTORY_MODEL_LIMIT) },
     );
+    /* `extra` crece una pareja por ronda: se recortan las más antiguas para que
+       el historial final NUNCA supere el tope de la tarea. Después `kept` solo
+       ocupa el hueco que deja `extra`, así que la suma cabe en `limit`. */
+    if (extra.length > limit) extra.splice(0, extra.length - limit);
+    kept = boundedHistory(kept, Math.max(0, limit - extra.length));
     history = [...kept, ...extra];
     prompt = message;
-    res = await genFn({ ...base, prompt, history });
+    res = await genFn({ ...base, prompt, history, ...(signal ? { signal } : {}) });
   }
 
   /* 5 · memoria: se vuelca y se quita del texto final */

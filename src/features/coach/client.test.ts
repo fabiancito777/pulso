@@ -732,3 +732,104 @@ describe('listModels', () => {
     });
   });
 });
+
+/* ---------- timeout, aborto y prompt vacío ---------- */
+
+/** `fetch` que nunca resuelve pero rechaza cuando su señal se aborta. */
+function hangingFetch() {
+  return vi.fn(
+    (_url: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<unknown>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }),
+  );
+}
+
+describe('generate — timeout y cancelación', () => {
+  it('un timeout se traduce a network, sin reintentos', async () => {
+    const f = hangingFetch();
+    const err = await generate(opts({ timeoutMs: 5 }), f as unknown as typeof fetch).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(GeminiError);
+    expect(err).toMatchObject({ kind: 'network' });
+    expect((err as GeminiError).message).toContain('no respondió a tiempo');
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('el aborto de la UI llega a fetch y se devuelve como network', async () => {
+    const controller = new AbortController();
+    const f = hangingFetch();
+    const pending = generate(opts({ signal: controller.signal }), f as unknown as typeof fetch);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ kind: 'network', status: undefined });
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('un prompt vacío lanza parse y NUNCA manda una parte vacía', async () => {
+    const f = makeFetch(reply());
+    await expect(generate(opts({ prompt: '   ' }), f)).rejects.toMatchObject({ kind: 'parse' });
+    expect(f).not.toHaveBeenCalled();
+    expect(() => buildBody(opts({ prompt: '\n\t ' }))).toThrowError('prompt está vacío');
+  });
+});
+
+describe('listModels — timeout y paginación', () => {
+  it('un token repetido corta el bucle (no se queda pidiendo páginas)', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(modelsPage([model('uno')], 'rep'))),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(modelsPage([model('dos')], 'rep'))),
+      });
+    const list = await listModels('clave', f);
+    expect(list.map((m) => m.id)).toEqual(['uno', 'dos']);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  it('un timeout por petición lanza network', async () => {
+    const f = hangingFetch();
+    const err = await listModels('clave', f as unknown as typeof fetch, {
+      timeoutMs: 5,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GeminiError);
+    expect(err).toMatchObject({ kind: 'network' });
+    expect((err as GeminiError).message).toContain('no respondió a tiempo');
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('fallbackMessage — no filtra el crudo de la API', () => {
+  it('un HTML de proxy se queda en console.warn y el usuario ve un mensaje fijo', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () => Promise.resolve('<html><body>proxy roto</body></html>'),
+        } as Response),
+      );
+      const err = await listModels('clave', f as unknown as typeof fetch).catch(
+        (e: unknown) => e,
+      );
+      expect(err).toMatchObject({ kind: 'parse' });
+      expect((err as GeminiError).message).not.toContain('<html>');
+      expect((err as GeminiError).message).not.toContain('proxy roto');
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Respuesta no-JSON'),
+        expect.stringContaining('<html>'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
