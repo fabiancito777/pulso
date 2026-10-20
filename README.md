@@ -27,9 +27,9 @@ En el móvil: despliega `dist/` en cualquier hosting estático (funciona desde u
 sírvelo desde tu ordenador y abre su IP; puedes **añadirlo a la pantalla de inicio** (PWA: abre a
 pantalla completa y funciona offline).
 
-> Los tests de red del coach (`smoke`/`edge`) leen la key de `.env.local` (gitignored) y hacen
-> ~13 llamadas a Gemini por `npm run test`; para una pasada sin red:
-> `npx vitest run --exclude 'src/features/coach/{smoke,edge}.test.ts'`.
+> Los tests de red del coach (`smoke`/`edge`/`quality`) leen la key de `.env.local` (gitignored) y
+> hacen llamadas a Gemini. `npm run test` los excluye (pasada offline); para ejecutarlos:
+> `npm run test:net` (o `npm run test:quality` solo el de calidad).
 
 ---
 
@@ -230,7 +230,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest (dominio, estado y UI; ~915 tests). |
+| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1341 tests**). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre el proyecto. |
 

@@ -7,12 +7,12 @@ Documento de contexto de esta app. Aquí no es HTML+JS vanilla: es
 **`AGENTS-v1.md`**: sigue siendo válida como referencia del _por qué_ de cada regla, así que si
 dudas, mira ahí primero.
 
-> Última actualización: 30-sep-2026 · **migración completa**: la v2 es la app por defecto
+> Última actualización: 19-oct-2026 · **migración completa**: la v2 es la app por defecto
 > (`main` = v2); las 7 pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y
 > Ajustes), coach IA con cerebro, memoria y consultas **más** planificador local sin key, PWA y
-> onboarding. `npm run test` ≈ **922 tests**; ojo: los `smoke`/`edge` de `src/features/coach/`
-> hablan con la API REAL usando la key de `.env.local` (~13 llamadas por `npm run test`; se
-> excluyen con `--exclude`).
+> onboarding. `npm run test` ≈ **1341 tests**; ojo: los `smoke`/`edge`/`quality` de
+> `src/features/coach/` hablan con la API REAL usando la key de `.env.local` y se excluyen por
+> defecto (van con `npm run test:net`).
 
 ---
 
@@ -65,7 +65,7 @@ npm run preview      # sirve el build
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `npm run typecheck` | `tsc --noEmit` con `strict`, `noUnusedLocals`…                                                                     |
 | `npm run lint`      | ESLint con reglas tipadas (`recommendedTypeChecked`)                                                               |
-| `npm run test`      | Vitest (hoy ≈ **922 tests**: dominio, estado y UI; ver las notas de abajo sobre los dos archivos de red del coach) |
+| `npm run test`      | Vitest **offline** (≈ **1341 tests**: dominio, estado y UI; excluye smoke/edge/quality, que van con `test:net`)    |
 | `npm run verify`    | typecheck + lint + test + build (lo que hay que dejar verde)                                                       |
 | `npm run format`    | Prettier sobre el proyecto                                                                                         |
 
@@ -75,11 +75,11 @@ Notas de entorno:
   navegador sirviendo código viejo.
 - Si algo de UI no se puede probar con Vitest (modales, timer, dibujo), se comprueba en el
   navegador con Playwright y se guarda una captura en `_shots/` (está en `.gitignore`).
-- **Tests contra la API real**: `src/features/coach/smoke.test.ts` y `edge.test.ts` no mockean la
-  red: leen la key de **`.env.local`** (gitignored, **nunca commitear**) y hacen ~13 llamadas a
-  Gemini por `npm run test` (presupuesto duro por archivo: 2 y 20; sin key se saltan enteros). Para
-  una pasada sin red ni cuota:
-  `npx vitest run --exclude 'src/features/coach/{smoke,edge}.test.ts'`.
+- **Tests contra la API real**: `src/features/coach/smoke.test.ts`, `edge.test.ts` y `quality.test.ts`
+  no mockean la red: leen la key de **`.env.local`** (gitignored, **nunca commitear**) y hacen
+  llamadas a Gemini (presupuesto duro por archivo: 2 y 20; sin key se saltan enteros). `npm run test`
+  los **excluye** por defecto (pasada offline, sin red ni cuota); para ejecutarlos: `npm run test:net`
+  (o `npm run test:quality` solo el de calidad).
 - `_specs/` guarda las specs de trabajo de la migración (gitignored, como `_shots/`): son el
   contrato de cada bloque. Con la migración cerrada, el estado ya no se duplica: el roadmap que
   vivía en `src/app/roadmap.ts` se retiró junto con su panel.

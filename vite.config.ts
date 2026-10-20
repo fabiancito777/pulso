@@ -24,7 +24,10 @@ export default defineConfig({
   build: {
     target: 'es2022',
     outDir: 'dist',
-    sourcemap: true,
+    /* Sin sourcemaps: incluso 'hidden' deja los .map en dist/ y el workflow
+       sube dist/ entero a GitHub Pages, así que el código fuente quedaría
+       accesible por URL. */
+    sourcemap: false,
   },
   test: {
     environment: 'node',
