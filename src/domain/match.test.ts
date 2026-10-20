@@ -185,6 +185,15 @@ describe('matchExercise: veto de atributos (los casos de la spec)', () => {
     expect(match.candidate?.id).not.toBe('remo-con-barra');
   });
 
+  it('«Dominadas en barra» acepta `banco_dominadas`/`rack` como barra', () => {
+    const biblioteca = [ex('dominadas', 'Dominadas', 'banco_dominadas|rack|multiestacion')];
+    const match = matchExercise('Dominadas en barra', biblioteca);
+    expect(match.matched).toBe('fuzzy');
+    expect(match.ex?.id).toBe('dominadas');
+    expect(match.conflict).toBeUndefined();
+    expect(exerciseAttrs(biblioteca[0]).material).toContain('barra');
+  });
+
   it('material que el `equip` no declara → conflicto', () => {
     const biblioteca = [ex('curl-barra', 'Curl de bíceps', 'barra_ez')];
     const match = matchExercise('Curl de bíceps con mancuerna', biblioteca);

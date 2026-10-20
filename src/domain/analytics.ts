@@ -17,6 +17,7 @@ import {
   addDays,
   diffDays,
   dowIdx,
+  iso,
   label as dateLabel,
   relative,
   startOfWeek,
@@ -82,8 +83,17 @@ export interface Suggestion {
 
 /* ---------- primitivas por serie ---------- */
 
-export const sessionDate = (session: Session): string =>
-  session.date || (session.startedAt || '').slice(0, 10);
+/**
+ * Día del calendario de una sesión: el `date` explícito o, si falta, la fecha
+ * LOCAL de `startedAt` (nunca `toISOString().slice(0, 10)`: eso es UTC y desplaza
+ * el día según la zona). Una fecha inválida no inventa un día: devuelve `''`.
+ */
+export const sessionDate = (session: Session): string => {
+  if (session.date) return session.date;
+  if (!session.startedAt) return '';
+  const started = new Date(session.startedAt);
+  return Number.isFinite(started.getTime()) ? iso(started) : '';
+};
 
 /** Peso de una serie en kg. Tolerante: `''` y `null` valen 0. */
 export const setKg = (set: SetLog | undefined, unit: Unit = 'kg'): number =>
@@ -123,8 +133,11 @@ export function volumeOf(session: Session, unit?: Unit): number {
  */
 export function durationOf(session: Session, now: number = Date.now()): number {
   if (!session.startedAt) return 0;
+  const start = new Date(session.startedAt).getTime();
+  if (!Number.isFinite(start)) return 0;
   const end = session.endedAt ? new Date(session.endedAt).getTime() : now;
-  return Math.max(0, end - new Date(session.startedAt).getTime());
+  if (!Number.isFinite(end)) return 0;
+  return Math.max(0, end - start);
 }
 
 /** Sesiones de los últimos `days` días (incluye hoy). */
@@ -431,7 +444,9 @@ export function suggestWeight(
   const estimated = e1rm(kg, top.reps) / (1 + reps / 30);
   const previous = round(fromKg(kg, displayUnit), 2);
   let suggested = round(fromKg(estimated, displayUnit), 2);
-  if (suggested >= previous) suggested = round(previous + inc, 2);
+  /* Sin peso previo (peso corporal o sin dato) no hay progresión que sumar:
+     proponer 2,5 kg a un ejercicio que se hace a 0 sería inventar carga. */
+  if (previous > 0 && suggested >= previous) suggested = round(previous + inc, 2);
   return {
     weight: Math.max(0, suggested),
     reps,
@@ -478,7 +493,12 @@ export function recentExercises(
   const byId = byIdMap(exercises);
   const seen = new Set<string>();
   const out: { ex: Exercise; date: string }[] = [];
-  const ordered = [...sessions].sort((a, b) => (sessionDate(a) < sessionDate(b) ? 1 : -1));
+  const ordered = [...sessions].sort((a, b) => {
+    const da = sessionDate(a);
+    const db = sessionDate(b);
+    if (da !== db) return da < db ? 1 : -1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
   for (const session of ordered) {
     for (const entry of session.entries) {
       if (seen.has(entry.exId)) continue;

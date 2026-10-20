@@ -167,6 +167,17 @@ describe('grupo', () => {
     expect(result.info.notes.join(' ')).toContain('Remo en polea alta');
   });
 
+  it('entiende plurales y palabras nuevas (elevaciones, cuádriceps, francés, peso muerto)', () => {
+    const groupOf = (name: string, equip: string): string =>
+      draftOf(proposalToDraft({ name, group: 'nada', equip }, [], material(equip))).draft.group;
+
+    expect(groupOf('Elevaciones laterales con mancuernas', 'mancuernas_fijas')).toBe('hombros');
+    expect(groupOf('Extensión de cuádriceps', 'ext_cuadriceps')).toBe('cuadriceps');
+    expect(groupOf('Press francés con barra EZ', 'barra_ez')).toBe('triceps');
+    expect(groupOf('Peso muerto convencional', 'barra_olimpica')).toBe('espalda');
+    expect(groupOf('Peso muerto rumano', 'barra_olimpica')).toBe('femoral');
+  });
+
   it('grupo inválido y sin candidato → lo infiere por keywords del nombre', () => {
     const result = draftOf(
       proposalToDraft(
@@ -259,6 +270,35 @@ describe('material', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toContain('Barra cargable');
+  });
+
+  it('entre varios materiales activos prefiere el que el nombre menciona', () => {
+    const polea = draftOf(
+      proposalToDraft(
+        { name: 'Remo en polea baja', group: 'espalda' },
+        [],
+        material('polea_alta', 'polea_baja'),
+      ),
+    );
+    expect(polea.draft.equip).toBe('polea_baja');
+
+    const ez = draftOf(
+      proposalToDraft(
+        { name: 'Curl con barra EZ', group: 'biceps' },
+        [],
+        material('barra_olimpica', 'barra_ez'),
+      ),
+    );
+    expect(ez.draft.equip).toBe('barra_ez');
+
+    const fijas = draftOf(
+      proposalToDraft(
+        { name: 'Press con mancuernas fijas', group: 'pecho' },
+        [],
+        material('mancuernas_fijas', 'mancuernas_ajustables'),
+      ),
+    );
+    expect(fijas.draft.equip).toBe('mancuernas_fijas');
   });
 
   it('sin equip declarado, el material del nombre se deduce de lo ACTIVO', () => {

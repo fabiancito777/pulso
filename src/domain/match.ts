@@ -130,7 +130,15 @@ function equipAttrs(equip: string | undefined): { material: MaterialKey[]; banco
     const key = part.trim();
     if (!key) continue;
     if (/^mancuern/.test(key)) material.push('mancuerna');
-    else if (key.startsWith('barra') || key === 'trap_bar') material.push('barra');
+    else if (
+      key.startsWith('barra') ||
+      key === 'trap_bar' ||
+      /* una barra de dominadas o un rack también son «barra» para el nombre
+         «Dominadas en barra»: sin esto, el equip `banco_dominadas|rack` chocaba. */
+      key === 'banco_dominadas' ||
+      key === 'rack'
+    )
+      material.push('barra');
     else if (key.startsWith('polea')) material.push('polea');
     else if (key === 'bandas') material.push('banda');
     else if (MACHINE_KEYS.has(key)) material.push('maquina');

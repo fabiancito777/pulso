@@ -243,8 +243,13 @@ export interface ActiveSet {
 export interface ActiveEntry {
   exId: string;
   name: string;
-  /** descanso sugerido por la prescripción o la biblioteca, en segundos */
-  restSec: number;
+  /** grupo muscular del ejercicio: respaldo al cerrar si sale de la biblioteca */
+  group?: string;
+  /**
+   * descanso de la prescripción o la biblioteca, en segundos. `0` = sin descanso
+   * (cardio/movilidad); `null`/`undefined` = sin definir (se usa el de ajustes).
+   */
+  restSec?: number | null;
   repMin: number;
   repMax: number;
   sets: ActiveSet[];

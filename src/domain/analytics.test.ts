@@ -134,11 +134,17 @@ describe('conversión de series', () => {
     expect(setVolumeKg({ weight: null, reps: 5, done: true })).toBe(0);
   });
 
-  it('la fecha de la sesión sale del campo `date` o del arranque', () => {
+  it('la fecha de la sesión sale del campo `date` o del arranque (en local)', () => {
     expect(sessionDate(sesion(HOY, []))).toBe(HOY);
-    expect(
-      sessionDate({ ...sesion(HOY, []), date: '', startedAt: '2026-09-20T08:00:00.000Z' }),
-    ).toBe('2026-09-20');
+    const local = new Date(2026, 8, 20, 8, 0, 0);
+    expect(sessionDate({ ...sesion(HOY, []), date: '', startedAt: local.toISOString() })).toBe(
+      '2026-09-20',
+    );
+  });
+
+  it('una fecha de arranque inválida no inventa un día', () => {
+    expect(sessionDate({ ...sesion(HOY, []), date: '', startedAt: 'no-es-fecha' })).toBe('');
+    expect(sessionDate({ ...sesion(HOY, []), date: '', startedAt: '' })).toBe('');
   });
 });
 
@@ -189,6 +195,12 @@ describe('por sesión', () => {
 
   it('sin arranque no hay duración', () => {
     expect(durationOf({ ...s, startedAt: '' })).toBe(0);
+  });
+
+  it('con fechas inválidas devuelve 0, nunca NaN', () => {
+    expect(durationOf({ ...s, startedAt: 'no-es-fecha' })).toBe(0);
+    expect(durationOf({ ...s, endedAt: 'no-es-fecha' })).toBe(0);
+    expect(durationOf({ ...s, endedAt: undefined }, Number.NaN)).toBe(0);
   });
 });
 
@@ -405,6 +417,15 @@ describe('sugerencia de peso', () => {
     const s = suggestWeight(conHistorial, 'ex-press', { targetReps: 5, increment: 5 });
     expect(s.weight).toBe(105);
   });
+
+  it('sin peso previo (peso corporal) NO suma el incremento: sugiere 0', () => {
+    const corporal = [sesion('2026-09-20', [press([serie(0, 12)])])];
+    const s = suggestWeight(corporal, 'ex-press', { targetReps: 12, unit: 'kg' });
+    expect(s.weight).toBe(0);
+    expect(s.kg).toBe(0);
+    expect(s.prev).toBe(0);
+    expect(s.prevReps).toBe(12);
+  });
 });
 
 describe('agrupación por grupo muscular', () => {
@@ -471,5 +492,14 @@ describe('ejercicios recientes', () => {
 
   it('respeta el límite', () => {
     expect(recentExercises(historial, BIBLIOTECA, 1)).toHaveLength(1);
+  });
+
+  it('en empate de fecha desempata por id (orden estable)', () => {
+    const zeta = { ...sesion(HOY, [sentadilla([serie(40, 5)])]), id: 'z' };
+    const alfa = { ...sesion(HOY, [press([serie(20, 5)])]), id: 'a' };
+    expect(recentExercises([zeta, alfa], BIBLIOTECA, 10).map((o) => o.ex.id)).toEqual([
+      'ex-press',
+      'ex-sentadilla',
+    ]);
   });
 });

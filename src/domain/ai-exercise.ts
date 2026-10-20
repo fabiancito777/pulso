@@ -121,14 +121,16 @@ const GROUP_KEYWORDS: readonly (readonly [RegExp, string])[] = [
   [/aductor|aduccion|aductores/, 'aductores'],
   [/serrato|serratus|push up plus|plus push/, 'serrato'],
   [/antebrazo|muneca/, 'antebrazo'],
-  [/curl femoral|isquio|femoral/, 'femoral'],
+  [/curl femoral|peso muerto rumano|peso muerto piernas rigidas|isquio|femoral/, 'femoral'],
   [/curl|biceps/, 'biceps'],
-  [/extens|triceps|rompecranos/, 'triceps'],
-  [/dominad|jalon|pull|dorsal|remo|planea/, 'espalda'],
-  [/sentadilla|cuadriceps|zancada|prensa/, 'cuadriceps'],
+  /* «extensión de cuádriceps» (y plurales) va ANTES de la regla de tríceps, que
+     también empieza por «extens…». */
+  [/extension(?:es)? de cuadriceps|sentadilla|cuadriceps|zancada|prensa/, 'cuadriceps'],
+  [/extens|triceps|rompecranos|frances/, 'triceps'],
+  [/dominad|jalon|pull|dorsal|remo|planea|peso muerto/, 'espalda'],
   [/gemelo|pantorrilla/, 'gemelos'],
   [/abdom|plancha|core|crunch|sit up/, 'core'],
-  [/face pull|hombro|press militar|elevacion lateral/, 'hombros'],
+  [/face pull|hombro|press militar|elevacion(?:es)? lateral(?:es)?/, 'hombros'],
   [/elevac|hip thrust|gluteo|puente/, 'gluteos'],
   [/flexion|pecho|press|banca|apertur|fondos/, 'pecho'],
   [/cardio|carrera|trote|bici|eliptica|saltar/, 'cardio'],
@@ -223,11 +225,53 @@ function materialCandidates(name: string, material: MaterialKey): string[] {
 
 type EquipResult = { ok: true; key: string; note?: string } | { ok: false; error: string };
 
+/** Primer candidato activo, prefiriendo el que más se nombra en `name` (empate: orden). */
+function preferredActive(
+  candidates: readonly string[],
+  name: string,
+  equipment: EquipmentMap,
+): string | undefined {
+  let best: string | undefined;
+  let bestScore = -1;
+  for (const key of candidates) {
+    if (equipment[key] !== true) continue;
+    const score = equipNameScore(name, key);
+    if (score > bestScore) {
+      best = key;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/**
+ * Puntos de una clave de material según lo que el NOMBRE dice: la etiqueta exacta
+ * («polea baja», «barra EZ», «mancuernas fijas») pesa más que su clave y sus
+ * palabras sueltas. Se usa solo para ordenar candidatos activos, sin descartar
+ * ninguno: si nadie puntúa, queda el primero de siempre.
+ */
+function equipNameScore(name: string, key: string): number {
+  const text = norm(name);
+  const label = norm(EQUIPMENT.find((e) => e.key === key)?.label ?? '');
+  const slug = norm(key);
+  let score = 0;
+  if (label && text.includes(label)) score += 4;
+  if (slug && text.includes(slug)) score += 3;
+  for (const token of slug.split(' ')) {
+    if (token.length > 2 && text.includes(token)) score += 1;
+  }
+  return score;
+}
+
 /**
  * Material: lo declarado manda si el usuario lo tiene; sin material declarado se
  * deduce del nombre SOLO si el usuario tiene ese material (así «Remo con
  * mancuerna» no acaba creado como peso corporal, y un material ausente no crea
  * un ejercicio que no se puede hacer).
+ *
+ * Entre varios candidatos activos se prefiere el que el nombre menciona (polea
+ * baja antes que polea alta, barra EZ antes que barra cargable, mancuernas fijas
+ * antes que ajustables) y solo entonces se cae al primero activo.
  */
 function resolveEquip(name: string, raw: string, equipment: EquipmentMap): EquipResult {
   if (raw) {
@@ -239,7 +283,7 @@ function resolveEquip(name: string, raw: string, equipment: EquipmentMap): Equip
         note: `Material «${raw}» desconocido, se guarda como peso corporal`,
       };
     }
-    const active = known.find((k) => equipment[k] === true);
+    const active = preferredActive(known, name, equipment);
     if (!active) {
       return { ok: false, error: `No tienes «${equipLabel(known[0])}» para crear «${name}»` };
     }
@@ -262,7 +306,7 @@ function resolveEquip(name: string, raw: string, equipment: EquipmentMap): Equip
   const wanted = parseNameAttrs(name).material;
   const candidates = wanted.flatMap((m) => materialCandidates(name, m));
   if (!candidates.length) return { ok: true, key: '' };
-  const active = candidates.find((k) => equipment[k] === true);
+  const active = preferredActive(candidates, name, equipment);
   if (!active) return { ok: false, error: `No tienes el material que «${name}» necesita` };
   return { ok: true, key: active, note: `Material deducido del nombre: «${equipLabel(active)}»` };
 }

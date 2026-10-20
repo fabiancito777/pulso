@@ -203,7 +203,10 @@ export function pickForGroup(
     if (recentA !== recentB) return recentA - recentB;
     const fam = familiarity(input.sessions, b.id) - familiarity(input.sessions, a.id);
     if (fam !== 0) return fam;
-    return a.name < b.name ? -1 : 1;
+    if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+    /* Mismo nombre: desempate estable por id para que el orden no dependa de en
+       qué orden llegó la biblioteca (y el comparador devuelva 0 solo si es el mismo). */
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 
   return cands.slice(0, int(count, 1));

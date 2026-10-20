@@ -234,6 +234,15 @@ describe('pickForGroup', () => {
     ]);
   });
 
+  it('con nombres iguales desempata por id (orden estable)', () => {
+    const iguales = [
+      ex({ id: 'zeta', name: 'Mismo nombre', group: 'pecho', type: 'aislado' }),
+      ex({ id: 'alfa', name: 'Mismo nombre', group: 'pecho', type: 'aislado' }),
+    ];
+    const picked = pickForGroup(input({ exercises: iguales }), 'pecho', 2, { rotate: 0 });
+    expect(picked.map((e) => e.id)).toEqual(['alfa', 'zeta']);
+  });
+
   it('la familiaridad desempata: el más trabajado sale primero', () => {
     const muchas = input({
       sessions: [session('2026-09-25', ['press']), session('2026-09-20', ['press'])],

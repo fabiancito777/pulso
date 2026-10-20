@@ -16,7 +16,7 @@
  *   saltan (`iso > hoy`);
  * - peso base 40/16 kg + `hashNum(id) % 24`, con progresión
  *   `1 + 0.015 * (weeks - w)` redondeado a 0,5 en la unidad de los ajustes;
- * - reps dentro de `repMin..repMax` (a peso corporal, 10-17);
+ * - reps dentro de `repMin..repMax` (también a peso corporal, no un 10-17 fijo);
  * - sesión con `source: 'demo'`, `demo: true`, `rpe: 7`, 18:00Z y 48-72 min.
  *
  * Ojo, dos cosas que la v1 hacía a propósito y aquí se conservan: NO deduplica
@@ -59,6 +59,13 @@ const RECIPES = ['full_a', 'full_b', 'push', 'pull', 'legs', 'upper', 'lower'] a
 /** lun / mié / vie / sáb, medidos desde el lunes de `startOfWeek`. */
 const DOW_PLAN = [0, 2, 4, 5] as const;
 
+/** Orden de más reciente a más antiguo (fecha, y `startedAt`/id como desempate). */
+function byRecent(a: Session, b: Session): number {
+  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+  if (a.startedAt !== b.startedAt) return a.startedAt < b.startedAt ? 1 : -1;
+  return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+}
+
 /** Hash determinista de la v1 (`U` no lo traía, vivía dentro de `S.demoData`). */
 function hashNum(str: string): number {
   let h = 0;
@@ -80,8 +87,10 @@ function demoSets(ex: Exercise, w: number, weeks: number, date: string, unit: Un
 
   const out: SetLog[] = [];
   for (let i = 0; i < total; i++) {
+    /* A peso corporal también se respeta el rango real de la biblioteca: el
+       «10 + hash % 8» de la v1 podía salirse de `repMin..repMax`. */
     const reps = ex.bw
-      ? 10 + (hashNum(`${ex.id}${i}${w}`) % 8)
+      ? ex.repMin + (hashNum(`${ex.id}${i}${w}`) % range)
       : ex.repMin + ((hashNum(`${ex.id}${i}`) + w) % range);
     out.push({ weight, reps, done: true, ts: `${date}T18:0${i % 9}:00.000Z` });
   }
@@ -90,21 +99,25 @@ function demoSets(ex: Exercise, w: number, weeks: number, date: string, unit: Un
 
 /**
  * Genera las sesiones de ejemplo (sin tocar el estado). Devuelve SOLO las
- * nuevas, ya con su `id`; el orden lo decide el store, que las apila con las
- * existentes y reordena por `startedAt` descendente.
+ * nuevas, ya con su `id`, ordenadas de más reciente a más antigua; el store las
+ * apila con las existentes y reordena también por `startedAt` descendente.
  *
  * Cada día se salta si la plantilla no trae ni un ejercicio disponible con el
  * material activo (la v1 hacía `if (!entries.length) continue`), así que con
  * «Solo peso corporal» sigue saliendo algo: los ejercicios de PC del catálogo.
  */
 export function demoSessions(o: DemoOptions): Session[] {
-  const weeks = Math.max(1, int(o.weeks, 8));
+  /* Tope de 2 años: `weeks` viene de la UI, pero un valor absurdo no debe generar
+     miles de sesiones ni bloquear el hilo. */
+  const weeks = Math.min(104, Math.max(1, int(o.weeks, 8)));
   const today = String(o.todayIso).slice(0, 10);
   const out: Session[] = [];
 
-  /* el historial CRECE con cada sesión creada, igual que `state.sessions` en la
-     v1: así la rotación (`rotate: 2`) y la familiaridad ven lo que ya llevamos */
-  const history: Session[] = [...o.sessions];
+  /* El historial CRECE con cada sesión creada, igual que `state.sessions` en la
+     v1, pero SIEMPRE de más reciente a más antiguo: `recentlyUsedSessions` corta
+     por delante y, si empujáramos al final, la rotación solo vería el historial
+     viejo y nunca lo recién generado. */
+  const history: Session[] = [...o.sessions].sort(byRecent);
   const input: PlanInput = {
     /* `pickForGroup` solo usa exercises/equipment/sessions; la unidad va aquí
        porque `PlanInput` es el contrato completo del planificador */
@@ -157,8 +170,8 @@ export function demoSessions(o: DemoOptions): Session[] {
         rpe: 7,
       };
       out.push(session);
-      history.push(session);
+      history.unshift(session);
     }
   }
-  return out;
+  return out.sort(byRecent);
 }

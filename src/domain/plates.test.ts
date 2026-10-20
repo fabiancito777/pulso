@@ -33,6 +33,18 @@ describe('inventario', () => {
     expect(items[0]?.discs).toBe(16);
   });
 
+  it('agrega filas duplicadas de la misma medida y unidad (una sola entrada)', () => {
+    const items = inventory([
+      { w: 3, unit: 'kg', discs: 4, on: true },
+      { w: 3, unit: 'kg', discs: 6, on: true },
+      { w: 3, unit: 'lb', discs: 2, on: true },
+    ]);
+    expect(items).toHaveLength(2);
+    const kg = items.find((i) => i.srcUnit === 'kg');
+    expect(kg?.discs).toBe(10);
+    expect(kg?.kg).toBe(3);
+  });
+
   it('ordena de más pesado a más ligero y convierte lb a kg', () => {
     const items = inventory(plates);
     expect(items.map((p) => p.kg).map((k) => Math.round(k * 1000) / 1000)).toEqual([
@@ -238,6 +250,27 @@ describe('solvePlates', () => {
     expect(res.noPlates).toBe(true);
     expect(res.achieveKg).toBe(37.5);
     expect(res.perHole).toHaveLength(0);
+  });
+
+  it('sin discos el máximo montable es 0 (no calcula discos)', () => {
+    expect(maxLoadable({ plates, mode: 'none' })).toEqual({
+      mode: 'none',
+      per: '',
+      sideKg: 0,
+      handleKg: 0,
+      totalKg: 0,
+    });
+  });
+
+  it('las filas duplicadas no aparecen dos veces en perHole/usage', () => {
+    const duplicadas: PlateStock[] = [
+      { w: 3, unit: 'kg', discs: 4, on: true },
+      { w: 3, unit: 'kg', discs: 6, on: true },
+    ];
+    const res = solvePlates(30, { plates: duplicadas, handleKg: 0 });
+    expect(res.perHole).toHaveLength(1);
+    expect(res.usage).toHaveLength(1);
+    expect(res.usage[0]).toMatchObject({ used: 10, have: 10 });
   });
 
   it('el peso del mango sale de los ajustes de barras y se puede forzar', () => {

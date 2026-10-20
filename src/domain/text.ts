@@ -29,7 +29,10 @@ export function similarity(a: unknown, b: unknown): number {
   const B = norm(b);
   if (!A || !B) return 0;
   if (A === B) return 1;
-  if (A.includes(B) || B.includes(A)) return 0.88;
+  /* La contención solo vale como atajo si lo contenido tiene entidad propia: sin
+     este mínimo, «a» estaría contenido en cualquier nombre y devolvía 0,88. */
+  const [short, long] = A.length <= B.length ? [A, B] : [B, A];
+  if (short.length >= 3 && long.includes(short)) return 0.88;
   const ta = A.split(' ');
   const tb = B.split(' ');
   let hit = 0;

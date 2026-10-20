@@ -142,6 +142,9 @@ export function newEntry(opts: NewEntryOptions): ActiveEntry {
   return {
     exId: opts.exId,
     name: ex ? ex.name : opts.exId,
+    ...(ex ? { group: ex.group } : {}),
+    /* `int(0, …)` devuelve 0: un `rest: 0` explícito (cardio/movilidad) se
+       respeta y significa «sin descanso»; solo el valor ausente cae a la biblioteca. */
     restSec: int(opts.rest, ex ? ex.rest : 90),
     repMin: int(opts.repMin, ex ? ex.repMin : 8),
     repMax: int(opts.repMax, ex ? ex.repMax : 12),
@@ -383,8 +386,10 @@ export function toggleSet(
   if (done) {
     /* `nextLabel` da '' cuando no queda ninguna serie pendiente en la sesión */
     const label = nextLabel(next, entryIndex);
-    if (label && opts.autoRest)
-      rest = { action: 'start', sec: entry.restSec || opts.restDefault, label };
+    /* `0` es «sin descanso» (cardio/movilidad); solo un valor ausente (null o
+       undefined, p. ej. una sesión antigua) cae al descanso por defecto. */
+    const sec = entry.restSec ?? opts.restDefault;
+    if (label && opts.autoRest && sec > 0) rest = { action: 'start', sec, label };
   } else if (opts.restRunning) {
     /* desmarcar una serie cancela el descanso en curso: no está hecha */
     rest = { action: 'cancel' };
@@ -395,10 +400,15 @@ export function toggleSet(
 }
 
 /**
- * Al marcar una serie, la SIGUIENTE se rellena con su peso y sus reps si está vacía:
- * así la serie que viene ya sale lista y no hay que repetir el dato cada vez.
- * La v1 lo hacía en el propio handler del click (no dentro de `T.toggleSet`), y es el
- * complemento del arrastre hacia abajo: uno copia al editar, el otro al marcar.
+ * Al marcar una serie, la SIGUIENTE se rellena con su peso y sus reps si están
+ * vacías: así la serie que viene ya sale lista y no hay que repetir el dato cada
+ * vez. La v1 lo hacía en el propio handler del click (no dentro de `T.toggleSet`),
+ * y es el complemento del arrastre hacia abajo: uno copia al editar, el otro al
+ * marcar.
+ *
+ * Cada campo se decide por separado: un peso propio (incluido un `0` real) no se
+ * pisa aunque las reps estén vacías, y unas reps ya tecleadas sobreviven a que el
+ * peso venga vacío. Solo `''`, `null` y `undefined` cuentan como vacío.
  */
 export function autofillNext(
   session: ActiveSession,
@@ -408,12 +418,13 @@ export function autofillNext(
   const entry = session.entries[entryIndex];
   const marked = entry?.sets[setIndex];
   const following = entry?.sets[setIndex + 1];
-  /* `num('')` es 0, así que el test de "vacía" cubre también el peso a 0 */
-  if (!entry || !marked || !following || following.done || num(following.weight)) return session;
-  return setSet(session, entryIndex, setIndex + 1, {
-    weight: marked.weight,
-    reps: marked.reps,
-  });
+  if (!entry || !marked || !following || following.done) return session;
+  const empty = (v: unknown): boolean => v === '' || v === null || v === undefined;
+  const patch: Partial<ActiveSet> = {};
+  if (empty(following.weight)) patch.weight = marked.weight;
+  if (empty(following.reps)) patch.reps = marked.reps;
+  if (!Object.keys(patch).length) return session;
+  return setSet(session, entryIndex, setIndex + 1, patch);
 }
 
 /**
@@ -526,11 +537,22 @@ export function removeSet(
   };
 }
 
-export function setRestSec(session: ActiveSession, entryIndex: number, sec: number): ActiveSession {
+/**
+ * Cambia el descanso de un ejercicio. `0` se conserva (sin descanso); `null` o
+ * `undefined` dejan el valor «sin definir» para que `toggleSet` use el de los
+ * ajustes. No se usa 90 como comodín: eso convertía un 0 intencional en descanso.
+ */
+export function setRestSec(
+  session: ActiveSession,
+  entryIndex: number,
+  sec: number | null | undefined,
+): ActiveSession {
   return {
     ...session,
     entries: session.entries.map((en, i) =>
-      i === entryIndex ? { ...en, restSec: int(sec, 90) } : en,
+      i === entryIndex
+        ? { ...en, restSec: sec === null || sec === undefined ? null : int(sec, 0) }
+        : en,
     ),
   };
 }
@@ -675,7 +697,9 @@ export function progress(session: ActiveSession): SessionProgress {
 /** Segundos desde que arrancó la sesión (lo que pinta el cronómetro). */
 export function elapsedSec(session: ActiveSession, now: number = Date.now()): number {
   if (!session.startedAt) return 0;
-  return Math.max(0, Math.round((now - new Date(session.startedAt).getTime()) / 1000));
+  const start = new Date(session.startedAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(now)) return 0;
+  return Math.max(0, Math.round((now - start) / 1000));
 }
 
 export interface FinishOptions {
@@ -690,6 +714,12 @@ export interface FinishOptions {
  * se descartan) y los ejercicios sin ninguna serie hecha desaparecen. Devuelve
  * `null` si no hay nada que guardar, y entonces quien llama avisa de eso.
  *
+ * Una serie marcada **sin reps** no cuenta como hecha: se descarta en vez de
+ * guardar `reps: 0` (la analítica la contaría como serie y ensuciaría volumen y
+ * rachas). El peso vacío se guarda como `null` («sin peso»), no como `0`, que es
+ * un peso real; el grupo del ejercicio viaja como respaldo si el ejercicio sale
+ * de la biblioteca.
+ *
  * El snapshot del plan (`session.plan`) viaja al registro: es lo que permite
  * comparar después lo que se entrenó con lo que prescribía la rutina original.
  */
@@ -700,10 +730,13 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
     const sets: SetLog[] = [];
     for (const set of entry.sets) {
       if (!set.done) continue;
+      const reps = num(set.reps);
+      if (!reps) continue;
       if (set.rpe) rpes.push(num(set.rpe));
+      const empty = set.weight === '' || set.weight === null || set.weight === undefined;
       sets.push({
-        weight: set.weight === '' ? 0 : num(set.weight),
-        reps: num(set.reps),
+        weight: empty ? null : num(set.weight),
+        reps,
         done: true,
         ts: set.ts ?? undefined,
         rpe: set.rpe ? num(set.rpe) : null,
@@ -713,7 +746,8 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
     entries.push({
       exId: entry.exId,
       name: entry.name,
-      restSec: entry.restSec,
+      ...(entry.group ? { group: entry.group } : {}),
+      restSec: entry.restSec ?? undefined,
       notes: entry.notes || '',
       sets,
     });

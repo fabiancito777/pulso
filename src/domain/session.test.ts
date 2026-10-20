@@ -414,6 +414,26 @@ describe('autofillNext (marcar rellena la siguiente)', () => {
     expect(marcada.entries[0]?.sets[1]).toMatchObject({ reps: 8, done: false });
   });
 
+  it('copia cada campo solo si está vacío: no pisa unas reps ya tecleadas', () => {
+    const conReps = setSet(setSet(base, 0, 0, { weight: 40, reps: 8 }), 0, 1, { reps: 5 });
+    const marcada = marcar(conReps, 0, 0)!.session;
+    expect(marcada.entries[0]?.sets[1]).toMatchObject({ weight: 40, reps: 5 });
+  });
+
+  it('un 0 real no se considera vacío (ni se pisa ni se usa como señal de vacío)', () => {
+    const conCero = setSet(setSet(base, 0, 0, { weight: 40 }), 0, 1, { weight: 0 });
+    expect(marcar(conCero, 0, 0)!.session.entries[0]?.sets[1]?.weight).toBe(0);
+  });
+
+  it('rellena las reps si están vacías aunque el peso ya esté puesto', () => {
+    const sinReps = setSet(setSet(base, 0, 0, { weight: 40, reps: 8 }), 0, 1, {
+      weight: 50,
+      reps: '',
+    });
+    const marcada = marcar(sinReps, 0, 0)!.session;
+    expect(marcada.entries[0]?.sets[1]).toMatchObject({ weight: 50, reps: 8 });
+  });
+
   it('no toca la siguiente si ya tiene peso propio o ya está marcada', () => {
     const escritas = setSet(setSet(base, 0, 0, { weight: 40 }), 0, 1, { weight: 50 });
     expect(marcar(escritas, 0, 0)!.session.entries[0]?.sets[1]?.weight).toBe(50);
@@ -502,7 +522,7 @@ describe('toggleSet y la decisión de descanso', () => {
     expect(sinDescanso?.rest).toEqual({ action: 'none' });
   });
 
-  it('sin descanso propio en el ejercicio se usa el descanso por defecto', () => {
+  it('un descanso 0 explícito significa «sin descanso» (no cae al de ajustes)', () => {
     const session = nuevaSesion({ exIds: ['sin-descanso'] });
     const sinDescanso = setRestSec(session, 0, 0);
     const res = toggleSet(sinDescanso, 0, 0, {
@@ -510,7 +530,25 @@ describe('toggleSet y la decisión de descanso', () => {
       restDefault: 90,
       restRunning: false,
     });
+    expect(res?.rest).toEqual({ action: 'none' });
+  });
+
+  it('sin descanso definido (null/undefined) sí se usa el descanso por defecto', () => {
+    const session = nuevaSesion({ exIds: ['sin-descanso'] });
+    const entry = { ...session.entries[0], restSec: null };
+    const res = toggleSet({ ...session, entries: [entry] }, 0, 0, {
+      autoRest: true,
+      restDefault: 90,
+      restRunning: false,
+    });
     expect(res?.rest).toEqual({ action: 'start', sec: 90, label: 'sin-descanso' });
+  });
+
+  it('un ejercicio con `rest: 0` en la biblioteca no arranca descanso', () => {
+    const cardio = ejercicio('cardio', { name: 'Cinta', rest: 0, type: 'cardio' });
+    const session = nuevaSesion({ exercises: [cardio], exIds: ['cardio'] });
+    expect(session.entries[0]?.restSec).toBe(0);
+    expect(marcar(session, 0, 0)?.rest).toEqual({ action: 'none' });
   });
 
   it('sin series pendientes en ninguno, el aviso no nombra nada', () => {
@@ -581,6 +619,12 @@ describe('progress y el reloj', () => {
     expect(elapsedSec(base, Date.parse('2026-09-24T10:42:00.000Z'))).toBe(2520);
     expect(elapsedSec(base, Date.parse('2026-09-24T09:00:00.000Z'))).toBe(0);
   });
+
+  it('con un arranque o un `now` inválidos devuelve 0, nunca NaN', () => {
+    const base = nuevaSesion();
+    expect(elapsedSec({ ...base, startedAt: 'no-es-fecha' })).toBe(0);
+    expect(elapsedSec(base, Number.NaN)).toBe(0);
+  });
 });
 
 describe('finishSession', () => {
@@ -606,15 +650,31 @@ describe('finishSession', () => {
     });
   });
 
-  it('al guardar, un peso vacío pasa a 0 (nunca queda "sin apuntar")', () => {
+  it('al guardar, un peso vacío queda en null («sin peso» ≠ 0)', () => {
     const base = nuevaSesion();
     expect(
       finishSession(marcar(base, 0, 0)!.session, { id: 's1' })?.entries[0]?.sets[0]?.weight,
-    ).toBe(0);
+    ).toBeNull();
     const conPeso = setSet(base, 0, 0, { weight: 42.5 });
     expect(
       finishSession(marcar(conPeso, 0, 0)!.session, { id: 's2' })?.entries[0]?.sets[0]?.weight,
     ).toBe(42.5);
+    const conCero = setSet(base, 0, 0, { weight: 0 });
+    expect(
+      finishSession(marcar(conCero, 0, 0)!.session, { id: 's3' })?.entries[0]?.sets[0]?.weight,
+    ).toBe(0);
+  });
+
+  it('una serie marcada sin reps no se guarda (no cuenta como serie hecha)', () => {
+    const base = nuevaSesion();
+    const sinReps = setSet(base, 0, 0, { reps: '' });
+    expect(finishSession(marcar(sinReps, 0, 0)!.session, { id: 's1' })).toBeNull();
+  });
+
+  it('el grupo del ejercicio viaja al registro como respaldo', () => {
+    const base = nuevaSesion();
+    const sesion = finishSession(marcar(base, 0, 0)!.session, { id: 's1' });
+    expect(sesion?.entries[0]?.group).toBe('pecho');
   });
 
   it('el RPE medio se redondea a un decimal y es null si nadie lo apuntó', () => {
@@ -648,8 +708,10 @@ describe('finishSession', () => {
 
   it('las notas y el descanso de cada ejercicio viajan con la sesión', () => {
     const base = nuevaSesion({ exIds: [] });
+    const entrada = newEntry({ exId: 'press-banca', library: BIBLIOTECA });
     const conNotas = addEntry(base, {
-      ...newEntry({ exId: 'press-banca', library: BIBLIOTECA }),
+      ...entrada,
+      sets: entrada.sets.map((s, i) => (i === 0 ? { ...s, weight: 60, reps: 8 } : s)),
       notes: 'al fallo',
     });
     const sesion = finishSession(marcar(conNotas, 0, 0)!.session, { id: 's1' });

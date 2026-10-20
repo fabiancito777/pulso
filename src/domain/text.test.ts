@@ -24,6 +24,13 @@ describe('texto', () => {
     expect(similarity('', 'algo')).toBe(0);
   });
 
+  it('una subcadena diminuta no dispara el atajo de contención', () => {
+    expect(similarity('a', 'press de banca')).toBe(0);
+    expect(similarity('ab', 'abdominales')).toBe(0);
+    /* las palabras de verdad sí siguen contando como contención */
+    expect(similarity('press de banca', 'Press de banca con barra')).toBe(0.88);
+  });
+
   it('recorta textos largos', () => {
     expect(trunc('abcdef', 4)).toBe('abc…');
     expect(trunc('abc', 4)).toBe('abc');

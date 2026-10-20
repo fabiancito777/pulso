@@ -33,13 +33,24 @@ export const MONTHS = [
 export type DateStyle = 'short' | 'medium' | 'month' | 'long';
 
 export function iso(date?: Date | string | number): string {
-  const x = date === undefined ? new Date() : new Date(date);
+  /* `new Date('2026-09-24')` se interpreta como medianoche UTC; con la fecha ya
+     ISO local hay que construirla en local para no perder un día en zonas UTC-. */
+  const ymd = typeof date === 'string' ? date.trim() : '';
+  const x =
+    date === undefined
+      ? new Date()
+      : /^\d{4}-\d{2}-\d{2}$/.test(ymd)
+        ? parse(ymd)
+        : new Date(date);
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 }
 
 /** ISO local → Date a medianoche local (sin sustos de zona horaria). */
 export function parse(isoDate?: string): Date {
-  if (!isoDate) return new Date();
+  if (!isoDate) {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
   const p = String(isoDate).slice(0, 10).split('-');
   return new Date(int(p[0]), int(p[1], 1) - 1, int(p[2], 1));
 }

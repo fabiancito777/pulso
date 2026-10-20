@@ -199,18 +199,30 @@ export interface PlateSolution {
   noPlates: boolean;
 }
 
-/** Inventario utilizable, ya en kg y ordenado de más pesado a más ligero. */
+/**
+ * Inventario utilizable, ya en kg y ordenado de más pesado a más ligero.
+ *
+ * Las filas repetidas con la misma medida y unidad se **agregan** en una sola
+ * entrada (sumando sus discos): si no, el solver podía contar la misma medida dos
+ * veces y `perHole`/`usage` la pintaban duplicada con la mitad del inventario en
+ * cada fila.
+ */
 export function inventory(plates?: readonly PlateStock[] | null): PlateItem[] {
-  return (plates ?? [])
-    .filter((p) => p && p.on !== false && int(p.discs) > 0)
-    .map((p) => ({
-      kg: toKg(p.w, p.unit ?? 'kg'),
-      discs: int(p.discs, 1),
-      srcW: num(p.w),
-      srcUnit: p.unit ?? 'kg',
-    }))
-    .filter((p) => p.kg > 0)
-    .sort((a, b) => b.kg - a.kg);
+  const merged = new Map<string, PlateItem>();
+  for (const p of plates ?? []) {
+    if (!p || p.on === false) continue;
+    const discs = int(p.discs, 1);
+    if (discs <= 0) continue;
+    const srcW = num(p.w);
+    const srcUnit = p.unit ?? 'kg';
+    const kg = toKg(srcW, srcUnit);
+    if (!(kg > 0)) continue;
+    const key = `${srcUnit}:${srcW}`;
+    const prev = merged.get(key);
+    if (prev) prev.discs += discs;
+    else merged.set(key, { kg, discs, srcW, srcUnit });
+  }
+  return [...merged.values()].sort((a, b) => b.kg - a.kg);
 }
 
 /** Discos de cada medida que caben en UN hueco: `floor(discos / huecos)`. */
@@ -367,6 +379,12 @@ export function maxLoadable(opts: SolveOpts = {}): {
   totalKg: number;
 } {
   const spec = modeSpec(opts.mode);
+  /* Sin huecos (máquina o mancuerna fija) no hay discos que montar ni máximo que
+     calcular: devolver 0 es lo que la UI espera, no el total de un inventario que
+     no se usa. */
+  if (spec.places === 0) {
+    return { mode: spec.key, per: spec.per, sideKg: 0, handleKg: 0, totalKg: 0 };
+  }
   const handleKg = handleKgFor(spec, opts);
   const sideKg = sum(capsFor(inventory(opts.plates), spec.key), (c) => c.cap * c.item.kg);
   return {

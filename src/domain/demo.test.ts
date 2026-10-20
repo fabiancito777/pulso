@@ -127,6 +127,31 @@ describe('demoSessions', () => {
     expect(demoSessions(options({ weeks: 0 })).length).toBeGreaterThan(0);
   });
 
+  it('acota las semanas a 104 (2 años) y no genera fechas más antiguas', () => {
+    const list = demoSessions(options({ weeks: 1000 }));
+    const limite = addDays(startOfWeek(HOY), -103 * 7);
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((s) => s.date >= limite)).toBe(true);
+  });
+
+  it('devuelve las sesiones de más reciente a más antigua', () => {
+    const list = demoSessions(options());
+    for (let i = 1; i < list.length; i++) {
+      expect(list[i - 1].startedAt >= list[i].startedAt).toBe(true);
+    }
+  });
+
+  it('a peso corporal las reps respetan el rango real del ejercicio', () => {
+    for (const entry of demoSessions(options()).flatMap((s) => s.entries)) {
+      const ex = findExercise(SEED, entry.exId);
+      if (!ex?.bw) continue;
+      for (const set of entry.sets) {
+        expect(set.reps).toBeGreaterThanOrEqual(ex.repMin);
+        expect(set.reps).toBeLessThanOrEqual(ex.repMax);
+      }
+    }
+  });
+
   it('hoy se puede calcular con el sistema: nunca hay sesiones de mañana', () => {
     const list = demoSessions(options({ weeks: 8, todayIso: today() }));
     const mañana = addDays(today(), 1);
