@@ -37,23 +37,27 @@ export function registerSW(): void {
   }
 }
 
+/** Tiempo máximo esperando `serviceWorker.ready` para la entrega diferida. */
+export const SW_READY_TIMEOUT_MS = 3000;
+
 /**
  * Manda un mensaje al service worker (`swPost()` de la v1). Es el canal de los
  * avisos de descanso (`notify` / `schedule-rest` / `cancel-rest`).
  *
  * Dos vías, igual que en la v1 (`e2c49b9`):
  *
- * 1. la página está controlada por el SW → `controller.postMessage`;
+ * 1. la página está controlada por el SW → `controller.postMessage` y `true`;
  * 2. **sin controlador** (p. ej. tras actualizar la PWA sin recargar) el mensaje
- *    se perdía en silencio y el descanso quedaba sin programar: se entrega en
- *    cuanto `serviceWorker.ready` resuelva. No se duplica con la vía rápida
- *    porque solo se usa cuando no hay controlador.
+ *    se perdía en silencio: se intenta entregar en cuanto `serviceWorker.ready`
+ *    resuelva, con timeout. Como esa entrega NO está confirmada, se devuelve
+ *    `false` para que el respaldo de la página (`pageNotify`) actúe. Si el
+ *    `ready` llega, el mensaje sale igualmente y el `tag` compartido evita
+ *    duplicar el aviso visible.
  *
- * La vía 2 solo se intenta donde `canRegisterSW()`: en dev no registramos SW, y
- * `ready` no se cumpliría nunca → devolver `true` se comería el respaldo en la
- * propia página (`pageNotify`) que usan `notifyEnd` y `finishSession`.
+ * La vía 2 solo se intenta donde `canRegisterSW()`: en dev no registramos SW y
+ * `ready` no se cumpliría nunca.
  *
- * @returns `false` si no hay nadie a quien entregarle el mensaje todavía
+ * @returns `true` solo si la entrega al controlador fue inmediata y confirmada
  */
 export function postToSW(message: SWMessage): boolean {
   try {
@@ -64,18 +68,24 @@ export function postToSW(message: SWMessage): boolean {
       return true;
     }
     if (!canRegisterSW()) return false;
-    sw.ready
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS);
+    });
+    void Promise.race([sw.ready.catch(() => null), timeout])
       .then((reg) => {
+        if (!reg) return;
         try {
           reg.active?.postMessage(message);
         } catch {
           /* noop */
         }
       })
-      .catch(() => {
-        /* noop */
+      .finally(() => {
+        if (timer) clearTimeout(timer);
       });
-    return true;
+    return false;
   } catch {
     return false;
   }

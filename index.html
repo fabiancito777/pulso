@@ -2,6 +2,13 @@
 <html lang="es" data-theme="amoled">
   <head>
     <meta charset="utf-8" />
+    <!-- CSP compatible con Vite/HMR en dev y con el bundle estático en prod:
+         'unsafe-inline' cubre el preamble de HMR; connect-src permite el
+         websocket de Vite y la API de Gemini del coach. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob: data:; connect-src 'self' ws: wss: https://generativelanguage.googleapis.com; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-src 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#000000" />

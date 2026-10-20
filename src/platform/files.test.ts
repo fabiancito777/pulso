@@ -14,10 +14,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { pickTextFile } from './files';
+import { iso } from '@/domain/dates';
+import { downloadJSON, MAX_IMPORT_BYTES, pickTextFile } from './files';
 
 /** Nodos que el doble de `document.body` tiene montados en cada momento. */
 const children: FakeInput[] = [];
+
+/** Nodos creados por `createElement` (aunque se desmonten al instante). */
+const created: FakeInput[] = [];
 
 /** `FileReader` de mentira: anota las lecturas y las dispara el test. */
 const readers: FakeFileReader[] = [];
@@ -41,7 +45,9 @@ class FakeInput {
   type = '';
   accept = '';
   readonly style: Record<string, string> = {};
-  files: { name: string }[] | null = null;
+  files: { name: string; size?: number }[] | null = null;
+  href = '';
+  download = '';
   clicks = 0;
   removed = false;
   readonly listeners = new Map<string, (() => void)[]>();
@@ -109,12 +115,15 @@ const fakeDocument = {
     },
   },
   createElement(): FakeInput {
-    return new FakeInput();
+    const input = new FakeInput();
+    created.push(input);
+    return input;
   },
 };
 
 beforeEach(() => {
   children.length = 0;
+  created.length = 0;
   readers.length = 0;
   vi.stubGlobal('document', fakeDocument);
   vi.stubGlobal('FileReader', FakeFileReader);
@@ -214,6 +223,30 @@ describe('pickTextFile', () => {
     }
   });
 
+  it('un fichero por encima del tope se rechaza sin leerlo', async () => {
+    const promise = pickTextFile();
+
+    const input = onlyInput();
+    input.files = [{ name: 'enorme.json', size: MAX_IMPORT_BYTES + 1 }];
+    input.fire('change');
+
+    await expect(promise).resolves.toBeNull();
+    expect(readers).toHaveLength(0);
+    expect(input.removed).toBe(true);
+  });
+
+  it('un fichero justo en el tope sí se lee', async () => {
+    const promise = pickTextFile();
+
+    const input = onlyInput();
+    input.files = [{ name: 'limite.json', size: MAX_IMPORT_BYTES }];
+    input.fire('change');
+
+    expect(readers).toHaveLength(1);
+    readers[0]?.fire('load');
+    await expect(promise).resolves.toBe('');
+  });
+
   it('tras cancelar, el `change` tardío de ese mismo input ya no hace nada', async () => {
     const promise = pickTextFile();
 
@@ -228,5 +261,39 @@ describe('pickTextFile', () => {
     expect(readers).toHaveLength(0);
     expect(children).toHaveLength(0);
     await expect(promise).resolves.toBeNull();
+  });
+});
+
+describe('downloadJSON', () => {
+  it('usa la fecha LOCAL en el nombre y descarga el JSON', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const blobs: { parts: unknown[] }[] = [];
+      class FakeBlob {
+        constructor(readonly parts: unknown[]) {
+          blobs.push(this);
+        }
+      }
+      const revoke = vi.fn();
+      vi.stubGlobal('Blob', FakeBlob);
+      vi.stubGlobal('URL', {
+        createObjectURL: vi.fn(() => 'blob:pulso'),
+        revokeObjectURL: revoke,
+      });
+
+      downloadJSON({ sesiones: [] }, 'pulso');
+
+      const link = created[0];
+      if (!link) throw new Error('no se creó el enlace');
+      expect(link.download).toBe(`pulso-${iso(new Date())}.json`);
+      expect(link.href).toBe('blob:pulso');
+      expect(link.clicks).toBe(1);
+      expect(blobs[0]?.parts[0]).toContain('"sesiones"');
+
+      vi.advanceTimersByTime(1000);
+      expect(revoke).toHaveBeenCalledWith('blob:pulso');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

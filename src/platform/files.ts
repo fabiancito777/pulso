@@ -3,10 +3,14 @@
  * Es la parte con DOM de `U.download`/`U.readFile` de la v1, separada del dominio
  * para que el store siga siendo probable en Node.
  */
+import { iso } from '@/domain/dates';
 
-/** Descarga un objeto como JSON con la fecha en el nombre. */
+/** Tope de la copia que se acepta importar: por encima no se lee entera. */
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
+/** Descarga un objeto como JSON con la fecha local en el nombre. */
 export function downloadJSON(data: unknown, name = 'pulso'): void {
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = iso(new Date());
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -49,6 +53,12 @@ export function pickTextFile(accept = 'application/json,.json'): Promise<string 
       const file = input.files?.[0];
       detach();
       if (!file) {
+        resolve(null);
+        return;
+      }
+      /* Un fichero enorme se rechaza ANTES de `readAsText`: leer cientos de MB
+         en memoria puede colgar la pestaña. */
+      if (typeof file.size === 'number' && file.size > MAX_IMPORT_BYTES) {
         resolve(null);
         return;
       }

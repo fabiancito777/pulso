@@ -15,7 +15,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { postToSW } = await import('./sw');
+const { postToSW, SW_READY_TIMEOUT_MS } = await import('./sw');
 
 const MSG = { type: 'cancel-rest' } as const;
 
@@ -58,15 +58,15 @@ describe('postToSW', () => {
     expect(readyPost).not.toHaveBeenCalled(); /* sin duplicar el mensaje */
   });
 
-  it('sin controlador, en un entorno con SW, lo entrega cuando el SW esté listo', async () => {
+  it('sin controlador devuelve false (entrega no confirmada) pero la intenta al estar listo', async () => {
     vi.stubEnv('PROD', true);
     vi.stubGlobal('location', { protocol: 'https:', hostname: 'pulso.app' });
     const readyPost = vi.fn();
     const ready = deferred<{ active: { postMessage: (m: unknown) => void } }>();
     stubSW(null, ready.promise);
 
-    /* devuelvo YA: nadie espera a la promesa dentro de la UI */
-    expect(postToSW(MSG)).toBe(true);
+    /* false = que el respaldo de la página actúe; nadie espera a la promesa */
+    expect(postToSW(MSG)).toBe(false);
     expect(readyPost).not.toHaveBeenCalled();
 
     ready.resolve({ active: { postMessage: readyPost } });
@@ -81,9 +81,24 @@ describe('postToSW', () => {
     const ready = deferred<{ active: null }>();
     stubSW(null, ready.promise);
 
-    expect(postToSW(MSG)).toBe(true);
+    expect(postToSW(MSG)).toBe(false);
     ready.resolve({ active: null });
     await expect(flush()).resolves.toBeUndefined();
+  });
+
+  it('si `ready` no llega, el timeout no bloquea ni deja timers vivos', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubEnv('PROD', true);
+      vi.stubGlobal('location', { protocol: 'https:', hostname: 'pulso.app' });
+      stubSW(null, new Promise(() => undefined));
+
+      expect(postToSW(MSG)).toBe(false);
+      await vi.advanceTimersByTimeAsync(SW_READY_TIMEOUT_MS + 1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('en un entorno SIN service worker registrado (dev) devuelve false', async () => {

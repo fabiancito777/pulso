@@ -21,7 +21,9 @@
    `navigator.serviceWorker.controller.postMessage` (ver src/platform/sw.ts).
    ========================================================================== */
 
-var CACHE = 'pulso-shell-v2';
+/* Versionar la caché con cada release: `activate` borra las anteriores. */
+var CACHE = 'pulso-shell-v2.1';
+var FETCH_TIMEOUT_MS = 8000;
 var SHELL = [
   './',
   'index.html',
@@ -69,6 +71,17 @@ self.addEventListener('activate', function (e) {
   );
 });
 
+/* Red con límite de tiempo: si no contesta, se cae a la caché sin esperar. */
+function fetchWithTimeout(req) {
+  var controller = new AbortController();
+  var timer = setTimeout(function () {
+    controller.abort();
+  }, FETCH_TIMEOUT_MS);
+  return fetch(req, { signal: controller.signal }).finally(function () {
+    clearTimeout(timer);
+  });
+}
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return; /* la API de Gemini va por POST */
@@ -81,7 +94,7 @@ self.addEventListener('fetch', function (e) {
   if (url.origin !== self.location.origin) return; /* nunca cacheamos terceros */
 
   e.respondWith(
-    fetch(req)
+    fetchWithTimeout(req)
       .then(function (res) {
         if (res && res.ok && res.type === 'basic') {
           var copy = res.clone();
@@ -195,13 +208,22 @@ self.addEventListener('message', function (e) {
 
 self.addEventListener('notificationclick', function (e) {
   e.notification.close();
+  var data = e.notification.data || {};
+  var target = data.url || './';
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {
         var c = list[i];
-        if ('focus' in c) return c.focus();
+        if ('focus' in c) {
+          if ('navigate' in c && target !== './') {
+            c.navigate(target).catch(function () {
+              /* noop */
+            });
+          }
+          return c.focus();
+        }
       }
-      return self.clients.openWindow('./');
+      return self.clients.openWindow(target);
     }),
   );
 });

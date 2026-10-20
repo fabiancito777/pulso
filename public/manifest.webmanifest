@@ -1,7 +1,7 @@
 {
   "name": "Pulso · Entrenamiento",
   "short_name": "Pulso",
-  "description": "Registro de entrenamiento, timer de descanso, coach AI y estadisticas. Datos 100% locales.",
+  "description": "Registro de entrenamiento, timer de descanso, coach AI y estadisticas. Tus datos se guardan en local; al usar el coach IA, su contexto se envía a Gemini.",
   "lang": "es",
   "dir": "ltr",
   "id": "./",
