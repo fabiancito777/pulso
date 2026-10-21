@@ -1,10 +1,9 @@
 /**
  * Calculadora de discos — **núcleo puro**.
  *
- * Portado de `legacy/js/trainer.js`. La diferencia con la v1 es que aquí no hay
- * estado global escondido: el inventario, el modo y el peso del mango entran
- * como parámetros y la solución sale como dato. Eso permite probarlo entero con
- * Vitest (antes las comprobaciones vivían dentro del auto-test del navegador).
+ * No hay estado global escondido: el inventario, el modo y el peso del mango
+ * entran como parámetros y la solución sale como dato. Eso permite probarlo
+ * entero con Vitest.
  *
  * El mismo inventario NO rinde igual en todo, y por eso existen los "huecos":
  *
@@ -20,10 +19,6 @@
  * extremo en cada una. El reparto es siempre SIMÉTRICO y se enumeran todas las
  * sumas alcanzables para quedarse con la más cercana al peso pedido: nunca
  * propone discos que no tengas ni un peso inalcanzable.
- *
- * El formato en unidades convive con el de la v1 (pares) gracias a
- * `normalizePlates`, que es quien migra `pairs` → `discs` al leer y quien
- * rellena el espejo `pairs = floor(discs/2)` al escribir.
  */
 import { UNILATERAL_RX } from './match';
 import { int, num, round, sum } from './num';
@@ -39,41 +34,33 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Normaliza una fila del inventario al formato en unidades y rellena su espejo.
+ * Normaliza una fila del inventario al formato en unidades.
  *
  * Reglas, en este orden:
  *
- * 1. `discs` numérico ⇒ manda (formato nuevo) y `pairs` se recalcula.
- * 2. Solo `pairs` numérico ⇒ dato de la v1 ⇒ `discs = 2·pairs` (migración por fila).
- * 3. Sin `w` numérico o sin ninguno de los dos contadores ⇒ la fila se descarta
- *    (misma filosofía que `asPlates` de la v1: una fila ilegible no llena el
- *    editor a medias ni le inventa un inventario).
+ * 1. `w` y `discs` numéricos ⇒ fila válida.
+ * 2. Sin `w` numérico o sin `discs` numérico ⇒ la fila se descarta (una fila
+ *    ilegible no llena el editor a medias ni le inventa un inventario).
  *
- * Es **idempotente** y no muta la entrada: `discs` presente es el marcador de
- * formato, así que migrar dos veces no cuadruplica nada.
+ * Es **idempotente** y no muta la entrada.
  */
 export function normalizePlate(raw: unknown): PlateStock | null {
   const p = asRecord(raw);
   if (!p) return null;
   if (typeof p.w !== 'number' || !Number.isFinite(p.w)) return null;
-  let discos: number;
-  if (typeof p.discs === 'number' && Number.isFinite(p.discs)) discos = p.discs;
-  else if (typeof p.pairs === 'number' && Number.isFinite(p.pairs)) discos = p.pairs * 2;
-  else return null;
-  const discs = Math.max(0, Math.trunc(discos));
+  if (typeof p.discs !== 'number' || !Number.isFinite(p.discs)) return null;
+  const discs = Math.max(0, Math.trunc(p.discs));
   return {
     w: Math.max(0, p.w),
     unit: p.unit === 'lb' ? 'lb' : 'kg',
     discs,
-    pairs: Math.floor(discs / 2),
     on: p.on !== false,
   };
 }
 
 /**
  * Lista entera de placas en formato nuevo. Lo que no sea array (o lo que quede
- * vacío tras descartar filas ilegibles) devuelve `[]`, que es lo mismo que hoy
- * hacía `asPlates` con un array corrupto.
+ * vacío tras descartar filas ilegibles) devuelve `[]`.
  */
 export function normalizePlates(value: unknown): PlateStock[] {
   if (!Array.isArray(value)) return [];

@@ -6,9 +6,7 @@ y **todo funciona sin key** (el planificador local cubre sugerencias y plan sema
 
 **Web**: <https://fabiancito777.github.io/pulso/> (publicada por Actions desde `main`).
 
-> La **v1** (HTML + CSS + JS vanilla, sin build) quedó congelada en el tag **`v1-final`**;
-> su documentación de diseño está en **`AGENTS-v1.md`**. El contexto completo de
-> esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
+> El contexto completo de esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
 
 ---
 
@@ -41,8 +39,8 @@ pantalla completa y funciona offline).
   chat; la **API key del coach se comparte** entre todos.
 - Cambiar de perfil con una sesión activa la **guarda en ese perfil** (y avisa); al volver, la
   retomas donde estaba, con su descanso.
-- **Gestión** en *Ajustes → Perfil*: crear, usar, renombrar y borrar. El perfil principal conserva
-  las claves históricas (`pulso.state`), así que los datos existentes no se migran.
+- **Gestión** en *Ajustes → Perfil*: crear, usar, renombrar y borrar. El perfil principal usa
+  `pulso.state`; los demás, `pulso.state.<id>`, así que los datos existentes no se migran.
 - **Backups**: por perfil (formato de siempre) o un archivo con **todos los perfiles**. La key se
   incluye solo si marcas la opción.
 
@@ -153,8 +151,8 @@ pantalla completa y funciona offline).
   (**0 kg si es de plástico**), máximo cargable en barra y por mancuerna, y gráfico del inventario.
 - **Ejercicios**: biblioteca por defecto de **24 ejercicios** con buscador y filtros (grupo, permitidos,
   prohibidos, sin material, propios). Permite **permitir/prohibir** individualmente o en bloque todo lo
-  filtrado, y crear/editar/borrar ejercicios propios (el catálogo generado de 136 sigue detrás: es de
-  donde salen los propios y las copias de la v1).
+  filtrado, y crear/editar/borrar ejercicios propios (el catálogo base de 136 sigue detrás como
+  fuente de datos del matcher y de los ejercicios de ejemplo).
 - **Coach AI**: toda la configuración descrita arriba.
 - **Datos**: exportar/importar copia JSON, cargar 8 semanas de ejemplo para ver las gráficas,
   quitarlas, borrar todo y ver el espacio usado.
@@ -218,14 +216,14 @@ index.html              · entrada de Vite (carga src/main.tsx)
 src/main.tsx            · monta <App /> en #app e importa los estilos
 src/app/                · shell de la app (App.tsx) y router de pestañas
 src/domain/             · NÚCLEO PURO (sin DOM ni estado): discos, analítica, sesión,
-                          descanso, planner local, catálogo (generado) y formatos
+                          descanso, planner local, catálogo base y formatos
 src/state/              · estado + persistencia (store, sesión activa, coach, chat)
 src/features/coach/     · cerebro del coach: contexto, memoria, historial, prompts,
                           parseo, cliente Gemini y planificador local
 src/ui/                 · componentes y vistas Preact (Hoy, Entrenar, Rutinas,
                           Calendario, Coach, Progreso, Ajustes, Onboarding)
 src/platform/           · lo que toca el navegador (audio, keep-alive, SW, notify, theme)
-src/styles/             · base.css (heredado de la v1) + v2.css y estilos por vista
+src/styles/             · base.css (hoja base) + v2.css y estilos por vista
 public/                 · manifest, service worker e iconos de la PWA
 ```
 
@@ -249,14 +247,13 @@ fuera de sí mismo, así que se prueba sin navegador.
 
 ## Notas de desarrollo
 
-- **Tests**: viven en `src/**/*.test.ts` (Vitest). Lo que en la v1 era el auto-test del navegador
-  (`?selftest=1`) ahora son tests de dominio/estado/UI sin navegador; los flujos de modal y timer
+- **Tests**: viven en `src/**/*.test.ts` (Vitest), sin navegador; los flujos de modal y timer
   que no se pueden probar así se verifican con Playwright.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y
   calendario. Se quitan desde *Ajustes → Datos*.
-- **Catálogo e iconos**: `src/domain/catalog.ts` y `src/ui/icons.ts` se generaron una vez desde la
-  v1 (tag `v1-final`); ahora son ficheros base congelados y, si hay que tocarlos, se editan a mano
-  con cuidado (la integridad del catálogo la vigila `src/domain/data.test.ts`).
+- **Catálogo e iconos**: `src/domain/catalog.ts` y `src/ui/icons.ts` son ficheros base congelados y,
+  si hay que tocarlos, se editan a mano con cuidado (la integridad del catálogo la vigila
+  `src/domain/data.test.ts`).
 - **Añadir un ejercicio**: a la semilla (`src/domain/seed.ts`) o desde *Ajustes → Ejercicios* (los propios
   se fusionan con la semilla al recargar, conservando tus flags de permitido/prohibido).
 - **Añadir una pestaña**: amplía `TABS` en `src/app/router.ts` y añade la vista en `src/ui/`.

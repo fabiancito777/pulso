@@ -1,14 +1,12 @@
 /**
- * Estado y persistencia. Primer trozo portado de `legacy/js/store.js`.
+ * Estado y persistencia.
  *
- * v2 lee y escribe el MISMO formato que la v1 (`localStorage['pulso.state']`), así
- * que los datos que ya tienes siguen valiendo mientras se termina la migración:
- * se hace lectura-modificación-escritura y nunca se pisan las claves que aún
- * gestiona la v1.
+ * Cada perfil guarda su estado en `pulso.state` (el principal) o
+ * `pulso.state.<id>`, con lectura-modificación-escritura.
  *
- * Única salvedad: `settings.plates` se guarda en unidades (`discs`) con el espejo
- * `pairs` para la v1. Las filas viejas se migran al leer y se recalculan al
- * escribir (`normalizePlates`), así que ninguna ruta puede dejarlos desincronizados.
+ * `settings.plates` se guarda en unidades (`discs`) y se normaliza al leer y al
+ * escribir (`normalizePlates`), así que ninguna ruta puede dejar el inventario a
+ * medias.
  */
 import { signal } from '@preact/signals';
 
@@ -192,8 +190,8 @@ let writeWarned = false;
 
 /**
  * Copia del estado lista para persistir, con el inventario normalizado: así
- * `discs` y su espejo `pairs` (compatibilidad con la v1) nunca quedan
- * desincronizados, por mucho que se escriba el estado fuera de los setters.
+ * `discs` nunca queda con valores inválidos, por mucho que se escriba el estado
+ * fuera de los setters.
  */
 function forStorage(state: AppState): AppState {
   const settings = state.settings as Settings | undefined;
@@ -525,8 +523,8 @@ export const settings = signal<Settings>(initial.settings);
 export function patchSettings(patch: Partial<Settings>): Settings {
   const state = readState();
   const next = withDefaults({ ...state.settings, ...patch }, DEFAULT_SETTINGS);
-  /* el inventario se normaliza AQUÍ también (no solo al persistir): un patch que
-     traiga solo `discs` dejaría en memoria un `pairs` viejo y la v1 leería mal */
+  /* el inventario se normaliza AQUÍ también (no solo al persistir) para que el
+     signal y localStorage vean siempre el mismo formato */
   next.plates = normalizePlates(next.plates);
   state.settings = next;
   writeState(state);
@@ -649,7 +647,7 @@ export function updatePlate(index: number, patch: Partial<PlateStock>): void {
 }
 
 export function addPlate(
-  plate: PlateStock = { w: 1.25, unit: 'kg', discs: 2, pairs: 1, on: true },
+  plate: PlateStock = { w: 1.25, unit: 'kg', discs: 2, on: true },
 ): void {
   patchSettings({ plates: normalizePlates([...normalizePlates(settings.value.plates), plate]) });
 }
@@ -1025,8 +1023,8 @@ export function importState(raw: unknown): AppState {
   const currentKey = readState().settings.ai.apiKey;
   const merged = withDefaults(incoming.settings, DEFAULT_SETTINGS);
   const incomingKey = typeof merged.ai.apiKey === 'string' ? merged.ai.apiKey.trim() : '';
-  /* el inventario de la copia se migra ANTES de persistir: una copia de la v1
-     (solo `pairs`) entra en unidades y el espejo `pairs` sale ya recalculado */
+  /* el inventario de la copia se normaliza ANTES de persistir: las filas
+     ilegibles se descartan y `discs` queda entero y sin negativos */
   const settings: Settings = {
     ...merged,
     ai: { ...merged.ai, apiKey: incomingKey || currentKey },

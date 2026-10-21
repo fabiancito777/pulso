@@ -1,8 +1,6 @@
 /**
- * Shell de la v2: barra superior, **vista por pestaña** (rutas por hash, `router.ts`)
- * y la barra de abajo. Cada pestaña monta su vista portada; las que aún no lo estén
- * muestran el aviso de "pendiente" (flag `ported` del router), que es el
- * estado real de la migración y no un error de la app.
+ * Shell de la app: barra superior, **vista por pestaña** (rutas por hash, `router.ts`)
+ * y la barra de abajo. Cada pestaña monta su vista.
  */
 import { useEffect, useRef, useState } from 'preact/hooks';
 
@@ -28,10 +26,9 @@ import { SessionCard } from '@/ui/SessionCard';
 import { SettingsView } from '@/ui/SettingsView';
 
 /**
- * Reloj de la sesión en la barra (el `#btn-session-clock` de la v1,
- * `trainer.js:485`). Es un componente aparte A PROPÓSITO: es lo único de la
- * barra que lee `sessionSeconds`, así que solo él se repinta cada segundo y los
- * inputs de SessionCard no se reescriben mientras escribes.
+ * Reloj de la sesión en la barra. Es un componente aparte A PROPÓSITO: es lo único
+ * de la barra que lee `sessionSeconds`, así que solo él se repinta cada segundo y
+ * los inputs de SessionCard no se reescriben mientras escribes.
  */
 function SessionClock() {
   if (!active.value) return null;
@@ -45,36 +42,6 @@ function SessionClock() {
       <span class="dot-live" />
       <span class="num">{fmtClock(sessionSeconds.value)}</span>
     </button>
-  );
-}
-
-/** Vistas que aún no están portadas: el `ported: false` del router, explicado. */
-function PendingTab({ tab }: { tab: Tab }) {
-  return (
-    <section class="card tight">
-      <div class="row between mb-s">
-        <b>{tab.label}</b>
-        <span class="badge warn">pendiente</span>
-      </div>
-      <div class="tiny muted mb-s">
-        {tab.hint} · esta vista todavía no está portada (vive en la v1 del tag <code>v1-final</code>
-        ).
-      </div>
-      <div class="tiny muted">
-        Las 7 pestañas están portadas, así que este aviso no debería aparecer: si lo ves, es que hay
-        una pestaña nueva en el router a la que le falta su vista.
-      </div>
-      <div class="row mt-s" style="gap:8px">
-        <button type="button" class="btn sm" onClick={() => go('hoy')}>
-          <Icon name="home" />
-          Hoy
-        </button>
-        <button type="button" class="btn sm ghost" onClick={() => go('entrenar')}>
-          <Icon name="dumbbell" />
-          Entrenar
-        </button>
-      </div>
-    </section>
   );
 }
 
@@ -138,8 +105,8 @@ function BottomNav({ current }: { current: string }) {
         <button
           key={t.key}
           type="button"
-          class={`chip${t.key === current ? ' on accent' : ''}${t.ported ? '' : ' off'}`}
-          title={t.ported ? t.hint : `${t.hint} · pendiente`}
+          class={`chip${t.key === current ? ' on accent' : ''}`}
+          title={t.hint}
           aria-current={t.key === current ? 'page' : undefined}
           onClick={() => go(t.key)}
         >
@@ -152,15 +119,12 @@ function BottomNav({ current }: { current: string }) {
 }
 
 /**
- * Subtítulo de pestaña: el `V.sub` de la v1, que `updateAppbar` (`app.js:60-63`)
- * pintaba bajo el título en `#appbar-sub`.
+ * Subtítulo de pestaña.
  *
  * Solo lo pintan aquí las pestañas que no lo llevan ya DENTRO de su vista: Hoy
  * sale con el saludo (`HoyView`), Progreso con `ProgressCard` y Coach con su
- * tarjeta de conexión; Entrenar es nuevo en la v2 y no tenía. El de Calendario
- * depende del cursor, que vive en `CalendarView`, así que lo pinta esa vista.
- * `App.test.ts` vigila que las 6 pestañas de la v1 sigan cubiertas entre las
- * dos mitades.
+ * tarjeta de conexión. El de Calendario depende del cursor, que vive en
+ * `CalendarView`, así que lo pinta esa vista. `App.test.ts` vigila ese reparto.
  */
 export function tabSub(tab: string): string {
   if (tab === 'rutinas') {
@@ -173,9 +137,8 @@ export function tabSub(tab: string): string {
   return '';
 }
 
-/** El contenido de la pestaña activa: portada, o el aviso si aún no lo está. */
+/** El contenido de la pestaña activa. */
 function CurrentView({ tab }: { tab: Tab }) {
-  if (!tab.ported) return <PendingTab tab={tab} />;
   switch (tab.key) {
     case 'hoy':
       return <HoyView />;
@@ -194,7 +157,7 @@ function CurrentView({ tab }: { tab: Tab }) {
     case 'coach':
       return <CoachView />;
     default:
-      /* las 7 pestañas están portadas (`ported: true`): este caso es inalcanzable */
+      /* todas las pestañas de `TABS` tienen su vista */
       return null;
   }
 }
@@ -206,8 +169,8 @@ export function App() {
   const sub = tabSub(current.key);
   const streak = totals(sessions.value).streak;
   /* La sesión (y el descanso, que también puede ser el temporizador libre de Hoy)
-     no se esconden al cambiar de pestaña (en la v1 la barra de descanso era
-     global); el placeholder de "sin sesión" solo manda en Entrenar, porque en
+     no se esconden al cambiar de pestaña; el placeholder de "sin sesión" solo
+     manda en Entrenar, porque en
      Hoy el hero ya dice por dónde empezar (spec hoy.md, decisiones 6-7). Con
      `rest.running` y sin sesión, `SessionCard` pinta el recuadro ÚNICO de
      descanso (su rama `!session && resting`), nunca el placeholder. */
@@ -216,7 +179,7 @@ export function App() {
   useEffect(() => applyTheme(s.theme, s.accent), [s.theme, s.accent]);
 
   /* Onboarding de primera vez (spec `onboarding.md`, hueco 1): 350 ms después de
-     arrancar, como la v1 (`app.js:1279`), y solo si sigue sin verse. No se abre
+     arrancar y solo si sigue sin verse. No se abre
      con una sesión o un descanso en marcha: taparía el entreno (caso e). El
      cierre lo detecta la signal `meta` (el modal la escribe al cerrarse). */
   const [boarding, setBoarding] = useState(false);
@@ -235,12 +198,11 @@ export function App() {
      la vista (el signal repinta solo). */
   useEffect(() => startRouter(), []);
 
-  /* El bucle de 500 ms: cuenta atrás, tics y aviso de fin de descanso. Es el `T.loop`
-     de la v1, que arrancaba app.js. */
+  /* El bucle de 500 ms: cuenta atrás, tics y aviso de fin de descanso. */
   useEffect(() => startLoop(), []);
 
   /* El recuadro de descanso es pegajoso bajo la barra superior, así que la barra
-     publica su altura en `--appbar-h` (en la v1 lo hacía `syncAppbarHeight()`). */
+     publica su altura en `--appbar-h`. */
   useEffect(() => {
     const el = bar.current;
     if (!el) return;
@@ -257,7 +219,6 @@ export function App() {
       <header class="v2-bar" ref={bar}>
         <div class="v2-brand">
           <b>Pulso</b>
-          <span class="badge">v2</span>
           <button
             type="button"
             class="chip v2-streak"

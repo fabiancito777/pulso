@@ -1,17 +1,15 @@
-/** Valores por defecto de ajustes e inventario. Portado de `data.js` de la v1. */
+/** Valores por defecto de ajustes e inventario. */
 import type { BarWeights, PlateStock, Settings } from './types';
 
 /**
  * Inventario por defecto en DISCOS sueltos: 16 de 3 kg (8 por lado), etc.
- * Cada fila lleva además su espejo `pairs` para que una copia de un estado
- * fresco siga abriéndose en la v1, que cuenta pares.
  */
 export const PLATES_DEFAULT: readonly PlateStock[] = [
-  { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true },
-  { w: 2.5, unit: 'kg', discs: 8, pairs: 4, on: true },
-  { w: 1.25, unit: 'kg', discs: 8, pairs: 4, on: true },
-  { w: 5, unit: 'lb', discs: 8, pairs: 4, on: true },
-  { w: 2.5, unit: 'lb', discs: 8, pairs: 4, on: true },
+  { w: 3, unit: 'kg', discs: 16, on: true },
+  { w: 2.5, unit: 'kg', discs: 8, on: true },
+  { w: 1.25, unit: 'kg', discs: 8, on: true },
+  { w: 5, unit: 'lb', discs: 8, on: true },
+  { w: 2.5, unit: 'lb', discs: 8, on: true },
 ];
 
 /** Barra de plástico: pesa 0 kg, todo el peso lo ponen los discos. */

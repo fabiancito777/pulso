@@ -2,8 +2,8 @@
  * Edge cases 1–24 de `_specs/edge-cases-300.md` · `domain/plates`.
  *
  * Contrato: el inventario se cuenta en discos sueltos, el reparto es simétrico,
- * la migración `pairs`→`discs` es idempotente y el solver nunca propone discos
- * que no tienes. Donde el contrato no cuadra con el código se ajusta y se anota.
+ * la normalización es idempotente y el solver nunca propone discos que no tienes.
+ * Donde el contrato no cuadra con el código se ajusta y se anota.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -36,32 +36,29 @@ describe('1–6 · normalización y capacidad', () => {
     expect(inventory(plates)).toEqual([{ kg: 5, discs: 2, srcW: 5, srcUnit: 'kg' }]);
   });
 
-  it('2 · migra pairs de la v1 a discs', () => {
-    expect(normalizePlate({ w: 1.25, unit: 'kg', pairs: 3 })).toEqual({
+  it('2 · normaliza una fila en unidades', () => {
+    expect(normalizePlate({ w: 1.25, unit: 'kg', discs: 6 })).toEqual({
       w: 1.25,
       unit: 'kg',
       discs: 6,
-      pairs: 3,
       on: true,
     });
   });
 
-  it('3 · discs manda sobre un pairs desincronizado', () => {
-    const row = normalizePlate({ w: 5, unit: 'kg', discs: 3, pairs: 99 });
-    expect(row?.discs).toBe(3);
-    expect(row?.pairs).toBe(1);
+  it('3 · ignora campos extra que no forman parte del inventario', () => {
+    const row = normalizePlate({ w: 5, unit: 'kg', discs: 3, sobra: 99 });
+    expect(row).toEqual({ w: 5, unit: 'kg', discs: 3, on: true });
   });
 
   it('4 · una fila ilegible se descarta entera', () => {
-    expect(normalizePlate({ w: '20', unit: 'kg', pairs: 2 })).toBeNull();
+    expect(normalizePlate({ w: '20', unit: 'kg', discs: 2 })).toBeNull();
     expect(normalizePlate({ w: 20, unit: 'kg' })).toBeNull();
   });
 
-  it('5 · normalizar dos veces no cuadruplica (idempotencia)', () => {
-    const once = normalizePlates([{ w: 2.5, unit: 'kg', pairs: 4 }]);
+  it('5 · normalizar dos veces no cambia el inventario (idempotencia)', () => {
+    const once = normalizePlates([{ w: 2.5, unit: 'kg', discs: 8 }]);
     const twice = normalizePlates(once);
     expect(twice[0].discs).toBe(8);
-    expect(twice[0].pairs).toBe(4);
   });
 
   it('6 · cap = floor(discos / huecos): db2 → 4, bar → 8', () => {

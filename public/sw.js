@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Pulso v2 · service worker (port del `sw.js` de la v1, tag `v1-final`)
+   Pulso · service worker
    --------------------------------------------------------------------------
    1) App shell offline: al instalar se cachean los archivos ESTABLES (HTML,
       manifiesto, iconos). Los assets del build llevan hash

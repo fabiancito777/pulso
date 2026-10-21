@@ -215,8 +215,8 @@ export function planChangeBullets(pc: PlanChanges): string[] {
   const swappedFrom = new Set(pc.swapped.map((pair) => pair.from));
 
   if (pc.swapped.length) {
-    const pairs = pc.swapped.slice(0, 2).map((pair) => `${pair.from} por ${pair.to}`);
-    bullets.push(`Sustituiste ${pairs.join(' y ')} en plena rutina.`);
+    const swaps = pc.swapped.slice(0, 2).map((pair) => `${pair.from} por ${pair.to}`);
+    bullets.push(`Sustituiste ${swaps.join(' y ')} en plena rutina.`);
   }
   const added = pc.unplanned.filter((name) => !swappedTo.has(name)).slice(0, 3);
   if (added.length === 1) bullets.push(`Añadiste un ejercicio no planificado: ${added[0]}.`);

@@ -1,7 +1,6 @@
 /**
- * Rutas por hash. Mismo esquema que la v1 (`#/tab` y `#/ajustes/<sub>`) para que
- * los enlaces guardados en el navegador sigan valiendo, pero con un signal en vez de
- * repintar a mano: cualquier componente que lea `route.value` se actualiza solo.
+ * Rutas por hash (`#/tab` y `#/ajustes/<sub>`) con un signal en vez de repintar a
+ * mano: cualquier componente que lea `route.value` se actualiza solo.
  */
 import { signal } from '@preact/signals';
 
@@ -9,35 +8,18 @@ export interface Tab {
   key: string;
   label: string;
   icon: string;
-  /** Falso mientras la vista no esté portada: la pestaña se muestra pero avisa. */
-  ported: boolean;
   hint: string;
 }
 
-/**
- * Las 7 pestañas, en el orden de la v1. `ported: false` no es un error de la app:
- * es el estado de la migración a la vista (la pestaña existe y dice qué falta).
- */
+/** Las 7 pestañas, en el orden de la navegación. */
 export const TABS: readonly Tab[] = [
-  { key: 'hoy', label: 'Hoy', icon: 'home', ported: true, hint: 'Tu día' },
-  { key: 'entrenar', label: 'Entrenar', icon: 'dumbbell', ported: true, hint: 'Sesión en curso' },
-  {
-    key: 'rutinas',
-    label: 'Rutinas',
-    icon: 'list',
-    ported: true,
-    hint: 'Rutinas y plantillas',
-  },
-  {
-    key: 'calendario',
-    label: 'Calendario',
-    icon: 'calendar',
-    ported: true,
-    hint: 'Plan semanal',
-  },
-  { key: 'coach', label: 'Coach', icon: 'sparkles', ported: true, hint: 'Chat con el coach' },
-  { key: 'progreso', label: 'Progreso', icon: 'chart', ported: true, hint: 'Récords y volumen' },
-  { key: 'ajustes', label: 'Ajustes', icon: 'gear', ported: true, hint: 'Configuración' },
+  { key: 'hoy', label: 'Hoy', icon: 'home', hint: 'Tu día' },
+  { key: 'entrenar', label: 'Entrenar', icon: 'dumbbell', hint: 'Sesión en curso' },
+  { key: 'rutinas', label: 'Rutinas', icon: 'list', hint: 'Rutinas y plantillas' },
+  { key: 'calendario', label: 'Calendario', icon: 'calendar', hint: 'Plan semanal' },
+  { key: 'coach', label: 'Coach', icon: 'sparkles', hint: 'Chat con el coach' },
+  { key: 'progreso', label: 'Progreso', icon: 'chart', hint: 'Récords y volumen' },
+  { key: 'ajustes', label: 'Ajustes', icon: 'gear', hint: 'Configuración' },
 ];
 
 export interface Route {
@@ -73,5 +55,3 @@ export function startRouter(): () => void {
   sync();
   return () => window.removeEventListener('hashchange', sync);
 }
-
-export const isPorted = (tab: string): boolean => TABS.find((t) => t.key === tab)?.ported ?? false;

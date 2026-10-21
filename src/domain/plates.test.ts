@@ -1,7 +1,5 @@
 /**
- * Calculadora de discos: las comprobaciones que en la v1 vivían dentro del
- * auto-test del navegador (`legacy/js/app.js` → `selfTest()`), ahora como tests
- * de verdad, que se ejecutan sin navegador y con el estado explícito.
+ * Calculadora de discos: tests de verdad, sin navegador y con el estado explícito.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -11,7 +9,6 @@ import {
   capsFor,
   inventory,
   maxLoadable,
-  normalizePlate,
   normalizePlates,
   PLATE_MODE_KEYS,
   plateSummary,
@@ -77,78 +74,55 @@ describe('inventario', () => {
   });
 });
 
-describe('normalizePlates (migración pares → unidades)', () => {
-  const v1 = { w: 3, unit: 'kg', pairs: 8, on: true };
-
-  it('migra una fila de la v1 a unidades y rellena el espejo pairs', () => {
-    expect(normalizePlates([v1])).toEqual([{ w: 3, unit: 'kg', discs: 16, pairs: 8, on: true }]);
+describe('normalizePlates (formato en unidades)', () => {
+  it('una fila válida se queda como está', () => {
+    const fila = { w: 3, unit: 'kg', discs: 16, on: true };
+    expect(normalizePlates([fila])).toEqual([fila]);
   });
 
-  it('una fila ya en unidades se queda como está', () => {
-    const nueva = { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true };
-    expect(normalizePlates([nueva])).toEqual([nueva]);
-  });
-
-  it('un `discs` presente manda sobre un `pairs` viejo (no se migra dos veces)', () => {
-    expect(normalizePlate({ ...v1, discs: 5 })).toEqual({
-      w: 3,
-      unit: 'kg',
-      discs: 5,
-      pairs: 2,
-      on: true,
-    });
-  });
-
-  it('es idempotente: migrar dos veces no cuadruplica el inventario', () => {
-    const una = normalizePlates([v1]);
+  it('es idempotente: normalizar dos veces no cambia el inventario', () => {
+    const una = normalizePlates([{ w: 3, unit: 'kg', discs: 16, on: true }]);
     const dos = normalizePlates(una);
     expect(dos).toEqual(una);
     expect(normalizePlates(dos)).toEqual(una);
     expect(una[0]?.discs).toBe(16);
   });
 
-  it('descarta las filas sin contador y las que no traen peso numérico', () => {
+  it('descarta las filas sin discos y las que no traen peso numérico', () => {
     expect(normalizePlates([{ w: 3, unit: 'kg', on: true }])).toEqual([]);
-    expect(normalizePlates([{ unit: 'kg', pairs: 8, on: true }])).toEqual([]);
-    expect(normalizePlates([{ w: '3', unit: 'kg', pairs: 8 }])).toEqual([]);
+    expect(normalizePlates([{ unit: 'kg', discs: 8, on: true }])).toEqual([]);
+    expect(normalizePlates([{ w: '3', unit: 'kg', discs: 8 }])).toEqual([]);
     expect(
       normalizePlates([
-        { w: 3, unit: 'kg', pairs: 8 },
+        { w: 3, unit: 'kg', on: true },
         { w: 2, unit: 'kg', discs: 4 },
       ]),
-    ).toEqual([
-      { w: 3, unit: 'kg', discs: 16, pairs: 8, on: true },
-      { w: 2, unit: 'kg', discs: 4, pairs: 2, on: true },
-    ]);
+    ).toEqual([{ w: 2, unit: 'kg', discs: 4, on: true }]);
   });
 
-  it('`pairs: 0` sigue siendo una fila válida (inventario vacío, no ilegible)', () => {
-    expect(normalizePlates([{ w: 20, unit: 'kg', pairs: 0, on: true }])).toEqual([
-      { w: 20, unit: 'kg', discs: 0, pairs: 0, on: true },
+  it('`discs: 0` sigue siendo una fila válida (inventario vacío, no ilegible)', () => {
+    expect(normalizePlates([{ w: 20, unit: 'kg', discs: 0, on: true }])).toEqual([
+      { w: 20, unit: 'kg', discs: 0, on: true },
     ]);
   });
 
   it('enteros sin signo: trunca decimales, acota negativos y normaliza unit/on', () => {
     expect(normalizePlates([{ w: -3, unit: 'kg', discs: -2.7, on: false }])).toEqual([
-      { w: 0, unit: 'kg', discs: 0, pairs: 0, on: false },
+      { w: 0, unit: 'kg', discs: 0, on: false },
     ]);
     expect(normalizePlates([{ w: 1.25, unit: 'g', discs: 3.7 }])).toEqual([
-      { w: 1.25, unit: 'kg', discs: 3, pairs: 1, on: true },
+      { w: 1.25, unit: 'kg', discs: 3, on: true },
     ]);
-  });
-
-  it('el espejo es floor(discos/2): 15 discos → 7 pares', () => {
-    expect(normalizePlates([{ w: 5, unit: 'kg', discs: 15 }])[0]?.pairs).toBe(7);
   });
 
   it('lo que no sea array devuelve vacío y la entrada no se muta', () => {
     expect(normalizePlates(undefined)).toEqual([]);
     expect(normalizePlates('no soy un array')).toEqual([]);
-    expect(normalizePlates({ w: 3, pairs: 8 })).toEqual([]);
+    expect(normalizePlates({ w: 3, discs: 8 })).toEqual([]);
 
-    const crudo = [{ w: 3, unit: 'kg', pairs: 8, on: true }];
+    const crudo = [{ w: 3, unit: 'kg', on: true }];
     normalizePlates(crudo);
-    expect(crudo).toEqual([{ w: 3, unit: 'kg', pairs: 8, on: true }]);
+    expect(crudo).toEqual([{ w: 3, unit: 'kg', on: true }]);
   });
 });
 

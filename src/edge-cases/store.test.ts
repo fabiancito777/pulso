@@ -72,23 +72,23 @@ describe('store: estado y defaults (221–230)', () => {
     expect(store.readState().settings).toEqual(store.defaultState().settings);
   });
 
-  it('226 · readState migra las placas en memoria sin reescribir', () => {
-    mem.set(store.STATE_KEY, stateJson({ settings: { plates: [{ w: 5, pairs: 4 }] } }));
+  it('226 · readState normaliza el inventario en memoria sin reescribir', () => {
+    mem.set(store.STATE_KEY, stateJson({ settings: { plates: [{ w: 5, discs: 8.9 }] } }));
     expect(store.readState().settings.plates[0]?.discs).toBe(8);
     const onDisk = JSON.parse(mem.get(store.STATE_KEY) as string) as {
       settings: { plates: { discs?: number }[] };
     };
-    expect(onDisk.settings.plates[0]?.discs).toBeUndefined();
+    expect(onDisk.settings.plates[0]?.discs).toBe(8.9);
   });
 
-  it('227 · writeState normaliza el espejo pairs', () => {
+  it('227 · writeState normaliza el inventario', () => {
     const st = store.readState();
-    st.settings.plates = [plate(5, 5)];
+    st.settings.plates = [{ w: 5, unit: 'kg', discs: 5.9, on: true }];
     store.writeState(st);
     const onDisk = JSON.parse(mem.get(store.STATE_KEY) as string) as {
       settings: { plates: PlateStock[] };
     };
-    expect(onDisk.settings.plates[0]?.pairs).toBe(2);
+    expect(onDisk.settings.plates[0]?.discs).toBe(5);
   });
 
   it('228 · readStored devuelve null con clave rota', () => {
@@ -103,9 +103,8 @@ describe('store: estado y defaults (221–230)', () => {
   });
 
   it('230 · patchSettings normaliza el inventario en memoria', () => {
-    store.patchSettings({ plates: [{ w: 1.25, pairs: 3 } as unknown as PlateStock] });
+    store.patchSettings({ plates: [{ w: 1.25, unit: 'kg', discs: 6.7, on: true }] });
     expect(store.settings.value.plates[0]?.discs).toBe(6);
-    expect(store.settings.value.plates[0]?.pairs).toBe(3);
   });
 });
 
@@ -124,7 +123,6 @@ describe('store: ajustes, material y rutinas (231–241)', () => {
     const plates = store.settings.value.plates;
     expect(plates[0]?.discs).toBe(2);
     expect(plates[1]?.discs).toBe(4);
-    expect(plates[1]?.pairs).toBe(2);
   });
 
   it('233 · addPlate/removePlate/togglePlate mantienen el formato', () => {
@@ -132,7 +130,6 @@ describe('store: ajustes, material y rutinas (231–241)', () => {
     const coherent = (): void => {
       for (const p of store.settings.value.plates) {
         expect(typeof p.discs).toBe('number');
-        expect(p.pairs).toBe(Math.floor(p.discs / 2));
       }
     };
     store.addPlate();
@@ -215,9 +212,9 @@ describe('store: ajustes, material y rutinas (231–241)', () => {
 });
 
 describe('store: importación y reset (242–244)', () => {
-  it('242 · importState marca onboarding y migra placas', () => {
+  it('242 · importState marca onboarding y normaliza placas', () => {
     const next = store.importState({
-      settings: { plates: [{ w: 5, pairs: 4 }] },
+      settings: { plates: [{ w: 5, unit: 'kg', discs: 8 }] },
       meta: {},
     });
     expect((next.meta as { onboarded?: boolean }).onboarded).toBe(true);
