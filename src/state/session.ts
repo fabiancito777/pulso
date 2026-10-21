@@ -80,13 +80,13 @@ import { postToSW } from '@/platform/sw';
 import {
   active,
   commitSession,
+  currentRestKey,
   exercises,
   findRoutine,
   onStateReplaced,
   readStored,
   sessions,
   settings,
-  STORAGE_KEYS,
   writeActive,
   writeStored,
 } from '@/state/store';
@@ -379,9 +379,7 @@ export function toggleSetAt(index: number, setIndex: number, on?: boolean): void
 }
 
 /** Resultado de cerrar la sesión: guardada o el motivo por el que no se pudo. */
-export type FinishResult =
-  | { ok: true; session: Session }
-  | { ok: false; reason: 'empty' | 'save' };
+export type FinishResult = { ok: true; session: Session } | { ok: false; reason: 'empty' | 'save' };
 
 /**
  * Cierra la sesión: la apila en el historial, marca el día como hecho y limpia el
@@ -421,7 +419,7 @@ export function discardSession(): void {
 
 /* ---------- descanso ---------- */
 
-const readRest = (): RestState => fromPersisted(readStored(STORAGE_KEYS.rest), NOW());
+const readRest = (): RestState => fromPersisted(readStored(currentRestKey()), NOW());
 
 /** Descanso en curso, reactivo. */
 export const rest = signal<RestState>(readRest());
@@ -430,7 +428,7 @@ export const rest = signal<RestState>(readRest());
 export const restSeconds = signal(remainingSec(rest.value, NOW()));
 
 function setRest(next: RestState): void {
-  writeStored(STORAGE_KEYS.rest, toPersisted(next));
+  writeStored(currentRestKey(), toPersisted(next));
   rest.value = next;
   restSeconds.value = remainingSec(next, NOW());
 }

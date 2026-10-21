@@ -33,6 +33,28 @@ import type {
 } from '@/domain/types';
 import { toast } from '@/ui/toast';
 
+import {
+  MAX_PROFILES,
+  activeProfile,
+  activeProfileId,
+  addProfileRecord,
+  corruptPrefixFor,
+  dataKeysFor,
+  profiles,
+  readSharedApiKey,
+  removeProfileRecord,
+  replaceProfiles,
+  restKeyFor,
+  seedKeyFor,
+  setActiveProfileId,
+  setupKeyFor,
+  stateKeyFor,
+  touchProfile,
+  updateProfileRecord,
+  writeSharedApiKey,
+  type Profile,
+} from './profiles';
+
 export const STATE_KEY = 'pulso.state';
 /**
  * Versión documental del formato. La migración de placas NO depende de aquí
@@ -47,6 +69,11 @@ export const STATE_VERSION = 2;
  * segundos y no merece reescribir todo el estado.
  */
 export const STORAGE_KEYS = { state: STATE_KEY, rest: 'pulso.rest' } as const;
+
+/** Claves del perfil activo (el principal conserva las históricas). */
+export const currentStateKey = (): string => stateKeyFor(activeProfileId.value);
+export const currentRestKey = (): string => restKeyFor(activeProfileId.value);
+export const currentProfileId = (): string => activeProfileId.value;
 
 /** ¿Se puede usar localStorage? Si no, se avisa en la UI (los datos no persisten). */
 export const storageAvailable = ((): boolean => {
@@ -91,13 +118,14 @@ export function defaultState(): AppState {
 }
 
 /** Guarda una copia del estado corrupto sin pisar las anteriores. */
-function preserveCorrupt(raw: string): void {
+function preserveCorrupt(profileId: string, raw: string): void {
   if (!storageAvailable) return;
   try {
     const stamp = Date.now();
-    let key = `pulso.state.corrupt.${stamp}`;
+    const prefix = corruptPrefixFor(profileId);
+    let key = `${prefix}${stamp}`;
     for (let i = 1; localStorage.getItem(key) !== null; i++) {
-      key = `pulso.state.corrupt.${stamp}.${i}`;
+      key = `${prefix}${stamp}.${i}`;
     }
     localStorage.setItem(key, raw);
   } catch (err) {
@@ -105,25 +133,31 @@ function preserveCorrupt(raw: string): void {
   }
 }
 
-export function readState(): AppState {
+/** Lee el estado de un perfil concreto (sin tocar signals). */
+export function readProfileState(profileId: string): AppState {
   if (!storageAvailable) return defaultState();
   try {
-    const raw = localStorage.getItem(STATE_KEY);
+    const raw = localStorage.getItem(stateKeyFor(profileId));
     if (!raw) return defaultState();
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
-      preserveCorrupt(raw);
+      preserveCorrupt(profileId, raw);
       console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
       return defaultState();
     }
     if (!isPlainObject(parsed)) {
-      preserveCorrupt(raw);
+      preserveCorrupt(profileId, raw);
       console.warn('[pulso] estado con forma inválida, se usan los valores por defecto');
       return defaultState();
     }
-    const settings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
+    const storedSettings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
+    /* la key del coach es compartida: si existe, manda sobre la copia del perfil */
+    const sharedKey = readSharedApiKey();
+    const settings = sharedKey
+      ? { ...storedSettings, ai: { ...storedSettings.ai, apiKey: sharedKey } }
+      : storedSettings;
     return {
       ...(parsed as AppState),
       version: typeof parsed.version === 'number' ? parsed.version : STATE_VERSION,
@@ -138,6 +172,10 @@ export function readState(): AppState {
     console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
     return defaultState();
   }
+}
+
+export function readState(): AppState {
+  return readProfileState(activeProfileId.value);
 }
 
 /**
@@ -163,10 +201,12 @@ function forStorage(state: AppState): AppState {
   return { ...state, settings: { ...settings, plates: normalizePlates(settings.plates) } };
 }
 
-export function writeState(state: AppState): boolean {
+/** Persiste el estado de un perfil concreto y sincroniza la key compartida. */
+export function writeProfileState(profileId: string, state: AppState): boolean {
   if (!storageAvailable) return false;
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(forStorage(state)));
+    localStorage.setItem(stateKeyFor(profileId), JSON.stringify(forStorage(state)));
+    writeSharedApiKey(state.settings?.ai?.apiKey ?? '');
     return true;
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
@@ -179,6 +219,10 @@ export function writeState(state: AppState): boolean {
     }
     return false;
   }
+}
+
+export function writeState(state: AppState): boolean {
+  return writeProfileState(activeProfileId.value, state);
 }
 
 /** Lee una clave suelta de `localStorage` (JSON). Devuelve `null` si no está o si está rota. */
@@ -220,9 +264,6 @@ export const SETUP_KEY = 'pulso.applied-setup';
 
 /** Id de esa migración (el `SETUP_ID` de `store.js:211`). */
 const SETUP_ID = 'inventario-v2';
-
-/** Claves que «Borrar todo» respeta (la v1 no borraba ninguna clave suelta). */
-const KEEP_ON_RESET: readonly string[] = [SEED_KEY, SETUP_KEY];
 
 /**
  * Rutinas personales puntuales. NO son defaults ni plantillas de la app: son
@@ -373,8 +414,8 @@ interface SeedResult {
  * - NO escribe en disco: eso lo decide `loadInitialState`, para no dejar la
  *   clave de «sembrado» apuntando a un estado que no se llegó a guardar.
  */
-function seedPersonalRoutines(state: AppState): SeedResult {
-  const stored = readStored<unknown>(SEED_KEY);
+function seedPersonalRoutines(state: AppState, profileId: string): SeedResult {
+  const stored = readStored<unknown>(seedKeyFor(profileId));
   const done: string[] = Array.isArray(stored)
     ? stored.filter((id): id is string => typeof id === 'string')
     : [];
@@ -428,14 +469,23 @@ function seedPersonalRoutines(state: AppState): SeedResult {
  *
  * Devuelve `true` si había que escribir la clave.
  */
-function applyPersonalSetup(): boolean {
-  const stored = readStored<unknown>(SETUP_KEY);
+function applyPersonalSetup(profileId: string): boolean {
+  const stored = readStored<unknown>(setupKeyFor(profileId));
   const done: string[] = Array.isArray(stored)
     ? stored.filter((id): id is string => typeof id === 'string')
     : [];
   if (done.includes(SETUP_ID)) return false;
-  writeStored(SETUP_KEY, [...done, SETUP_ID]);
+  writeStored(setupKeyFor(profileId), [...done, SETUP_ID]);
   return true;
+}
+
+/** Marca un perfil nuevo como ya sembrado: no hereda las rutinas personales. */
+function markProfileSeeded(profileId: string): void {
+  writeStored(
+    seedKeyFor(profileId),
+    PERSONAL_ROUTINES.map((routine) => routine.id),
+  );
+  writeStored(setupKeyFor(profileId), [SETUP_ID]);
 }
 
 /**
@@ -450,13 +500,18 @@ function applyPersonalSetup(): boolean {
  * inicializarlas; en un test se lee con `readState()` o con el valor devuelto.
  */
 export function loadInitialState(): AppState {
+  const profileId = activeProfileId.value;
   const state = readState();
-  applyPersonalSetup();
-  const seeded = seedPersonalRoutines(state);
+  /* migración de la key al almacén compartido (antes vivía dentro del estado) */
+  if (!readSharedApiKey() && state.settings.ai.apiKey) {
+    writeSharedApiKey(state.settings.ai.apiKey);
+  }
+  applyPersonalSetup(profileId);
+  const seeded = seedPersonalRoutines(state, profileId);
   /* primero el estado y después la clave de guardia: si la escritura falla,
      la próxima carga vuelve a sembrar en vez de perder la rutina */
   const saved = seeded.changed ? writeState(state) : true;
-  if (saved && seeded.marked) writeStored(SEED_KEY, seeded.done);
+  if (saved && seeded.marked) writeStored(seedKeyFor(profileId), seeded.done);
   return state;
 }
 
@@ -476,6 +531,11 @@ export function patchSettings(patch: Partial<Settings>): Settings {
   state.settings = next;
   writeState(state);
   settings.value = next;
+  /* el nombre visible del perfil y el saludo son el mismo dato: renombrar uno
+     renombra el otro (y viceversa, ver `renameProfile`) */
+  if (patch.name !== undefined && next.name.trim()) {
+    updateProfileRecord(activeProfileId.value, { name: next.name });
+  }
   return next;
 }
 
@@ -985,6 +1045,9 @@ export function importState(raw: unknown): AppState {
   };
   writeState(next);
   refresh();
+  if (next.settings.name.trim()) {
+    updateProfileRecord(activeProfileId.value, { name: next.settings.name });
+  }
   runStateReplacedHooks();
   return readState();
 }
@@ -1002,7 +1065,11 @@ export interface ExportOptions {
  * copia viene redactada.
  */
 export function exportState(opts: ExportOptions = {}): AppState {
-  const state = readState();
+  return exportStateFor(activeProfileId.value, opts);
+}
+
+function exportStateFor(profileId: string, opts: ExportOptions): AppState {
+  const state = readProfileState(profileId);
   if (opts.includeApiKey) return state;
   return {
     ...state,
@@ -1013,23 +1080,206 @@ export function exportState(opts: ExportOptions = {}): AppState {
   };
 }
 
+/* ---------- perfiles ---------- */
+
+/** Perfil nuevo: datos por defecto, sin sesiones ni rutinas heredadas. */
+export function createProfile(name: string): Profile | null {
+  const profile = addProfileRecord(name);
+  if (!profile) return null;
+  const state = defaultState();
+  state.settings.name = profile.name;
+  state.settings.ai.apiKey = readSharedApiKey();
+  state.meta = { onboarded: true };
+  writeProfileState(profile.id, state);
+  markProfileSeeded(profile.id);
+  return profile;
+}
+
+/** Cambia el perfil activo. La UI recarga para reinicializar los signals. */
+export function switchProfile(id: string): boolean {
+  return setActiveProfileId(id);
+}
+
+/** Renombra un perfil; si es el activo, actualiza también sus ajustes. */
+export function renameProfile(id: string, name: string): boolean {
+  const updated = updateProfileRecord(id, { name });
+  if (!updated) return false;
+  if (id === activeProfileId.value) {
+    const state = readState();
+    state.settings.name = updated.name;
+    writeState(state);
+    settings.value = { ...settings.value, name: updated.name };
+  } else {
+    const state = readProfileState(id);
+    state.settings.name = updated.name;
+    writeProfileState(id, state);
+  }
+  return true;
+}
+
+export interface DeleteProfileResult {
+  ok: boolean;
+  wasActive: boolean;
+  nextId: string;
+}
+
+/** Borra del almacenamiento todo lo que pertenece a un perfil (no toca el índice). */
+function removeStoredProfile(id: string): void {
+  if (!storageAvailable) return;
+  for (const key of dataKeysFor(id)) localStorage.removeItem(key);
+  const prefix = corruptPrefixFor(id);
+  const corrupt: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) corrupt.push(key);
+  }
+  for (const key of corrupt) localStorage.removeItem(key);
+}
+
 /**
- * Borra las claves de Pulso y vuelve al estado inicial.
- * ⚠️ No toca las claves de "ya sembrado" (`pulso.applied-setup`, `pulso.seeded-routines`),
- * igual que la v1: si se borrara todo, el inventario personalizado y las rutinas
- * personales volverían a aparecer después de un "Borrar todo".
+ * Borra un perfil y sus datos. Nunca deja la lista vacía. Si era el activo,
+ * `store` cambia al primero que quede y la UI recarga.
+ */
+export function deleteProfile(id: string): DeleteProfileResult {
+  const wasActive = id === activeProfileId.value;
+  if (!removeProfileRecord(id)) {
+    return { ok: false, wasActive, nextId: activeProfileId.value };
+  }
+  removeStoredProfile(id);
+  return { ok: true, wasActive, nextId: activeProfileId.value };
+}
+
+/** Número de sesiones guardadas de un perfil (para la gestión de Ajustes). */
+export function profileSessionCount(id: string): number {
+  return asSessions(readProfileState(id).sessions).length;
+}
+
+/** Marca como usado el perfil indicado (la hoja lo hace al cambiar). */
+export function touchProfileNow(id: string): void {
+  touchProfile(id);
+}
+
+/* ---------- backup de todos los perfiles ---------- */
+
+export interface ProfilesBackup {
+  kind: 'pulso-profiles';
+  version: 1;
+  exportedAt: string;
+  active: string;
+  profiles: { profile: Profile; state: AppState }[];
+}
+
+export function isProfilesBackup(value: unknown): value is ProfilesBackup {
+  return (
+    isPlainObject(value) &&
+    value.kind === 'pulso-profiles' &&
+    Array.isArray(value.profiles) &&
+    value.profiles.length > 0
+  );
+}
+
+export function exportAllProfiles(opts: ExportOptions = {}): ProfilesBackup {
+  return {
+    kind: 'pulso-profiles',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    active: activeProfileId.value,
+    profiles: profiles.value.map((profile) => ({
+      profile,
+      state: exportStateFor(profile.id, opts),
+    })),
+  };
+}
+
+/**
+ * Restaura un backup con todos los perfiles. Reemplaza el índice y los estados
+ * de los perfiles incluidos; la UI recarga después para reinicializar signals.
+ */
+export function importProfilesBackup(raw: unknown): number {
+  if (!isProfilesBackup(raw)) throw new Error('El archivo no es un backup de perfiles');
+  const entries: { profile: Profile; state: AppState }[] = [];
+  for (const entry of raw.profiles.slice(0, MAX_PROFILES)) {
+    if (!isPlainObject(entry)) continue;
+    const profile = entry.profile;
+    const state = entry.state;
+    if (
+      !isPlainObject(profile) ||
+      typeof profile.id !== 'string' ||
+      typeof profile.name !== 'string'
+    ) {
+      continue;
+    }
+    if (!looksLikeState(state)) continue;
+    entries.push({
+      profile: {
+        id: profile.id,
+        name: profile.name.trim() || 'Perfil',
+        color: typeof profile.color === 'string' ? profile.color : '#c8ff2e',
+        createdAt:
+          typeof profile.createdAt === 'string' ? profile.createdAt : new Date().toISOString(),
+        lastUsedAt:
+          typeof profile.lastUsedAt === 'string' ? profile.lastUsedAt : new Date().toISOString(),
+      },
+      state,
+    });
+  }
+  if (!entries.length) throw new Error('El backup no trae perfiles válidos');
+  const shared =
+    entries
+      .map((entry) => entry.state.settings?.ai?.apiKey ?? '')
+      .find((key) => key.trim().length > 0) ?? readSharedApiKey();
+  const previousIds = profiles.value.map((profile) => profile.id);
+  for (const { profile, state } of entries) {
+    const next: AppState = {
+      ...state,
+      settings: {
+        ...withDefaults(state.settings, DEFAULT_SETTINGS),
+        ai: { ...withDefaults(state.settings?.ai, DEFAULT_SETTINGS.ai), apiKey: shared },
+        plates: normalizePlates(state.settings?.plates),
+      },
+      equipment: normalizeEquipment(state.equipment),
+      version: STATE_VERSION,
+      meta: { ...(isPlainObject(state.meta) ? state.meta : {}), onboarded: true },
+    };
+    writeProfileState(profile.id, next);
+    markProfileSeeded(profile.id);
+  }
+  replaceProfiles(entries.map((entry) => entry.profile));
+  /* el backup «de todos» reemplaza la lista: los perfiles que ya no están se
+     borran también del almacenamiento para no dejar datos huérfanos ocupando cuota */
+  const importedIds = new Set(entries.map((entry) => entry.profile.id));
+  for (const id of previousIds) {
+    if (!importedIds.has(id)) removeStoredProfile(id);
+  }
+  const active = entries.some((entry) => entry.profile.id === raw.active)
+    ? raw.active
+    : (entries[0]?.profile.id ?? activeProfileId.value);
+  setActiveProfileId(active);
+  return entries.length;
+}
+
+/**
+ * Borra SOLO los datos del perfil activo y vuelve a su estado inicial.
+ * No toca el índice de perfiles, la API key compartida ni los demás perfiles.
+ * Tampoco borra las claves de «ya sembrado» de este perfil, igual que la v1: si
+ * se borrara todo, el inventario personalizado y las rutinas personales
+ * volverían a aparecer después de un «Borrar todo».
  */
 export function resetAll(): void {
   if (storageAvailable) {
-    const keys: string[] = [];
+    const profileId = activeProfileId.value;
+    const keys = new Set<string>([stateKeyFor(profileId), restKeyFor(profileId)]);
+    const prefix = corruptPrefixFor(profileId);
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('pulso.') && !KEEP_ON_RESET.includes(key) && key !== STATE_KEY) {
-        keys.push(key);
-      }
+      if (key?.startsWith(prefix)) keys.add(key);
     }
-    keys.push(STATE_KEY);
     for (const key of keys) localStorage.removeItem(key);
+    /* el perfil conserva su nombre; el estado vuelve a los valores por defecto */
+    const fresh = defaultState();
+    const name = activeProfile.value?.name;
+    if (name) fresh.settings.name = name;
+    writeState(fresh);
   }
   refresh();
   runStateReplacedHooks();

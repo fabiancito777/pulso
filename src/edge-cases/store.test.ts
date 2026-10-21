@@ -235,7 +235,13 @@ describe('store: importación y reset (242–244)', () => {
     mem.set(store.SEED_KEY, '[]');
     mem.set(store.SETUP_KEY, '{}');
     store.resetAll();
-    expect(mem.has(store.STATE_KEY)).toBe(false);
+    /* el perfil se conserva (con su nombre), pero sin datos de entrenamiento */
+    const fresh = JSON.parse(mem.get(store.STATE_KEY) ?? '{}') as {
+      sessions?: unknown;
+      routines?: unknown;
+    };
+    expect(fresh.sessions ?? []).toEqual([]);
+    expect(fresh.routines ?? []).toEqual([]);
     expect(mem.has(store.SEED_KEY)).toBe(true);
     expect(mem.has(store.SETUP_KEY)).toBe(true);
   });
