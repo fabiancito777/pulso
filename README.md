@@ -35,6 +35,17 @@ pantalla completa y funciona offline).
 
 ## Qué incluye
 
+### Perfiles
+- **Varios perfiles en el mismo dispositivo** (hasta 6) con un chip en la barra superior: un toque
+  abre la hoja, otro cambia. Cada perfil tiene sus ajustes, equipo, sesiones, rutinas, calendario y
+  chat; la **API key del coach se comparte** entre todos.
+- Cambiar de perfil con una sesión activa la **guarda en ese perfil** (y avisa); al volver, la
+  retomas donde estaba, con su descanso.
+- **Gestión** en *Ajustes → Perfil*: crear, usar, renombrar y borrar. El perfil principal conserva
+  las claves históricas (`pulso.state`), así que los datos existentes no se migran.
+- **Backups**: por perfil (formato de siempre) o un archivo con **todos los perfiles**. La key se
+  incluye solo si marcas la opción.
+
 ### Hoy / Entrenar
 - Sesión activa con **marcado de series** (peso × reps × check), añadir/quitar series y ejercicios,
   reordenar, notas por ejercicio y cronómetro total de la sesión.
@@ -230,7 +241,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1341 tests**). |
+| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1354 tests**). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre el proyecto. |
 

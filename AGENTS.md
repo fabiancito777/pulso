@@ -10,7 +10,7 @@ dudas, mira ahí primero.
 > Última actualización: 19-oct-2026 · **migración completa**: la v2 es la app por defecto
 > (`main` = v2); las 7 pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y
 > Ajustes), coach IA con cerebro, memoria y consultas **más** planificador local sin key, PWA y
-> onboarding. `npm run test` ≈ **1341 tests**; ojo: los `smoke`/`edge`/`quality` de
+> onboarding. `npm run test` ≈ **1354 tests**; ojo: los `smoke`/`edge`/`quality` de
 > `src/features/coach/` hablan con la API REAL usando la key de `.env.local` y se excluyen por
 > defecto (van con `npm run test:net`).
 
@@ -65,7 +65,7 @@ npm run preview      # sirve el build
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `npm run typecheck` | `tsc --noEmit` con `strict`, `noUnusedLocals`…                                                                     |
 | `npm run lint`      | ESLint con reglas tipadas (`recommendedTypeChecked`)                                                               |
-| `npm run test`      | Vitest **offline** (≈ **1341 tests**: dominio, estado y UI; excluye smoke/edge/quality, que van con `test:net`)    |
+| `npm run test`      | Vitest **offline** (≈ **1354 tests**: dominio, estado y UI; excluye smoke/edge/quality, que van con `test:net`)    |
 | `npm run verify`    | typecheck + lint + test + build (lo que hay que dejar verde)                                                       |
 | `npm run format`    | Prettier sobre el proyecto                                                                                         |
 
@@ -106,6 +106,7 @@ src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado glob
     types.ts                                   contrato del dominio y del estado
 src/state/          → estado y persistencia (store.ts) + signals
     store.ts                                   ajustes, material, biblioteca, sesiones, apilar sesión
+    profiles.ts                                índice de perfiles, claves por perfil y key compartida
     session.ts                                 sesión activa y descanso (signals + efectos: audio, loop)
     coach.ts                                   runner del coach: bucle de consultas y fallback local
 src/features/       → piezas concretas con sus propios tests
@@ -139,6 +140,11 @@ domain  ←  features  ←  state  ←  ui
 - **Nada escribe el estado directamente**: se pasa por `state/store.ts` (`patchSettings`,
   `rememberPlateMode`), que lee-modifica-escribe el estado completo para no pisar lo que gestiona
   la v1.
+- **Perfiles**: cada perfil usa `pulso.state` (el principal, compatibilidad con la v1) o
+  `pulso.state.<id>`; el descanso va igual en `pulso.rest[.<id>]`. El índice vive en
+  `pulso.profiles`, el activo en `pulso.active-profile` y la **API key del coach es única** en
+  `pulso.ai-key` (se inyecta al leer y se sincroniza al escribir). Cambiar de perfil recarga la
+  app para reinicializar los signals; no se mueven datos del perfil principal.
 - **Los componentes no montan HTML a mano.** Preact escapa solo, así que `U.esc()` no se porta
   (si algún día hace falta HTML crudo, será una decisión explícita y localizada).
 
