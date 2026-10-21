@@ -9,6 +9,7 @@ import { settings } from '@/state/store';
 import { toast } from '@/ui/toast';
 import '@/styles/base.css';
 import '@/styles/v2.css';
+import '@/styles/profiles.css';
 
 /* Tema y acento ANTES del primer pintado: si no, el root aparece con el tema por
    defecto y parpadea (los cambios posteriores los aplica App con el mismo `applyTheme`). */

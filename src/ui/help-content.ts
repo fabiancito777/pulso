@@ -891,7 +891,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Borrar todo',
     paras: [
-      'Borra las rutinas, las sesiones, el calendario y los ajustes: la app queda como recién instalada. Haz una copia antes si no quieres perderlo.',
+      'Borra las rutinas, las sesiones, el calendario y los ajustes del perfil activo; los demás perfiles se conservan. Haz una copia antes si no quieres perderlo.',
     ],
     see: ['opt.export'],
   },

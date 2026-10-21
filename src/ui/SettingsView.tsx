@@ -34,7 +34,7 @@ import {
   isAvailable,
   missingEquipment,
 } from '@/domain/data';
-import { today } from '@/domain/dates';
+import { timeAgo, today } from '@/domain/dates';
 import { draftFrom, toExercise } from '@/domain/exercise-draft';
 import type { ExerciseDraft } from '@/domain/exercise-draft';
 import { fmtN, inputNum } from '@/domain/format';
@@ -57,15 +57,22 @@ import {
   bulkSetAllowed,
   bulkSetExerciseFlag,
   clearDemo,
+  createProfile,
+  deleteProfile,
   demoData,
   equipment,
   exercises,
+  exportAllProfiles,
   exportState,
+  importProfilesBackup,
   importState,
+  isProfilesBackup,
   looksLikeState,
   patchSettings,
+  profileSessionCount,
   removeExercise,
   removePlate,
+  renameProfile,
   resetAll,
   saveExercise,
   sessions,
@@ -73,10 +80,12 @@ import {
   settings,
   storageAvailable,
   storageBytes,
+  switchProfile,
   togglePlate,
   updatePlate,
 } from '@/state/store';
-import { TEST_NOTICE_SEC, testRestNotice } from '@/state/session';
+import { MAX_PROFILES, activeProfileId, profileInitial, profiles } from '@/state/profiles';
+import { TEST_NOTICE_SEC, testRestNotice, active as activeSession } from '@/state/session';
 import { ExerciseGenModal } from '@/ui/ExerciseGenModal';
 import { Icon } from '@/ui/Icon';
 import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
@@ -120,12 +129,217 @@ const APP_VERSION: string = typeof __APP_VERSION__ === 'string' ? __APP_VERSION_
 function SecPerfil() {
   const st = settings.value;
   const goal = st.goal;
+  const [newProfile, setNewProfile] = useState('');
+  const [profileMsg, setProfileMsg] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const changeProfile = (id: string): void => {
+    if (id === activeProfileId.value) return;
+    if (
+      activeSession.value &&
+      !window.confirm(
+        'Tienes una sesión en curso. Se guardará en este perfil y podrás retomarla al volver.',
+      )
+    ) {
+      return;
+    }
+    if (!switchProfile(id)) {
+      setProfileMsg('No se pudo cambiar de perfil.');
+      return;
+    }
+    location.reload();
+  };
+
+  const addProfile = (): void => {
+    const clean = newProfile.trim();
+    if (!clean) {
+      setProfileMsg('Ponle un nombre al perfil.');
+      return;
+    }
+    if (
+      activeSession.value &&
+      !window.confirm(
+        'Tienes una sesión en curso. Se guardará en este perfil y podrás retomarla al volver.',
+      )
+    ) {
+      return;
+    }
+    const profile = createProfile(clean);
+    if (!profile) {
+      setProfileMsg(
+        profiles.value.length >= MAX_PROFILES
+          ? `Máximo ${MAX_PROFILES} perfiles en este dispositivo.`
+          : 'No se pudo crear el perfil.',
+      );
+      return;
+    }
+    if (!switchProfile(profile.id)) {
+      setProfileMsg('No se pudo cambiar al perfil nuevo.');
+      return;
+    }
+    location.reload();
+  };
+
+  const startRename = (id: string, name: string): void => {
+    setRenaming(id);
+    setRenameValue(name);
+    setProfileMsg('');
+  };
+
+  const saveRename = (id: string): void => {
+    if (!renameProfile(id, renameValue)) {
+      setProfileMsg('El nombre no puede estar vacío.');
+      return;
+    }
+    setRenaming(null);
+    setProfileMsg('Perfil renombrado.');
+  };
+
+  const remove = (id: string, name: string): void => {
+    if (!window.confirm(`¿Borrar el perfil «${name}»? Se borrarán todos sus datos.`)) return;
+    const result = deleteProfile(id);
+    if (!result.ok) {
+      setProfileMsg('No se puede borrar el único perfil.');
+      return;
+    }
+    if (result.wasActive) {
+      location.reload();
+      return;
+    }
+    setProfileMsg('Perfil borrado.');
+  };
+
   return (
     <>
       <div class="card">
+        <div class="between mb-s">
+          <div class="h3">Perfiles</div>
+          <span class="badge">
+            {profiles.value.length}/{MAX_PROFILES}
+          </span>
+        </div>
+        <div class="tiny muted mb-s">
+          Cada perfil guarda sus sesiones, rutinas, calendario y ajustes. La API key del coach se
+          comparte.
+        </div>
+        <div class="list">
+          {profiles.value.map((profile) => {
+            const isActive = profile.id === activeProfileId.value;
+            const editing = renaming === profile.id;
+            return (
+              <div class="pf-manage-row" key={profile.id}>
+                <span class="pf-avatar" style={`background:${profile.color}`} aria-hidden="true">
+                  {profileInitial(profile.name)}
+                </span>
+                <div class="grow" style="min-width:0">
+                  {editing ? (
+                    <input
+                      class="input sm"
+                      value={renameValue}
+                      aria-label={`Nuevo nombre para ${profile.name}`}
+                      maxLength={40}
+                      onInput={(event) => setRenameValue(event.currentTarget.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') saveRename(profile.id);
+                        if (event.key === 'Escape') setRenaming(null);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <div class="li-title">
+                        {profile.name} {isActive ? <span class="badge a">activo</span> : null}
+                      </div>
+                      <div class="li-sub">
+                        {profileSessionCount(profile.id)} sesiones ·{' '}
+                        {isActive ? 'en uso' : `última vez ${timeAgo(profile.lastUsedAt)}`}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div class="pf-manage-actions">
+                  {editing ? (
+                    <>
+                      <button
+                        type="button"
+                        class="btn sm primary"
+                        onClick={() => saveRename(profile.id)}
+                      >
+                        Guardar
+                      </button>
+                      <button type="button" class="btn sm ghost" onClick={() => setRenaming(null)}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {!isActive ? (
+                        <button
+                          type="button"
+                          class="btn sm"
+                          onClick={() => changeProfile(profile.id)}
+                        >
+                          Usar
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        class="btn sm ghost"
+                        onClick={() => startRename(profile.id, profile.name)}
+                      >
+                        Renombrar
+                      </button>
+                      <button
+                        type="button"
+                        class="btn sm danger"
+                        disabled={profiles.value.length <= 1}
+                        onClick={() => remove(profile.id, profile.name)}
+                      >
+                        Borrar
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div class="pf-create mt">
+          <input
+            class="input"
+            value={newProfile}
+            placeholder="Nombre del perfil nuevo"
+            aria-label="Nombre del perfil nuevo"
+            maxLength={40}
+            onInput={(event) => {
+              setNewProfile(event.currentTarget.value);
+              setProfileMsg('');
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addProfile();
+            }}
+          />
+          <button
+            type="button"
+            class="btn primary"
+            disabled={profiles.value.length >= MAX_PROFILES}
+            onClick={addProfile}
+          >
+            <Icon name="plus" />
+            Crear
+          </button>
+        </div>
+        {profileMsg ? (
+          <div class="tiny muted mt-s" role="status">
+            {profileMsg}
+          </div>
+        ) : null}
+      </div>
+
+      <div class="card">
         <TextRow
           label="Nombre"
-          hint="Se usa para saludarte y en los prompts del coach"
+          hint="Se usa para saludarte, en el perfil y en los prompts del coach"
           value={st.name}
           placeholder="Tu nombre"
           onChange={(name) => setSettingsPath('name', name)}
@@ -311,10 +525,13 @@ function SecApariencia() {
               return;
             }
             if (result === 'no-sw') {
-              toast('El aviso con el móvil bloqueado necesita la app instalada (o servida en producción)', {
-                kind: 'warn',
-                ms: 6000,
-              });
+              toast(
+                'El aviso con el móvil bloqueado necesita la app instalada (o servida en producción)',
+                {
+                  kind: 'warn',
+                  ms: 6000,
+                },
+              );
               return;
             }
             toast(`Bloquea el móvil: el aviso llega en ${TEST_NOTICE_SEC} s`, {
@@ -1753,23 +1970,54 @@ function SecDatos() {
           value={includeKey}
           onChange={setIncludeKey}
         />
+        {profiles.value.length > 1 ? (
+          <ListButton
+            icon="download"
+            title="Exportar todos los perfiles"
+            sub={`Un archivo con los ${profiles.value.length} perfiles y sus datos`}
+            onClick={() => {
+              downloadJSON(exportAllProfiles({ includeApiKey: includeKey }), 'pulso-perfiles');
+              setMsg(
+                includeKey
+                  ? 'Copia de todos los perfiles descargada, incluida la API key.'
+                  : 'Copia de todos los perfiles descargada (sin la API key).',
+              );
+            }}
+          />
+        ) : null}
         <ListButton
           icon="upload"
           title="Importar copia"
-          sub="Reemplaza los datos actuales"
+          sub="Reemplaza el perfil actual (o todos si el archivo es de perfiles)"
           onClick={() => {
             void pickTextFile().then((text) => {
               if (text === null) return;
-              /* igual que la v1 (`views-settings.js`): se confirma ANTES de pisar nada */
-              if (
-                !window.confirm('Se reemplazarán todos los datos actuales por los del archivo.')
-              ) {
-                return;
-              }
               try {
                 const raw: unknown = JSON.parse(text);
+                if (isProfilesBackup(raw)) {
+                  const count = raw.profiles.length;
+                  if (
+                    !window.confirm(
+                      `Se reemplazarán los perfiles actuales por los ${count} del archivo.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  const imported = importProfilesBackup(raw);
+                  setMsg(`Importados ${imported} perfiles. Recargando…`);
+                  setTimeout(() => location.reload(), 600);
+                  return;
+                }
                 if (!looksLikeState(raw)) {
                   setMsg('Ese archivo no parece una copia de Pulso.');
+                  return;
+                }
+                /* igual que la v1 (`views-settings.js`): se confirma ANTES de pisar nada */
+                if (
+                  !window.confirm(
+                    'Se reemplazarán todos los datos del perfil actual por los del archivo.',
+                  )
+                ) {
                   return;
                 }
                 const next = importState(raw);
@@ -1814,12 +2062,12 @@ function SecDatos() {
           icon="alert"
           title="Borrar todo"
           danger
-          sub="Deja la app como recién instalada"
+          sub="Borra los datos de este perfil"
           help="opt.wipe"
           onClick={() => {
             if (
               !window.confirm(
-                'Se van a borrar todos tus datos de Pulso. ¿Seguro? Exporta una copia antes si quieres conservarlos.',
+                'Se van a borrar los datos del perfil actual (los demás perfiles se conservan). ¿Seguro? Exporta una copia antes si quieres conservarlos.',
               )
             ) {
               return;

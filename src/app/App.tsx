@@ -12,6 +12,7 @@ import { TEMPLATES } from '@/domain/data';
 import { fmtClock } from '@/domain/format';
 import { applyTheme } from '@/platform/theme';
 import { active, rest, sessionSeconds, startLoop } from '@/state/session';
+import { activeProfile, profileInitial } from '@/state/profiles';
 import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
@@ -20,6 +21,7 @@ import { openHelp } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { Onboarding } from '@/ui/Onboarding';
 import { PlatesCard } from '@/ui/PlatesCard';
+import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
 import { SessionCard } from '@/ui/SessionCard';
@@ -218,6 +220,8 @@ export function App() {
      con una sesión o un descanso en marcha: taparía el entreno (caso e). El
      cierre lo detecta la signal `meta` (el modal la escribe al cerrarse). */
   const [boarding, setBoarding] = useState(false);
+  const [profilesOpen, setProfilesOpen] = useState(false);
+  const profile = activeProfile.value;
   useEffect(() => {
     if (meta.value.onboarded === true) return;
     const timer = setTimeout(() => {
@@ -263,6 +267,22 @@ export function App() {
             <Icon name="fire" />
             <span>{streak}</span>
           </button>
+          {profile ? (
+            <button
+              type="button"
+              class="chip pf-chip"
+              title={`Perfil: ${profile.name}`}
+              aria-label={`Cambiar de perfil (${profile.name})`}
+              aria-haspopup="dialog"
+              onClick={() => setProfilesOpen(true)}
+            >
+              <span class="pf-avatar" style={`background:${profile.color}`} aria-hidden="true">
+                {profileInitial(profile.name)}
+              </span>
+              <span class="pf-name">{profile.name}</span>
+              <Icon name="chev-d" />
+            </button>
+          ) : null}
           <SessionClock />
           <button
             type="button"
@@ -294,6 +314,16 @@ export function App() {
       </main>
 
       <BottomNav current={current.key} />
+
+      {profilesOpen ? (
+        <ProfileSheet
+          onClose={() => setProfilesOpen(false)}
+          onManage={() => {
+            setProfilesOpen(false);
+            go('ajustes', 'perfil');
+          }}
+        />
+      ) : null}
 
       {/* Overlay global de primera visita: se desmonta en cuanto la signal
           `meta.onboarded` pasa a true (los dos botones del modal lo marcan). */}
