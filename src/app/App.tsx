@@ -2,12 +2,13 @@
  * Shell de la app: barra superior, **vista por pestaña** (rutas por hash, `router.ts`)
  * y la barra de abajo. Cada pestaña monta su vista.
  */
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
 import { totals } from '@/domain/analytics';
 import { TEMPLATES } from '@/domain/data';
 import { fmtClock } from '@/domain/format';
+import { progress as sessionProgress } from '@/domain/session';
 import { applyTheme } from '@/platform/theme';
 import { active, rest, sessionSeconds, startLoop } from '@/state/session';
 import { activeProfile, profileInitial } from '@/state/profiles';
@@ -21,7 +22,7 @@ import { Onboarding } from '@/ui/Onboarding';
 import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
-import { SessionCard } from '@/ui/SessionCard';
+import { RestDock, SessionCard, SessionDock } from '@/ui/SessionCard';
 import { SettingsView } from '@/ui/SettingsView';
 
 /**
@@ -136,6 +137,22 @@ export function tabSub(tab: string): string {
   return '';
 }
 
+/**
+ * La tarjeta completa de sesión solo vive en Entrenar y Hoy; en el resto de
+ * pestañas manda la sección y, si hay sesión o descanso, queda la barra compacta
+ * de abajo. En Hoy sin nada no se pinta el placeholder: el hero ya dice por dónde
+ * empezar. `App.test.ts` fija este reparto.
+ */
+export function sessionDockMode(
+  tab: string,
+  hasSession: boolean,
+  resting: boolean,
+): { showSession: boolean; floatingDock: boolean } {
+  const running = hasSession || resting;
+  const showSession = tab === 'entrenar' || (tab === 'hoy' && running);
+  return { showSession, floatingDock: !showSession && running };
+}
+
 /** El contenido de la pestaña activa. */
 function CurrentView({ tab }: { tab: Tab }) {
   switch (tab.key) {
@@ -170,13 +187,13 @@ export function App() {
   const current = TABS.find((t) => t.key === route.value.tab) ?? TABS[0];
   const sub = tabSub(current.key);
   const streak = totals(sessions.value).streak;
-  /* La sesión (y el descanso, que también puede ser el temporizador libre de Hoy)
-     no se esconden al cambiar de pestaña; el placeholder de "sin sesión" solo
-     manda en Entrenar, porque en
-     Hoy el hero ya dice por dónde empezar (spec hoy.md, decisiones 6-7). Con
-     `rest.running` y sin sesión, `SessionCard` pinta el recuadro ÚNICO de
-     descanso (su rama `!session && resting`), nunca el placeholder. */
-  const showSession = current.key === 'entrenar' || active.value || rest.value.running;
+  const session = active.value;
+  const prog = session ? sessionProgress(session) : null;
+  const { showSession, floatingDock } = sessionDockMode(
+    current.key,
+    Boolean(session),
+    rest.value.running,
+  );
 
   useEffect(() => applyTheme(s.theme, s.accent), [s.theme, s.accent]);
 
@@ -199,6 +216,12 @@ export function App() {
   /* Escucha `hashchange`: cualquier cambio de pestaña actualiza `route` y, con ella,
      la vista (el signal repinta solo). */
   useEffect(() => startRouter(), []);
+
+  /* Al cambiar de pestaña, la nueva sección empieza arriba. Si no, se heredaba
+     el scroll de la anterior y parecía que la pantalla no había cambiado. */
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [current.key]);
 
   /* El bucle de 500 ms: cuenta atrás, tics y aviso de fin de descanso. */
   useEffect(() => startLoop(), []);
@@ -274,6 +297,21 @@ export function App() {
         {showSession ? <SessionCard /> : null}
 
         <CurrentView tab={current} />
+
+        {floatingDock ? (
+          rest.value.running ? (
+            <RestDock show />
+          ) : session && prog ? (
+            <SessionDock
+              show
+              name={session.name}
+              done={prog.done}
+              total={prog.total}
+              volume={prog.volume}
+              pct={prog.pct}
+            />
+          ) : null
+        ) : null}
       </main>
 
       <BottomNav current={current.key} />

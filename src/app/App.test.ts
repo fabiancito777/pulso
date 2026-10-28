@@ -7,6 +7,8 @@
  * pestañas lo traen de dentro (Hoy el saludo, Progreso el resumen, Coach la
  * tarjeta de conexión y Calendario `weekSubtitle`) y no deben aparecer dos veces.
  * Aquí solo se prueba el shell (sin DOM, como el resto de tests de la raíz).
+ * También fija `sessionDockMode`: tarjeta completa en Entrenar/Hoy y barra
+ * compacta en el resto de pestañas.
  *
  * `routines` es una signal en memoria: el test la guarda y la restaura para no
  * dejar el módulo sucio para los demás archivos.
@@ -16,7 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TEMPLATES } from '@/domain/data';
 import { routines, type Routine } from '@/state/store';
 
-import { tabSub } from './App';
+import { sessionDockMode, tabSub } from './App';
 
 const original = routines.value;
 
@@ -49,6 +51,47 @@ describe('tabSub (el subtítulo de pestaña)', () => {
   it('las demás pestañas lo pinta SU vista, así que el shell no dice nada', () => {
     for (const tab of ['hoy', 'entrenar', 'calendario', 'coach', 'progreso']) {
       expect(tabSub(tab)).toBe('');
+    }
+  });
+});
+
+describe('sessionDockMode (dónde vive la sesión)', () => {
+  it('Entrenar siempre lleva la tarjeta completa', () => {
+    expect(sessionDockMode('entrenar', false, false)).toEqual({
+      showSession: true,
+      floatingDock: false,
+    });
+  });
+
+  it('Hoy la lleva solo con sesión o descanso', () => {
+    expect(sessionDockMode('hoy', false, false)).toEqual({
+      showSession: false,
+      floatingDock: false,
+    });
+    expect(sessionDockMode('hoy', true, false)).toEqual({
+      showSession: true,
+      floatingDock: false,
+    });
+    expect(sessionDockMode('hoy', false, true)).toEqual({
+      showSession: true,
+      floatingDock: false,
+    });
+  });
+
+  it('el resto de pestañas deja la sección y usa la barra compacta', () => {
+    for (const tab of ['rutinas', 'calendario', 'coach', 'progreso', 'ajustes']) {
+      expect(sessionDockMode(tab, false, false)).toEqual({
+        showSession: false,
+        floatingDock: false,
+      });
+      expect(sessionDockMode(tab, true, false)).toEqual({
+        showSession: false,
+        floatingDock: true,
+      });
+      expect(sessionDockMode(tab, false, true)).toEqual({
+        showSession: false,
+        floatingDock: true,
+      });
     }
   });
 });

@@ -90,6 +90,15 @@ function useDock(enabled: boolean): boolean {
   return docked;
 }
 
+/** La barra fija necesita hueco al final del documento para no tapar el último
+ *  botón; lo gestiona el propio dock, se use arriba o en otra pestaña. */
+function useDockBody(show: boolean): void {
+  useEffect(() => {
+    document.body.classList.toggle('has-dock', show);
+    return () => document.body.classList.remove('has-dock');
+  }, [show]);
+}
+
 /**
  * Cuenta atrás del descanso, aislada para no repintar los inputs de las series.
  *
@@ -165,10 +174,11 @@ function RestStrip() {
  * tarjeta grande ya no está a la vista. Solo lo esencial: tiempo, ±15 s y
  * saltar; el resto (ejercicio, resumen) sigue en la tarjeta de arriba.
  */
-function RestDock({ show }: { show: boolean }) {
+export function RestDock({ show }: { show: boolean }) {
   const left = restSeconds.value;
   const info = restView(rest.value, Date.now());
   const tab = show ? undefined : -1;
+  useDockBody(show);
   return (
     <div class={`rest-dock${show ? ' in' : ''}`} aria-hidden={!show}>
       <div class="rest-dock-inner">
@@ -192,7 +202,7 @@ function RestDock({ show }: { show: boolean }) {
  * Versión reducida de la tarjeta «en curso» para cuando se baja: nombre,
  * series, tiempo y volumen. Sin renombrar ni ayuda, que eso vive arriba.
  */
-function SessionDock({
+export function SessionDock({
   show,
   name,
   done,
@@ -207,6 +217,7 @@ function SessionDock({
   volume: number;
   pct: number;
 }) {
+  useDockBody(show);
   return (
     <div class={`rest-dock session-dock${show ? ' in' : ''}`} aria-hidden={!show}>
       <div class="rest-dock-inner">
@@ -499,14 +510,6 @@ export function SessionCard() {
     previousId.current = sessionId;
     if (sessionId !== null) setMessage(null);
   }, [sessionId]);
-
-  /* La barra acoplada tapa el final del documento: le damos su hueco mientras
-     está visible para que el último botón no quede debajo. */
-  useEffect(() => {
-    const on = docked;
-    document.body.classList.toggle('has-dock', on);
-    return () => document.body.classList.remove('has-dock');
-  }, [docked]);
 
   if (!session) {
     /* Descanso/temporizador libre SIN sesión: el gate de `App.tsx` monta esta
