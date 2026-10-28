@@ -15,7 +15,7 @@ import { useState } from 'preact/hooks';
 import { GOALS, equipPresetList } from '@/domain/data';
 import { applyOnboarding, type OnboardingValues } from '@/state/onboarding';
 import { Modal } from '@/ui/Modal';
-import { TextRow } from '@/ui/kit';
+import { SegToggle, TextRow } from '@/ui/kit';
 import { toast } from '@/ui/toast';
 
 import '../styles/onboarding.css';
@@ -98,13 +98,18 @@ export function Onboarding() {
               ))}
             </select>
           </label>
-          <label class="field">
+          <div class="field">
             <span class="label">Unidades</span>
-            <select class="select" value={units} onChange={(e) => setUnits(e.currentTarget.value)}>
-              <option value="kg">Kilogramos</option>
-              <option value="lb">Libras</option>
-            </select>
-          </label>
+            <SegToggle
+              label="Unidades"
+              value={units}
+              options={[
+                { value: 'kg', label: 'kg' },
+                { value: 'lb', label: 'lb' },
+              ]}
+              onChange={setUnits}
+            />
+          </div>
         </div>
         <div class="field">
           <span class="label">¿Con qué material cuentas?</span>

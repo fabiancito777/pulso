@@ -128,8 +128,8 @@ export function TextRow({
       {hint ? <span class="sub">{hint}</span> : null}
     </label>
   );
-  /* El envolvente `.help-field` es `position:relative`: el ⓘ sale absoluto
-     arriba-derecha y no altera el layout del campo (spec §3.3). */
+  /* El envolvente `.help-field` (grid) pone el ⓘ al lado, centrado con el
+     bloque, sin alterar el layout del campo (spec §3.3). */
   if (!help) return field;
   return (
     <div class="help-field">
@@ -142,6 +142,46 @@ export function TextRow({
 export interface Option {
   value: string;
   label: string;
+}
+
+/**
+ * Selector segmentado para DOS opciones (kg/lb, sí/no…). Se ve la alternativa y
+ * se cambia de un toque; el pulgar se desliza con una transición corta. Para más
+ * de dos opciones sigue mandando el `<select>` (aquí no hay sitio para todos).
+ */
+export function SegToggle({
+  label,
+  value,
+  options,
+  small,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: readonly Option[];
+  small?: boolean;
+  onChange: (next: string) => void;
+}) {
+  const index = Math.max(
+    0,
+    options.findIndex((o) => o.value === value),
+  );
+  return (
+    <div class={`seg-toggle${small ? ' sm' : ''}`} role="group" aria-label={label}>
+      <span class="seg-thumb" aria-hidden="true" style={`transform:translateX(${index * 100}%)`} />
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          class={`seg-opt${o.value === value ? ' on' : ''}`}
+          aria-pressed={o.value === value}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** Desplegable. Los valores siempre viajan como texto (igual que ). */
@@ -160,7 +200,12 @@ export function SelectRow({
   inline?: boolean;
   onChange: (next: string) => void;
 }) {
-  const select = (
+  /* Con dos opciones, un segmentado se cambia de un toque y deja ver la
+     alternativa; con más, el desplegable sigue siendo lo correcto. */
+  const binary = options.length === 2;
+  const control = binary ? (
+    <SegToggle label={label} value={value} options={options} onChange={onChange} />
+  ) : (
     <select
       class="select"
       value={value}
@@ -174,12 +219,23 @@ export function SelectRow({
       ))}
     </select>
   );
+  const inner = (
+    <>
+      <span class="label">{label}</span>
+      {control}
+      {hint ? <span class="sub">{hint}</span> : null}
+    </>
+  );
   if (inline) {
-    const field = (
+    /* Con un segmentado NO se usa `<label>`: cada opción es un botón y el
+       `<label>` reenviaría los clics al primero (alternaría solo). */
+    const field = binary ? (
+      <div class={help ? 'field' : 'field list-item'} style="display:block">
+        {inner}
+      </div>
+    ) : (
       <label class={help ? 'field' : 'field list-item'} style="display:block">
-        <span class="label">{label}</span>
-        {select}
-        {hint ? <span class="sub">{hint}</span> : null}
+        {inner}
       </label>
     );
     /* Mismo patrón que `SwitchRow`: con ⓘ, el `<label>` deja de ser la raíz
@@ -194,13 +250,7 @@ export function SelectRow({
       </div>
     );
   }
-  const field = (
-    <label class="field">
-      <span class="label">{label}</span>
-      {select}
-      {hint ? <span class="sub">{hint}</span> : null}
-    </label>
-  );
+  const field = binary ? <div class="field">{inner}</div> : <label class="field">{inner}</label>;
   if (!help) return field;
   return (
     <div class="help-field">

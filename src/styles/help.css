@@ -19,19 +19,22 @@
   min-width: 0;
 }
 
-/* Campo (texto/select) con el ⓘ pegado arriba-derecha, junto a su etiqueta. */
+/* Campo (texto/select/segmentado) con su ⓘ al lado, centrado verticalmente con
+   el bloque entero (etiqueta + control + pista). Antes iba absoluto arriba a la
+   derecha y quedaba a medio camino entre la etiqueta y el control. */
 .help-field {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .help-field > .field {
-  padding-right: 26px;
+  min-width: 0;
 }
 
 .help-field .help-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
+  flex: none;
 }
 
 /* Sin esto, los envolventes del ⓘ no aportan separación vertical entre campos

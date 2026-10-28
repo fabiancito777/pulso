@@ -96,6 +96,7 @@ import {
   ListButton,
   NumRow,
   SectionHead,
+  SegToggle,
   SelectRow,
   SwitchRow,
   TextRow,
@@ -686,16 +687,16 @@ function PlateRow({ plate, index }: { plate: PlateStock; index: number }) {
         aria-label="medida del disco"
         onChange={(e) => updatePlate(index, { w: Number(e.currentTarget.value) })}
       />
-      <select
-        class="select"
-        style="width:82px;min-height:38px;padding:6px 26px 6px 10px"
+      <SegToggle
+        small
+        label="unidad del disco"
         value={plate.unit}
-        aria-label="unidad del disco"
-        onChange={(e) => updatePlate(index, { unit: e.currentTarget.value as Unit })}
-      >
-        <option value="kg">kg</option>
-        <option value="lb">lb</option>
-      </select>
+        options={[
+          { value: 'kg', label: 'kg' },
+          { value: 'lb', label: 'lb' },
+        ]}
+        onChange={(unit) => updatePlate(index, { unit: unit as Unit })}
+      />
       <span class="tiny muted">x</span>
       <input
         class="input num"
