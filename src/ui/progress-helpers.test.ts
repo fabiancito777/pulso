@@ -2,7 +2,7 @@
  * `ui/progress-helpers.ts`: lo que hay que comprobar de la pestaña Progreso sin
  * abrir un navegador.
  *
- * Las reglas que se fijan aquí son las que la v1 solo se podía comprobar
+ * Las reglas que se fijan aquí son las que antes solo se podía comprobar
  * entrenando o con `?selftest=1`:
  *
  * - el resumen de cada fila del historial (volumen en kg aunque la sesión esté
@@ -209,7 +209,7 @@ describe('lastStimulusRows', () => {
     expect(rows.some((r) => r.key === 'cardio' || r.key === 'movilidad')).toBe(false);
   });
 
-  it('pinta los tonos de la v1: ≤3 ok, ≤7 warn, más frío danger y sin datos muted', () => {
+  it('pinta los tonos esperados: ≤3 ok, ≤7 warn, más frío danger y sin datos muted', () => {
     const byKey = new Map(rows.map((r) => [r.key, r]));
     expect(byKey.get('pecho')).toMatchObject({ days: 3, tone: 'ok', iso: '2026-09-21' });
     expect(byKey.get('espalda')).toMatchObject({ days: 6, tone: 'warn' });
@@ -218,7 +218,7 @@ describe('lastStimulusRows', () => {
     expect(byKey.get('hombros')).toMatchObject({ days: null, tone: 'muted', iso: null });
   });
 
-  it('ordena por días SIN entrenar (lo más descuidado primero, nulls = 999 en la v1)', () => {
+  it('ordena por días SIN entrenar (lo más descuidado primero, nulls = 999)', () => {
     const conDatos = rows.filter((r) => r.days !== null).map((r) => r.days);
     expect(conDatos).toEqual([14, 7, 6, 3]);
     const sinDatos = rows.filter((r) => r.days === null).length;

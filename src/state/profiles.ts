@@ -2,7 +2,7 @@
  * Perfiles: índice y claves de almacenamiento.
  *
  * Cada perfil es una «carpeta» independiente de datos. El perfil principal usa
- * las claves históricas (`pulso.state`, `pulso.rest`), así que los datos de la v1
+ * las claves históricas (`pulso.state`, `pulso.rest`), así que los datos
  * y de v2 antes de los perfiles siguen abriendo sin migración; los demás usan el
  * sufijo `.<id>`.
  *
@@ -105,7 +105,7 @@ function writeProfiles(list: readonly Profile[]): void {
   }
 }
 
-function readLegacyDefaultName(): { name: string; createdAt: string } {
+function readStoredProfileName(): { name: string; createdAt: string } {
   const store = ls();
   const now = new Date().toISOString();
   if (!store) return { name: 'Principal', createdAt: now };
@@ -157,12 +157,12 @@ function bootstrapProfiles(): Profile[] {
     if (!stored.some((p) => p.id === active)) writeActiveId(stored[0]?.id ?? DEFAULT_PROFILE_ID);
     return stored;
   }
-  const legacy = readLegacyDefaultName();
+  const previous = readStoredProfileName();
   const profile: Profile = {
     id: DEFAULT_PROFILE_ID,
-    name: legacy.name,
+    name: previous.name,
     color: PROFILE_COLORS[0],
-    createdAt: legacy.createdAt,
+    createdAt: previous.createdAt,
     lastUsedAt: new Date().toISOString(),
   };
   writeProfiles([profile]);

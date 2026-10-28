@@ -1,6 +1,6 @@
 /**
  * `ui/picker-helpers.ts`: visibilidad y orden del picker de ejercicios, que en
- * la v1 vivían dentro del modal (repintado a cada tecla) y por eso no se podían
+ * antes vivían dentro del modal (repintado a cada tecla) y por eso no se podían
  * comprobar sin navegador.
  *
  * Aquí se fijan las decisiones de la spec `ejercicios-revamp.md` §3.2:

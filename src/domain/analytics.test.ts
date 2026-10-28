@@ -1,6 +1,6 @@
 /**
- * Analítica: lo que en la v1 solo se veía dentro del auto-test del navegador
- * (`legacy/js/app.js` → `selfTest()`) o dándole a "Progreso", ahora con datos
+ * Analítica: lo que  solo se veía dentro del auto-test del navegador
+ * ( → `selfTest()`) o dándole a "Progreso", ahora con datos
  * construidos a mano y sin depender de la fecha real del sistema.
  *
  * Los datos de prueba son sesiones de 1 hora (10:00 → 11:00) para que la duración

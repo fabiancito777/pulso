@@ -19,7 +19,7 @@ import type { BarDatum, LineSeries } from './charts-helpers';
 const bar = (label: string, value: number): BarDatum => ({ label, value });
 
 describe('formato de los ejes', () => {
-  it('usa los mismos formatos que la v1 (vol, duración, entero, decimal)', () => {
+  it('usa los formatos esperados (vol, duración, entero, decimal)', () => {
     expect(fmtVal(1500, 'vol')).toBe('1,5k'); // fmtVol abrevia a partir de 1000
     expect(fmtVal(850, 'vol')).toBe('850');
     expect(fmtVal(90_000, 'time')).toBe('1m'); // fmtDur corta a minutos
@@ -72,7 +72,7 @@ describe('barras verticales', () => {
       { v: 0, y: 130 },
     ]);
     expect(l.slot).toBeCloseTo(280 / 3, 6);
-    expect(l.bw).toBe(34); // tope de 34 px de la v1
+    expect(l.bw).toBe(34); // tope de 34 px
     expect(l.rects[0]).toMatchObject({ x: 63.7, y: 130, w: 34, h: 1 }); // vacía: 1 px mínimo
     expect(l.rects[1]).toMatchObject({ x: 157, y: 14, h: 116 });
     expect(l.rects[2]).toMatchObject({ y: 72, h: 58 }); // mitad del tope
@@ -94,7 +94,7 @@ describe('barras verticales', () => {
     const l = barLayout(data, { height: 150 });
     expect(targetY(l, 5)).toBe(72);
     expect(targetY(l, 10)).toBe(14);
-    expect(targetY(l, 11)).toBeLessThan(14); // fuera de la v1, la v1 lo descarta
+    expect(targetY(l, 11)).toBeLessThan(14); // fuera de rango se descarta
   });
 });
 
@@ -126,7 +126,7 @@ describe('línea / área', () => {
     expect(l.series[0].path).toBe('M36.0 148.0 L310.0 16.0');
   });
 
-  it('una sola serie lleva relleno; varias, no (regla de la v1)', () => {
+  it('una sola serie lleva relleno; varias, no ', () => {
     expect(lineLayout(series).series[0].area).toContain('Z');
     const two: LineSeries[] = [
       ...series,
@@ -203,7 +203,7 @@ describe('donut', () => {
     expect(l.segments[1].pct).toBe(25);
     expect(l.segments[0].dashoffset).toBeCloseTo(0, 1);
     expect(l.segments[1].dashoffset).toBeCloseTo(-l.circ * 0.75, 0);
-    // cada arco deja hueco de 2 px, como en la v1 (evita que se toquen)
+    // cada arco deja hueco de 2 px, como  (evita que se toquen)
     for (const s of l.segments) {
       const [on, off] = s.dash.split(' ').map(Number);
       expect(on + off).toBeCloseTo(l.circ, 0);

@@ -1,6 +1,6 @@
 /**
  * Integridad del catálogo. Estas comprobaciones son las que justifican tener el
- * catálogo en TypeScript: si alguien toca `data.js` en la v1 (o se regenera
+ * catálogo en TypeScript: si alguien toca `data.js`  (o se regenera
  * `catalog.ts`) y queda un grupo o una pieza de material inexistente, aquí salta.
  */
 import { describe, expect, it } from 'vitest';
@@ -37,15 +37,15 @@ const byId = (id: string): Exercise => {
 };
 
 describe('catálogo', () => {
-  it('trae los grupos, el material y las plantillas de la v1', () => {
-    /* 13 de la v1 + 6 añadidos a mano (trapecio, lumbares, oblicuos, aductores,
-       cuello, serrato): la v1 no los tenía y el generador IA sí los propone */
+  it('trae los grupos, el material y las plantillas', () => {
+    /* 13  + 6 añadidos a mano (trapecio, lumbares, oblicuos, aductores,
+       cuello, serrato): antes no los tenía y el generador IA sí los propone */
     expect(GROUPS).toHaveLength(19);
-    /* 48 de la lista + 'paralelas', que la v1 inserta con splice */
+    /* 48 de la lista + 'paralelas', que antes inserta con splice */
     expect(EQUIPMENT).toHaveLength(49);
     expect(equipmentKeys).toContain('paralelas');
     expect(SEED_EXERCISES).toHaveLength(136);
-    /* el catálogo generado sigue trayendo las 9 de la v1; la que usa la app es
+    /* el catálogo generado sigue trayendo las 9; la que usa la app es
        la de `seed.ts` (comprobada más abajo) */
     expect(CATALOG_TEMPLATES).toHaveLength(9);
     expect(DAY_TYPES).toHaveLength(4);
@@ -296,7 +296,7 @@ describe('resolución de un id guardado (historial, sesiones)', () => {
   });
 
   it('cae al catálogo completo si el id no está en la biblioteca', () => {
-    // El historial de una copia de la v1 puede citar ejercicios que ya no están
+    // El historial de una copia  puede citar ejercicios que ya no están
     // en la semilla de 24; sin esta caída la UI enseñaba el id crudo (M1).
     const fuera: Exercise = { ...byId('sentadilla-goblet') };
     expect(resolveExercise([], fuera.id)?.name).toBe(fuera.name);

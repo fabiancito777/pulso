@@ -1,11 +1,10 @@
 /**
- * Parseo tolerante de la respuesta del modelo. Portado de `C.parseJSON` de la
- * v1 (`legacy/js/coach.js`), con un añadido que arregla el fallo real del
- * smoke test: el modelo NO devuelve JSON pelado, devuelve el JSON y DESPUÉS un
- * bloque ```memoria``` (u otra prosa con llaves). La v1 "quitaba la cercilla"
- * con un regex de CUALQUIER fence, así que se quedaba con el interior de la
- * ```memoria``` (viñetas sin llaves) y terminaba en `no pude interpretar el
- * JSON` aunque el JSON del principio estuviera perfecto.
+ * Parseo tolerante de la respuesta del modelo.
+ *
+ * El modelo NO devuelve JSON pelado: devuelve el JSON y DESPUÉS un bloque
+ * ```memoria``` (u otra prosa con llaves). Un regex de CUALQUIER fence se queda
+ * con el interior de ```memoria``` (viñetas sin llaves) y termina en «no pude
+ * interpretar el JSON» aunque el JSON del principio estuviera perfecto.
  *
  * El modelo se salta instrucciones con frecuencia: envuelve el JSON en una
  * cercilla ```json, le pone prosa por delante o por detrás o deja una coma
@@ -109,7 +108,7 @@ function balancedSlice(text: string, start: number): string | null {
  * Así el JSON válido seguido de prosa — con un `}` suelto, con otra llave o
  * con una cercilla ```memoria``` posterior, que es como FALLABA de verdad el
  * smoke test — se recorta desde el principio, no desde el último `}` del texto.
- * La coma final de la v1 se limpia igual.
+ * La coma final  se limpia igual.
  */
 function scanJSON(text: string): string | null {
   let depth = 0;
@@ -154,7 +153,7 @@ function scanJSON(text: string): string | null {
  * por BALANCEO desde el primer carácter que abre (o desde la siguiente llave
  * si hay prosa por delante), probando también el texto SIN cercillar (una
  * prosa posterior que traiga ``` no debe hacer perder el JSON del principio) →
- * si aún así falla, el recorte clásico de la v1 (primer `{` → último `}`) →
+ * si aún así falla, el recorte clásico  (primer `{` → último `}`) →
  * `Error('no pude interpretar el JSON')`.
  */
 export function parseJSON<T>(raw: string): T {
@@ -180,7 +179,7 @@ export function parseJSON<T>(raw: string): T {
     }
   }
 
-  /* último recurso (la v1): del primer { al último } del texto */
+  /* último recurso (antes): del primer { al último } del texto */
   for (const candidate of candidates) {
     for (const [open, close] of [
       ['{', '}'],

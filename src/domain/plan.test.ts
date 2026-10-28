@@ -2,9 +2,9 @@
  * `domain/plan.ts`: el planificador local del coach en dominio puro.
  *
  * Datos clavados a mano (biblioteca, sesiones, material) y sin reloj: aquí se
- * fija lo que en la v1 solo se podía ver entrenando —el orden de
+ * fija lo que  solo se podía ver entrenando —el orden de
  * `pickForGroup`, la rotación de `itemsFromRecipe`, el reparto de la semana— y
- * la equivalencia con las plantillas y constantes de la v1.
+ * la equivalencia con las plantillas y constantes.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -251,7 +251,7 @@ describe('pickForGroup', () => {
   });
 
   /* El ★ entra DESPUÉS de `type` y ANTES de `recent` (spec §3.2): si no, o se
-     rompe «compuesto antes que aislado» de la v1 o deja de desempatar. */
+     rompe «compuesto antes que aislado»  o deja de desempatar. */
   it('el ★ desempata entre compuestos, pero nunca salta a un aislado', () => {
     const pressFav = library().map((e) => (e.id === 'press' ? { ...e, fav: true } : e));
     expect(pickForGroup(input({ exercises: pressFav }), 'pecho', 2).map((e) => e.id)).toEqual([
@@ -344,7 +344,7 @@ describe('routineFromTemplate', () => {
     expect(draft?.name).toBe('Empuje · Push');
     expect(draft?.focus).toBe('Pecho · Hombros · Tríceps');
     expect(draft?.source).toBe('generador');
-    /* pecho 2 + hombros 2 + tríceps 2: la semilla pide 2 de pecho (la v1 pedía
+    /* pecho 2 + hombros 2 + tríceps 2: la semilla pide 2 de pecho (antes pedía
        3, pero solo hay 2 ejercicios de pecho y el día saldría igual corto) */
     expect(draft?.items).toHaveLength(6);
     expect(new Set(draft?.items.map((i) => i.exId)).size).toBe(6);
@@ -359,7 +359,7 @@ describe('routineFromTemplate', () => {
     }
   });
 
-  it('id desconocido → null (como la v1)', () => {
+  it('id desconocido → null', () => {
     expect(routineFromTemplate(input(), 'no-existe')).toBeNull();
     expect(findTemplate('no-existe')).toBeNull();
     expect(findTemplate('full_a')?.id).toBe('full_a');
@@ -367,9 +367,9 @@ describe('routineFromTemplate', () => {
 });
 
 describe('plantillas de la semilla', () => {
-  /* La v1 las define en `legacy/js/data.js` ~343; aquí se fija la semilla que
+  /* antes las define en  ~343; aquí se fija la semilla que
      de verdad se le pone al usuario (`seed.ts`), que es la que usa la app y a la
-     que apunta `WEEK_ROTATION`. Cambió a propósito: la v1 traía 9 plantillas y
+     que apunta `WEEK_ROTATION`. Cambió a propósito: antes traía 9 plantillas y
      las recetas pedían `femoral`, `gluteos`, `cardio` y `movilidad`, grupos que
      esta biblioteca de 24 ejercicios no trae. */
   const SEMILLA: [string, [string, number][]][] = [
@@ -449,7 +449,7 @@ describe('plantillas de la semilla', () => {
 /* ---------- semana ---------- */
 
 describe('WEEK_LAYOUT y WEEK_ROTATION', () => {
-  /* `legacy/js/coach.js` ~360-365, literal (salvo el domingo de 7 días, que era
+  /*  ~360-365, literal (salvo el domingo de 7 días, que era
      `mobility` y la semilla ya no trae plantillas de movilidad). */
   const LAYOUT: Record<number, number[]> = {
     1: [2],
@@ -470,7 +470,7 @@ describe('WEEK_LAYOUT y WEEK_ROTATION', () => {
     7: ['push', 'pull', 'legs', 'upper', 'lower', 'full_a', 'full_b'],
   };
 
-  it('coinciden con la v1 y cada rotación cubre su reparto', () => {
+  it('coinciden con la semilla y cada rotación cubre su reparto', () => {
     for (const n of [1, 2, 3, 4, 5, 6, 7]) {
       expect([...(WEEK_LAYOUT[n] ?? [])]).toEqual(LAYOUT[n]);
       expect([...(WEEK_ROTATION[n] ?? [])]).toEqual(ROTATION[n]);

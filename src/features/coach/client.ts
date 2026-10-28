@@ -2,7 +2,7 @@
  * Cliente Gemini del coach IA: fetch directo contra la API de
  * `generativelanguage.googleapis.com`, sin SDK de Google.
  *
- * La v1 (`legacy/js/coach.js`) manda en lo que se refiere a comportamiento, con
+ * antes () manda en lo que se refiere a comportamiento, con
  * dos diferencias: la API key viaja en la cabecera `x-goog-api-key` y nunca en
  * la URL, y los fallos salen tipados con `GeminiError.kind` para que la UI sepa
  * distinguir una clave mala de una cuota agotada, de un bloqueo de seguridad o
@@ -13,10 +13,10 @@ import { trunc } from '@/domain/text';
 import type { ModelOption } from '@/domain/types';
 import type { ResponseSchema } from './types';
 
-/** Modelo por defecto de la app (el mismo que en la v1). */
+/** Modelo por defecto de la app (el mismo que ). */
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
 
-/** Cuántos modelos se quedan como máximo al listar (`C.listModels` de la v1). */
+/** Cuántos modelos se quedan como máximo al listar (`C.listModels` ). */
 export const MODELS_LIMIT = 120;
 
 /** Mensaje ya mantenido con el modelo. El rol de Gemini es `model`, no `assistant`. */
@@ -50,9 +50,9 @@ export interface GenOpts {
   thinkingBudget?: number;
   /** Pide los pensamientos como partes con `thought: true` en la respuesta. */
   includeThoughts?: boolean;
-  /** Temperatura (0,7 por defecto, como en la v1). */
+  /** Temperatura (0,7 por defecto, como ). */
   temperature?: number;
-  /** Tope de tokens de respuesta (4096 por defecto, como en la v1). */
+  /** Tope de tokens de respuesta (4096 por defecto, como ). */
   maxOutputTokens?: number;
   /** Para cancelar la llamada desde la UI. */
   signal?: AbortSignal;
@@ -222,7 +222,7 @@ interface GenerationConfig {
 
 /**
  * `generationConfig.thinkingConfig`: level XOR budget (nunca los dos a la vez;
- * `'auto'` cuenta como "sin nivel", igual que en la v1) más `includeThoughts`.
+ * `'auto'` cuenta como "sin nivel", igual que ) más `includeThoughts`.
  * Si no hay nada que configurar no se manda la clave.
  */
 function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
@@ -239,11 +239,11 @@ function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
  * turnos con `parts` vacíos.
  *
  * La API rechaza con 400 `INVALID_ARGUMENT` un historial que arranque en
- * `model`, con dos turnos seguidos del mismo rol o con textos vacíos: en la v1
+ * `model`, con dos turnos seguidos del mismo rol o con textos vacíos:
  * eso no podía pasar porque el chat nacía con el usuario y el historial se
  * metía como texto dentro del prompt. Ahora que la conversación viaja como
  * `contents`, un turno cortado, un mensaje en blanco o una conversación de la
- * copia de la v1 pueden romper la llamada entera. Aquí se descartan los
+ * copia  pueden romper la llamada entera. Aquí se descartan los
  * `model` iniciales, se ignoran los vacíos y se fusionan los consecutivos del
  * mismo rol (son dos turnos del mismo emisor seguidos, algo que el modelo ve
  * igual mejor en un solo mensaje).
@@ -716,13 +716,13 @@ interface ModelsPage {
   nextPageToken?: string;
 }
 
-/** Modelos que la v1 excluía del selector: no sirven para generar contenido. */
+/** Modelos que antes excluía del selector: no sirven para generar contenido. */
 const MODEL_EXCLUDE = /embedding|aqa|imagen|veo|tts|live/i;
 
 /**
  * Modelos disponibles PARA TU proyecto: `GET /models` con la key en la
  * cabecera `x-goog-api-key` (nunca en la URL, política de este módulo),
- * paginando `nextPageToken` hasta `MODELS_LIMIT`, como `C.listModels` de la v1.
+ * paginando `nextPageToken` hasta `MODELS_LIMIT`, como `C.listModels`.
  *
  * Solo se quedan los que soportan `generateContent` y que no son de imagen,
  * audio, vídeo ni embeddings. El listado NO consume cuota de `generateContent`

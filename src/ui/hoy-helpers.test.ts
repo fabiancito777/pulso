@@ -2,7 +2,7 @@
  * `ui/hoy-helpers.ts`: lo que hay que comprobar de la pestaña Hoy sin abrir un
  * navegador.
  *
- * Las reglas que se fijan aquí son las que la v1 solo se podía comprobar
+ * Las reglas que se fijan aquí son las que antes solo se podía comprobar
  * entrenando:
  *
  * - el día hecho manda sobre el plan (y una sesión de HOY cuenta, aunque el
@@ -161,7 +161,7 @@ describe('todayPlan', () => {
     expect(plan.routineId).toBe('rt_borrada');
   });
 
-  it('plan: day.plan de la v1 se valida (y lo sin ejercicio se descarta)', () => {
+  it('plan: day.plan se valida (y lo sin ejercicio se descarta)', () => {
     const plan = todayPlan(
       {
         plan: [
@@ -181,7 +181,7 @@ describe('todayPlan', () => {
     expect(plan.items[0]).toMatchObject({ name: 'Press banca', sets: 3, reps: 8, weight: null });
     /* el item sin `exId` ni `name` (el del medio) no puede arrancarse: se descarta */
     expect(plan.items[1]).toMatchObject({ exId: 'remo', sets: 3 });
-    /* los defaults de la v1 cuando el item viene a medias */
+    /* los defaults  cuando el item viene a medias */
     expect(plan.items[1]?.repMin).toBe(8);
     expect(plan.items[1]?.repMax).toBe(12);
     expect(plan.items[1]?.rest).toBe(90);
@@ -196,14 +196,14 @@ describe('todayPlan', () => {
   it('el tipo resuelto cubre los días que el plan dejó a medias', () => {
     expect(todayPlan({ type: 'descanso' }, [], [], HOY).type).toBe('Descanso');
     expect(todayPlan({ status: 'rest' }, [], [], HOY).type).toBe('Descanso');
-    /* un día con plan suelto es «Entreno»: la v1 lo rellenaba en el hero */
+    /* un día con plan suelto es «Entreno»: antes lo rellenaba en el hero */
     expect(todayPlan({ plan: [{ exId: 'remo' }] }, [], [], HOY).type).toBe('Entreno');
     expect(todayPlan(undefined, [], [], HOY).type).toBe('Libre');
   });
 
-  it('saltar NO borra el plan: la v1 seguía ofreciendo el hero', () => {
+  it('saltar NO borra el plan: se sigue ofreciendo el hero', () => {
     /* `Saltar` solo escribe `restDayPatch()` (status + type + título): el hero
-       sigue en 'plan' y la celda de la semana pasa a descanso. Paridad con la v1. */
+       sigue en 'plan' y la celda de la semana pasa a descanso. Paridad con antes. */
     const plan = todayPlan({ routineId: 'rt_1', ...restDayPatch() }, [rutina], [], HOY);
     expect(plan.status).toBe('plan');
     expect(plan.type).toBe('Descanso');
@@ -233,7 +233,7 @@ describe('planRows', () => {
     ).toBe('4×10');
   });
 
-  it('sin límite no pinta la lista entera (la v1 cortaba en 8)', () => {
+  it('sin límite no pinta la lista entera (se corta en 8)', () => {
     const items = Array.from({ length: 12 }, (_, i) => ({ exId: 'press', name: `Ej ${i}` }));
     expect(planRows(items, biblio)).toHaveLength(8);
     expect(planRows(items, biblio, 3)).toHaveLength(3);
@@ -271,7 +271,7 @@ describe('weekCells', () => {
 
     expect(byIso.get(LUNES)?.state).toBe('done');
     expect(byIso.get(LUNES)?.volume).toBe(480);
-    /* el día entrenado sin título se queda con el «libre» de la v1 */
+    /* el día entrenado sin título se queda con el «libre»  */
     expect(byIso.get(LUNES)?.tag).toBe('libre');
     expect(byIso.get('2026-09-22')?.state).toBe('rest');
     expect(byIso.get('2026-09-23')?.state).toBe('skipped');
@@ -326,7 +326,7 @@ describe('weekKpis', () => {
     expect(k.objective).toBe(3);
   });
 
-  it('sin semana previa (o sin cambio) no hay comparativa, como en la v1', () => {
+  it('sin semana previa (o sin cambio) no hay comparativa', () => {
     const soloHoy = [sesion(HOY, [entrada('press', [serie(60, 8)])])];
     expect(weekKpis(soloHoy, HOY, 4).deltaPct).toBeNull();
 
@@ -483,7 +483,7 @@ describe('racha del chip', () => {
 /* ---------- badge IA / local de la sugerencia ---------- */
 
 describe('suggestionSource', () => {
-  it('el badge de la v1: solo source:ia es IA, lo demás es local', () => {
+  it('el badge: solo source:ia es IA, lo demás es local', () => {
     expect(suggestionSource({ source: 'ia' })).toBe('ia');
     expect(suggestionSource({ source: 'local' })).toBe('local');
     expect(suggestionSource({ source: 'generador' })).toBe('local');

@@ -1,6 +1,6 @@
 /**
- * `applyOnboarding` / `markOnboarded`: lo que la v1 hacía en el `.then()` del
- * modal (`legacy/js/app.js:252-261`).
+ * `applyOnboarding` / `markOnboarded`: lo que antes hacía en el `.then()` del
+ * modal ().
  *
  * Igual que `store.test.ts`, el `localStorage` simulado se monta ANTES del
  * import (si no, `storageAvailable` sale a `false` y no se persiste nada).

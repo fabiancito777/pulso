@@ -235,7 +235,7 @@
   padding: 9px 11px;
 }
 
-/* series / rep min / rep max / descanso, en el mismo orden que la v1 */
+/* series / rep min / rep max / descanso, en el mismo orden que antes */
 .rt-nums {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

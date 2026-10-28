@@ -17,7 +17,26 @@ import {
 } from './plates';
 import type { PlateStock } from './types';
 
-const plates = PLATES_DEFAULT;
+/** Inventario de prueba con capacidad holgada (8 discos por lado). */
+const plates: PlateStock[] = [
+  { w: 3, unit: 'kg', discs: 16, on: true },
+  { w: 2.5, unit: 'kg', discs: 8, on: true },
+  { w: 1.25, unit: 'kg', discs: 8, on: true },
+  { w: 5, unit: 'lb', discs: 8, on: true },
+  { w: 2.5, unit: 'lb', discs: 8, on: true },
+];
+
+describe('inventario por defecto', () => {
+  it('son 8/4/4/4/4 discos sueltos (lo que enseña Ajustes → Discos)', () => {
+    expect(PLATES_DEFAULT.map((p) => [p.w, p.unit, p.discs])).toEqual([
+      [3, 'kg', 8],
+      [2.5, 'kg', 4],
+      [1.25, 'kg', 4],
+      [5, 'lb', 4],
+      [2.5, 'lb', 4],
+    ]);
+  });
+});
 
 describe('inventario', () => {
   it('cuenta discos sueltos y se queda con lo que está disponible', () => {

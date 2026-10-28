@@ -1,6 +1,6 @@
 /* ==========================================================================
    Pulso v2 · estilos del shell
-   `base.css` es la hoja de la v1 (tokens, tarjetas, botones, chips, el dibujo de
+   `base.css` es la hoja  (tokens, tarjetas, botones, chips, el dibujo de
    discos…). Se mantiene tal cual para que lo portado se vea igual; se irá
    podando a medida que las vistas pasen a componentes.
    ========================================================================== */
@@ -36,8 +36,8 @@
   font-size: 17px;
 }
 
-/* Chip de racha (el #btn-streak de la v1): a la derecha de la marca, con el
-   mismo dato que Progreso y con el click que ya tenía en la v1. */
+/* Chip de racha (el #btn-streak ): a la derecha de la marca, con el
+   mismo dato que Progreso y con el click que ya tenía. */
 .v2-streak {
   margin-left: auto;
 }
@@ -53,8 +53,8 @@
   gap: 14px;
 }
 
-/* Subtítulo de pestaña: el `#appbar-sub` de la v1 (`.appbar-sub`,
-   `legacy/assets/styles.css:59`), con el mismo tamaño y el mismo corte. */
+/* Subtítulo de pestaña: el `#appbar-sub`  (`.appbar-sub`,
+   `anterior/assets/styles.css:59`), con el mismo tamaño y el mismo corte. */
 .v2-sub {
   display: block;
   font-size: 11.5px;
@@ -129,7 +129,7 @@
    En pantalla pequeña el dedo necesita más superficie que el ratón. Aquí solo
    se suben TAMAÑOS (el ⓘ de 28 px de `help.css`, las filas del segmento y los
    números de 8,5 px de la tira de días); no se recoloca nada, porque el layout
-   de la v1 ya se adapta solo. Última hoja importada (`main.tsx`): estos valores
+    ya se adapta solo. Última hoja importada (`main.tsx`): estos valores
    ganan a `base.css`/`help.css` a igual especificidad.
    ========================================================================== */
 @media (max-width: 640px) {
@@ -271,7 +271,7 @@
 
 /* Los KPIs y las barras de la antigua tarjeta de progreso (`.pg-*`) se
    retiraron al reconvertir `ProgressCard` en cabecera: hoy solo pinta el sub de
-   la v1 y la rejilla de KPIs vive en `ProgressCharts`, igual que en `main`. */
+   antes y la rejilla de KPIs vive en `ProgressCharts`, igual que en `main`. */
 
 /* ---------- Ajustes → Ejercicios: ★, ocultos y métricas ---------- */
 
@@ -285,7 +285,7 @@
 }
 
 /* Estrella de favorito de cada fila: glifo de texto, porque `icons.ts` es
-   generado desde la v1 y no tiene `star` (spec §4). */
+   generado des y no tiene `star` (spec §4). */
 .ex-fav {
   flex: none;
   display: inline-flex;

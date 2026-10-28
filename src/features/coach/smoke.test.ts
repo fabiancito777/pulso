@@ -45,7 +45,7 @@ const TIMEOUT = 300_000;
 const MAX_CALLS = 2;
 const QUESTION = '¿cómo me fue en press de piso últimamente y qué debería cambiar?';
 
-/* ---------- API key: process.env o .env.local de la raíz ---------- */
+/* ---------- API key: process.env o.env.local de la raíz ---------- */
 
 function stripQuotes(raw: string): string {
   const value = raw.trim();

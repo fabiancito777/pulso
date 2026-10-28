@@ -1,8 +1,8 @@
 /**
  * Historial del chat del coach: persistencia + su markdown mínimo.
  *
- * Es el port de `S.chat()` / `S.addChat` / `S.clearChat` de la v1
- * (`legacy/js/store.js`): mismo tope de **80 mensajes** y misma forma
+ * Es el port de `S.chat()` / `S.addChat` / `S.clearChat`
+ * (): mismo tope de **80 mensajes** y misma forma
  * (`{role, text, ts}` más `thoughts`/`notes`), guardados en `state.chat` dentro
  * de `localStorage['pulso.state']` a través del setter `setChat` de `store.ts`
  * (read-modify-write, como todos). La signal que repinta la vista vive aquí.
@@ -11,7 +11,7 @@
  *
  * - **Dónde se guarda**: dentro de `pulso.state`, no en una clave propia: así
  *   «Borrar todo» y el export/import de Ajustes se llevan la conversación igual
- *   que en la v1. `reloadChat()` vuelve a leerla (montaje de la vista, import).
+ *   que. `reloadChat()` vuelve a leerla (montaje de la vista, import).
  * - **Markdown**: aquí en AST plano (`parseMd`/`mdInline`), no en HTML: la vista
  *   lo convierte en nodos de Preact y el texto del modelo queda escapado solo.
  *   Cubre lo que el coach usa de verdad (negritas, listas, código, títulos,
@@ -42,11 +42,11 @@ export interface CreationState extends AIExerciseProposal {
   status?: 'created' | 'discarded';
 }
 
-/** Un mensaje del historial. `role` amplía el de la v1 con los avisos `sys`. */
+/** Un mensaje del historial. `role` amplía el  con los avisos `sys`. */
 export interface ChatLine {
   role: 'user' | 'model' | 'sys';
   text: string;
-  /** ISO local (el mismo `ts` que ponía `U.d.nowTs()` en la v1) */
+  /** ISO local (el mismo `ts` que ponía `U.d.nowTs()` ) */
   ts?: string;
   /** razonamiento del modelo, si `includeThoughts` está activo */
   thoughts?: string;
@@ -62,7 +62,7 @@ export interface ChatLine {
   action?: ChatAction;
 }
 
-/** Mensajes que se conservan (mismo tope que la v1). */
+/** Mensajes que se conservan (mismo tope que antes). */
 export const CHAT_LIMIT = 80;
 
 function isPlain(value: unknown): value is Record<string, unknown> {
@@ -95,7 +95,7 @@ function asCreation(value: unknown): CreationState | null {
 /**
  * Lee `state.chat` con tolerancia: lo que no tenga forma de mensaje (rol
  * desconocido, texto que no es string) se descarta en vez de romper la vista,
- * igual que la v1 hacía con el resto del estado al cargarlo.
+ * igual que antes hacía con el resto del estado al cargarlo.
  */
 export function asChatLines(value: unknown): ChatLine[] {
   if (!Array.isArray(value)) return [];
@@ -247,7 +247,7 @@ export function promptHistory(list: readonly ChatLine[] = chat.value): ChatMsg[]
 export type MdSpan =
   | { kind: 'text'; text: string }
   | { kind: 'b' | 'i' | 'code'; text: string }
-  /** URL detectada a pelo (el `<a target="_blank" rel="noopener">` de la v1) */
+  /** URL detectada a pelo (el `<a target="_blank" rel="noopener">` ) */
   | { kind: 'a'; text: string; href: string };
 
 /** Fila de tabla: una celda por columna, ya con su inline parseado. */
@@ -263,16 +263,16 @@ export type MdBlock =
 /** `**negrita**`, `*cursiva*` y `` `código` `` (nada de HTML, nada de librerías). */
 const INLINE_RE = /(\*\*[^*\n]+\*\*|`[^`\n]+`|\*[^*\n]+\*)/g;
 
-/** URL a secas, el mismo patrón que enlazaba `U.md` de la v1 (`core.js:551`). */
+/** URL a secas, el mismo patrón que enlazaba `U.md`  (`core.js:551`). */
 const URL_RE = /https?:\/\/[^\s<]+/g;
 
 /**
- * Trocea texto plano en (texto · enlace · texto…): lo que hacía la v1 con un
+ * Trocea texto plano en (texto · enlace · texto…): lo que hacía antes con un
  * `replace` sobre el HTML escrito, aquí como spans para que la vista pinte
  * `<a href target="_blank" rel="noopener">` sin innerHTML por medio.
  *
  * Solo se aplica a texto PLANO: una URL entre `` ` `` se queda literal (mejor
- * que en la v1, que enlazaba hasta dentro del código) y una entre `**` o `*`
+ * que, que enlazaba hasta dentro del código) y una entre `**` o `*`
  * se queda en negrita/cursiva sin enlazar, que es el precio de no rehacer el
  * formato inline por dentro.
  */
@@ -309,7 +309,7 @@ export function mdInline(text: string): MdSpan[] {
 
 /**
  * Celdas de una línea de tabla (`| a | b |`), ya recortadas; `null` si la línea
- * no pinta nada de tabla. Misma condición que `U.md` de la v1 (`core.js:574`):
+ * no pinta nada de tabla. Misma condición que `U.md`  (`core.js:574`):
  * empieza por `|` y lleva otro `|` por detrás.
  */
 function tableCells(line: string): string[] | null {
@@ -320,7 +320,7 @@ function tableCells(line: string): string[] | null {
     .map((cell) => cell.trim());
 }
 
-/** Fila separadora GFM (`| --- | :--: |`): misma regla tolerante de la v1. */
+/** Fila separadora GFM (`| --- |:--: |`): misma regla tolerante. */
 function isSeparator(cells: string[]): boolean {
   return cells.length > 0 && cells.every((cell) => /^:?-{2,}:?$/.test(cell));
 }
@@ -333,10 +333,10 @@ function isSeparator(cells: string[]): boolean {
  *
  * Una tabla SOLO empieza si la línea de cabecera viene seguida de su fila
  * separadora (GFM): sin separadora la línea se queda como párrafo, y una
- * separadora suelta se descarta igual que en la v1 (`core.js:576`), así que
+ * separadora suelta se descarta igual que  (`core.js:576`), así que
  * nunca se ve un `|---|` crudo. La tabla se cierra sola en cuanto aparece una
  * línea que no lleva `|`, y dentro de ella una separadora de más se salta sin
- * cortarla (también como la v1).
+ * cortarla (también como antes).
  */
 export function parseMd(text: string): MdBlock[] {
   const lines = String(text ?? '').split(/\r?\n/);
@@ -388,7 +388,7 @@ export function parseMd(text: string): MdBlock[] {
        líneas con `|` son filas hasta que una no lo sea */
     const cells = tableCells(t);
     if (cells && isSeparator(cells)) {
-      /* separadora suelta: la v1 la tiraba a la basura y aquí también */
+      /* separadora suelta: antes la tiraba a la basura y aquí también */
       continue;
     }
     if (cells && isSeparator(tableCells((lines[i + 1] ?? '').trim()) ?? [])) {

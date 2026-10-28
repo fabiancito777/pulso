@@ -10,7 +10,7 @@
  *
  * Al final se agregan tres describes con aserciones SUELTAS del store
  * (`setSettingsPath` anidado, `rememberPlateMode` y `setEquipment`): son
- * comprobaciones del auto-test de la v1 que no podían entrar en `store.test.ts`
+ * comprobaciones del auto-test  que no podían entrar en `store.test.ts`
  * en esta tanda, y este es el fichero que ya manipula el estado fuera del coach.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -456,7 +456,7 @@ describe('runCoachTask', () => {
     const { routine: creada, unresolved } = coach.applySuggestionAsRoutine(sug.payload);
     expect(unresolved).toEqual([]);
     expect(creada).not.toBeNull();
-    expect(creada?.source).toBe('generador'); /* 'local' se guarda como 'generador' (v1) */
+    expect(creada?.source).toBe('generador'); /* 'local' se guarda como 'generador'  */
     expect(creada?.items.length).toBeGreaterThan(0);
 
     const plan = await coach.runCoachTask('plan', {}, { generateFn: gen });
@@ -936,12 +936,12 @@ describe('hasApiKey', () => {
   });
 });
 
-/* ---------- ajustes: lo que el auto-test de la v1 hacía con `A.setSettingPath` ----------
+/* ---------- ajustes: lo que el auto-test  hacía con `A.setSettingPath` ----------
    Están aquí (y no en `store.test.ts`, que lleva otro agente) porque son aserciones
    sueltas sobre exports ya existentes del store y este fichero ya manipula
    `settings` fuera de su ámbito de coach. */
 
-describe('ajustes anidados (v1: `setSettingsPath`)', () => {
+describe('ajustes anidados ', () => {
   it('escribe rutas anidadas sin pisar el resto del objeto y lo persiste', () => {
     const model = store.settings.value.ai.model;
 
@@ -968,7 +968,7 @@ describe('ajustes anidados (v1: `setSettingsPath`)', () => {
   });
 });
 
-describe('discos: el modo se recuerda por ejercicio (v1 `T.setPlateMode`)', () => {
+describe('discos: el modo se recuerda por ejercicio ', () => {
   it('guarda el modo elegido para ESE ejercicio y lo deja tras refresh()', () => {
     store.rememberPlateMode('press-de-piso-con-mancuernas', 'db2');
 
@@ -980,7 +980,7 @@ describe('discos: el modo se recuerda por ejercicio (v1 `T.setPlateMode`)', () =
   });
 });
 
-describe('material (v1: «equipo: detecta material faltante» / «disponible al activarlo»)', () => {
+describe('material («equipo: detecta material faltante» / «disponible al activarlo»)', () => {
   it('apagar y encender el material cambia la disponibilidad y se persiste', () => {
     const press = store.exercises.value.find(
       (e) => e.id === 'press-de-piso-con-mancuernas',

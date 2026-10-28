@@ -34,7 +34,7 @@ import type { Exercise } from './types';
 /** A partir de esta similitud (0-1) un nombre se considera «el mismo ejercicio». */
 export const MATCH_THRESHOLD = 0.85;
 
-/** Lo que marca un nombre como de una sola mano/por lado (el mismo de la v1). */
+/** Lo que marca un nombre como de una sola mano/por lado (el mismo ). */
 export const UNILATERAL_RX = /unilateral|a una mano|una mano|kroc|por brazo|por lado|por pierna/;
 
 /** Cómo quedó el nombre propuesto. */

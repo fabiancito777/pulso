@@ -1,5 +1,5 @@
 /**
- * Historial de sesiones de la pestaña Progreso (v1 `sessionList`,
+ * Historial de sesiones de la pestaña Progreso (antes `sessionList`,
  * `views-stats.js:158-169`): las 40 primeras en la tarjeta y el 100 % en el
  * modal de «Ver todo» con su subtítulo «N registradas».
  *
@@ -8,7 +8,7 @@
  * confirma y borra (`confirmRemoveSession`, patrón de `SettingsView`).
  *
  * El orden de la lista lo manda el store: `sessions` ya va por `startedAt`
- * descendente, igual que `S.sessions()` de la v1.
+ * descendente, igual que `S.sessions()`.
  */
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
@@ -26,7 +26,7 @@ import { SectionHead } from './kit';
 
 import '../styles/progreso.css';
 
-/** La v1 enseñaba 40 en la tarjeta y dejaba el resto para «Ver todo». */
+/** antes enseñaba 40 en la tarjeta y dejaba el resto para «Ver todo». */
 const LIST_LIMIT = 40;
 
 function HistoryRow({

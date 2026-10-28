@@ -1,12 +1,12 @@
 /**
- * Tabla COMPLETA de récords personales (v1 `prTable(0)` + el modal
+ * Tabla COMPLETA de récords personales (antes `prTable(0)` + el modal
  * `stats:prs`, `views-stats.js:188/212`).
  *
  * `PrTableButton` es lo que `ProgressCharts` monta tras su top-6 (por la prop
  * `prExtra`); el modal lista todos los ejercicios con récord, con su
  * `Sparkline` de los últimos 8 puntos, y al pulsar una fila se SELECCIONA ese
  * ejercicio en «Progresión» (`pickedExercise`) y se cierra: el chip queda
- * resaltado arriba, igual que en la v1.
+ * resaltado arriba, igual que.
  */
 import { useState } from 'preact/hooks';
 

@@ -1,5 +1,5 @@
 /**
- * Avisos flotantes (el `U.toast` de la v1, `legacy/js/core.js:217`) con el CSS
+ * Avisos flotantes (el `U.toast`, ) con el CSS
  * que ya estaba en `base.css` (`.toasts` / `.toast`).
  *
  * No se monta en `App.tsx`: el host es un `<div>` que este módulo crea en
@@ -7,7 +7,7 @@
  * así que cualquier vista puede avisar sin cablear nada en el shell. Si no hay
  * DOM (tests en Node) el aviso se descarta en silencio.
  *
- * Igual que en la v1: como máximo 3 a la vez, `err` dura 6 s y el resto 2,8 s
+ * Igual que: como máximo 3 a la vez, `err` dura 6 s y el resto 2,8 s
  * (o el `ms` pedido); con `sticky` no se cierra solo y hay que llamar a
  * `close()` — es lo que usan los spinners de «Probando…» y «Consultando
  * modelos…».

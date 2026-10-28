@@ -1,6 +1,6 @@
 /**
  * Las capas de aviso con el móvil bloqueado en `state/session.ts`, portadas de
- * los tres fixes de la v1 (`ff21864`, `e2c49b9`, `6361477`):
+ * los tres fixes  (`ff21864`, `e2c49b9`, `6361477`):
  *
  * 1. el keep-alive de audio (**no** se enciende al empezar la sesión, que es lo
  *    que dejaba el `<audio>` sonando toda la sesión atenuando Spotify) se
@@ -273,7 +273,7 @@ describe('testRestNotice (botón «Probar aviso» de Ajustes)', () => {
     expect(calls.sw).toHaveLength(mandados);
   });
 
-  it('mínimo 3 segundos (igual que la v1: `Math.max(3, …)`)', () => {
+  it('mínimo 3 segundos ', () => {
     expect(session.testRestNotice(1)).toBe('ok');
     expect(calls.sw.at(-1)).toMatchObject({ at: T0 + 3000 });
   });

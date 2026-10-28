@@ -1,11 +1,11 @@
 /**
- * `app/demo-boot.ts`: el arranque en modo demo `?demo=1` de la v1
- * (`legacy/js/app.js:1261-1277`).
+ * `app/demo-boot.ts`: el arranque en modo demo `?demo=1`
+ * ().
  *
  * Lo que hay que vigilar aquí es que NO se cuela en el arranque normal y que no
  * se carga dos veces: la query es opcional, con datos ya existentes no toca nada
  * y, cuando sí carga, marca el onboarding como visto (si no, el modal de primera
- * visita taparía la demo, como evitaba la v1 con `S.setMeta({onboarded: true})`).
+ * visita taparía la demo, como evitaba antes con `S.setMeta({onboarded: true})`).
  *
  * `localStorage` va simulado ANTES del import dinámico (`storageAvailable` se
  * decide al cargar `state/store`, patrón de `store.test.ts`), y los tests van en

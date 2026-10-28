@@ -1,5 +1,5 @@
 /**
- * Timer de descanso: aquí se fijan las decisiones que en la v1 vivían en el bucle
+ * Timer de descanso: aquí se fijan las decisiones que  vivían en el bucle
  * cada 500 ms y solo se podían comprobar entrenando (o con el auto-test del
  * navegador). El "ahora" entra por parámetro, así que no se espera de verdad.
  */
@@ -123,7 +123,7 @@ describe('tickRest (el bucle de 500 ms)', () => {
 
   it('da un tic por segundo en los últimos 3 s, sin repetirlo', () => {
     const r = startRest(3, 'x', T0);
-    /* el resto se mide en segundos REDONDEADOS (igual que la v1): 2,5 s → 3 */
+    /* el resto se mide en segundos REDONDEADOS (igual que antes): 2,5 s → 3 */
     const a = tickRest(r, T0 + 200); // quedan 3
     const b = tickRest(a.state, T0 + 400); // sigue quedando 3: no repite
     const c = tickRest(b.state, T0 + 1_200); // quedan 2
@@ -166,7 +166,7 @@ describe('tickRest (el bucle de 500 ms)', () => {
   });
 });
 
-describe('persistencia (mismo formato que la v1)', () => {
+describe('persistencia del descanso', () => {
   it('guarda solo lo imprescindible y nada cuando está parado', () => {
     expect(toPersisted(startRest(90, 'Remo', T0))).toEqual({
       endsAt: T0 + 90_000,
@@ -182,7 +182,7 @@ describe('persistencia (mismo formato que la v1)', () => {
     expect(remainingSec(r, T0 + 30_000)).toBe(60);
   });
 
-  it('un descanso caducado no se resucita (la v1 borraba la clave)', () => {
+  it('un descanso caducado no se resucita (la clave caducada se borra)', () => {
     expect(fromPersisted({ endsAt: T0 + 1_000, total: 90, label: 'x' }, T0 + 60_000)).toEqual(
       IDLE_REST,
     );
@@ -202,7 +202,7 @@ describe('texto del aviso', () => {
     expect(restNoticeBody('x'.repeat(80))).toHaveLength('Siguiente serie: '.length + 40);
   });
 
-  it('el título y la etiqueta son los de la v1 (una sola notificación viva)', () => {
+  it('el título y la etiqueta son los valores por defecto (una sola notificación viva)', () => {
     expect(restNoticeTitle).toBe('Descanso terminado');
     expect(REST_NOTICE_TAG).toBe('pulso-rest');
   });

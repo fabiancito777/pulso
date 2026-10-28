@@ -1,7 +1,7 @@
 /**
  * Helpers de la vista Calendario: estado de un día, cuadrícula mensual,
  * resumen de la semana, normalización del plan del coach y la distinción
- * **local vs IA** (el `data-ai="0"|"1"` de la v1).
+ * **local vs IA** (el `data-ai="0"|"1"` ).
  *
  * Están aparte del componente para poder probarlos con Vitest sin DOM ni
  * `localStorage`: aquí solo entran datos por parámetro y salen datos (los
@@ -28,7 +28,7 @@ export const DAY_TYPE_LABEL: Record<DayType, string> = {
   descanso: 'Descanso',
 };
 
-/** Estados que se pueden marcar en un día (el mismo cuarteto del día de la v1). */
+/** Estados que se pueden marcar en un día (el mismo cuarteto del día ). */
 export const DAY_STATUSES = ['planned', 'done', 'rest', 'skipped'] as const;
 
 export type DayStatus = (typeof DAY_STATUSES)[number];
@@ -54,7 +54,7 @@ export const DAY_STATE_LABEL: Record<DayState, string> = {
 /**
  * Estado de un día: una sesión real manda sobre lo que diga el plan (así un día
  * que entrenaste en `main` se ve hecho aunque aquí no estuviera planificado),
- * igual que `dayCard` de `legacy/js/views-calendar.js`.
+ * igual que `dayCard` de.
  *
  * `sessionCount` entra por parámetro: el helper no lee el estado.
  */
@@ -75,7 +75,7 @@ export function dayType(day: ScheduleDay | null | undefined): DayType | '' {
 }
 
 /**
- * Qué se muestra como título del día. Mismo orden que la v1: el `title` escrito
+ * Qué se muestra como título del día. Mismo orden que antes: el `title` escrito
  * en el plan (que un plan de la IA trae más legible), luego el nombre VIVO de la
  * rutina y por último el "Descanso" del día de descanso.
  */
@@ -99,7 +99,7 @@ export function dayTypeLabel(day: ScheduleDay | null | undefined, state: DayStat
 /**
  * Contador de la semana: `planned` incluye los hechos (son días que sí había
  * planificados), `done` solo los completados. Es el "done/planned completados"
- * del subtítulo de la v1.
+ * del subtítulo.
  */
 export function weekCounts(states: readonly DayState[]): { done: number; planned: number } {
   let done = 0;
@@ -116,7 +116,7 @@ export function weekCounts(states: readonly DayState[]): { done: number; planned
 }
 
 /**
- * Subtítulo de la pestaña: el `V.sub` de la v1 (`views-calendar.js:13-19`),
+ * Subtítulo de la pestaña: el `V.sub`  (`views-calendar.js:13-19`),
  * «Semana del <inicio> · N/M completados» con el MISMO formato de fecha
  * (`label(..., 'medium')`, «28 sep 2026»).
  */
@@ -126,19 +126,17 @@ export function weekSubtitle(from: string, states: readonly DayState[]): string 
 }
 
 /**
- * Intensidad de una celda del mes: el `lv1`-`lv3` de la v1
- * (`views-calendar.js:217`), que pintaba el `month-cell` por número de
- * sesiones. Solo se porta `lv3` (2 o más sesiones): `lv1` (día planificado) y
- * `lv2` (1 sesión) los pinta ya la v2 con `cal-planned` y `cal-done`, con su
- * propia leyenda, así que aplicarlos encima solo duplicaría color.
+ * Intensidad de una celda del mes por número de sesiones. Solo se marca `lvl3`
+ * (2 o más sesiones): el día planificado y la sesión única ya se pintan con
+ * `cal-planned` y `cal-done`, con su propia leyenda.
  */
-export function monthLevel(sessionCount: number): 'lv3' | '' {
-  return sessionCount >= 2 ? 'lv3' : '';
+export function monthLevel(sessionCount: number): 'lvl3' | '' {
+  return sessionCount >= 2 ? 'lvl3' : '';
 }
 
 /**
  * Días (ISO locales) de un mes, a partir de cualquier fecha de ese mes o del
- * propio `YYYY-MM`. Se calcula por longitud de mes con string, como la v1:
+ * propio `YYYY-MM`. Se calcula por longitud de mes con string, como antes:
  * aquí NO cabe `toISOString()` (desplazaría el día según la zona horaria).
  */
 export function monthDays(month: string): string[] {
@@ -152,7 +150,7 @@ export function monthDays(month: string): string[] {
 /**
  * Patch que VACÍA el plan de un día (rutina, tipo, título y estado).
  *
- * `setDay` de v2 hace merge y no borra claves, así que el "limpiar" de la v1 se
+ * `setDay` de v2 hace merge y no borra claves, así que el "limpiar"  se
  * consigue escribiendo `undefined`: `JSON.stringify` omite esas claves y al
  * releer el estado el día queda vacío. `sessionId` NO se toca: es el enlace a
  * una sesión registrada, no planificación.
@@ -168,11 +166,11 @@ export function clearDayPatch(): Partial<ScheduleDay> {
 }
 
 /**
- * Patch que MARCA el día como descanso (el `cal:mark` de la v1 con `rest`,
+ * Patch que MARCA el día como descanso (el `cal:mark`  con `rest`,
  * usado por el «Saltar» de Hoy y por `markRest` del Calendario).
  *
  * Como `setDay` hace merge y no borra claves, la rutina asignada se CONSERVA
- * (igual que en la v1): el día queda en descanso pero se puede retomar después.
+ * (igual que ): el día queda en descanso pero se puede retomar después.
  */
 export function restDayPatch(): Partial<ScheduleDay> {
   return { status: 'rest', type: 'descanso', title: 'Descanso', source: 'manual' };
@@ -188,7 +186,7 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/** `rationale` del plan: frase suelta o lista de frases (la v1 las unía con ` · `). */
+/** `rationale` del plan: frase suelta o lista de frases (antes las unía con ` · `). */
 function rationaleText(value: unknown): string {
   if (Array.isArray(value))
     return value
@@ -295,7 +293,7 @@ export function planFromJson(raw: unknown): PlanResult | null {
   return preview ? { raw, preview } : null;
 }
 
-/* ---------- local vs IA (el `data-ai` de la v1) ---------- */
+/* ---------- local vs IA (el `data-ai` ) ---------- */
 
 /** Quién ha generado una propuesta: el planificador del dispositivo o el coach IA. */
 export type PlanEngine = 'ia' | 'local';
@@ -305,8 +303,8 @@ export type PlanEngine = 'ia' | 'local';
  *
  * Solo `'ia'` manda: el plan local escribe `source: 'local'` (`localWeek`) y un
  * plan del modelo sin `source` (el prompt de `prompts.ts` no lo pide) cuenta
- * como IA, que es como lo normaliza la v1. Cualquier otra cadena — la
- * `'local (IA no disponible)'` con la que la v1 etiquetaba el fallback — es
+ * como IA, que es como lo normaliza antes. Cualquier otra cadena — la
+ * `'local (IA no disponible)'` con la que antes etiquetaba el fallback — es
  * plan del dispositivo, y así «Regenerar» y el pie de la tarjeta cuentan la
  * verdad aunque la llamada a la IA se haya caído.
  */
@@ -316,9 +314,9 @@ export function planEngine(source: string): PlanEngine {
 
 /**
  * Motor con el que se pide un auto-plan cuando solo se sabe si hay key: IA si
- * la hay, dispositivo si no. Es lo que hacía la v1 con `data-ai` +
+ * la hay, dispositivo si no. Es lo que hacía antes con `data-ai` +
  * `C.planWeek({useAI:true})`, que sin key devolvía el plan local en vez de
- * fallar (`legacy/js/coach.js:470`).
+ * fallar ().
  */
 export function autoPlanEngine(hasKey: boolean): PlanEngine {
   return hasKey ? 'ia' : 'local';
@@ -333,7 +331,7 @@ export interface PlanControls {
 }
 
 /**
- * La v1 tenía dos botones (`cal:autoplan` con `data-ai="0"` y `"1"`); aquí el
+ * antes tenía dos botones (`cal:autoplan` con `data-ai="0"` y `"1"`); aquí el
  * local no se puede esconder nunca porque es el único que funciona sin
  * configurar nada. Sin key la opción IA se oculta y deja un pie discreto: no se
  * bloquea NADA, solo se explica por qué no hay dos botones.
@@ -346,7 +344,7 @@ export function planControls(hasKey: boolean): PlanControls {
 /** Cómo se etiqueta una propuesta en su tarjeta (texto y badge). */
 export interface PlanOrigin {
   engine: PlanEngine;
-  /** subtítulo: la v1 escribía «generada por IA» / «generada en el dispositivo» */
+  /** subtítulo: antes escribía «generada por IA» / «generada en el dispositivo» */
   subtitle: string;
   /** clase del badge: la IA lleva acento, la local no */
   badge: string;
@@ -364,7 +362,7 @@ export function planOrigin(source: string): PlanOrigin {
 /**
  * Petición de auto-plan lanzada desde OTRA pestaña.
  *
- * Es el `App.views.calendario.autoPlan(...)` que la v1 ejecutaba a través de
+ * Es el `App.views.calendario.autoPlan(...)` que antes ejecutaba a través de
  * `coach:quick` (`views-train.js:566`: navega a Calendario y le pide el plan).
  * Aquí hace falta un trozo de estado módulo (el único del fichero): un motor o
  * `null`, no un booleano, para que dos peticiones seguidas no se confundan y

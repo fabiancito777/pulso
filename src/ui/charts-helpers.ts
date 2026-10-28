@@ -1,19 +1,19 @@
 /**
  * Geometría, escalas y ticks de los gráficos SVG de Progreso.
  *
- * Port puro de `legacy/js/charts.js`: aquí no hay DOM ni medida de ancho (la v1
+ * Port puro de: aquí no hay DOM ni medida de ancho (antes
  * repintaba midiendo `el.clientWidth` con `mountAll`), el ancho entra por
  * parámetro y el componente lo volca en el `viewBox`. Así escalas, ticks y
  * redondeos se comprueban con Vitest en vez de a ojo en el navegador.
  *
- * Los números se redondean AQUÍ (a un decimal, como los `toFixed(1)` de la v1)
+ * Los números se redondean AQUÍ (a un decimal, como los `toFixed(1)` )
  * para que el SVG sea determinista y las pruebas puedan fijarlos.
  */
 import { addDays, startOfWeek, today } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { max as maxOf, num, sum } from '@/domain/num';
 
-/** Formato de un valor del eje/etiqueta: los mismos casos que `fmtVal` de la v1. */
+/** Formato de un valor del eje/etiqueta: los mismos casos que `fmtVal`. */
 export type ChartFormat = 'vol' | 'time' | 'n' | 'w';
 
 /** Punto de una barra vertical (y de las barras horizontales). */
@@ -21,7 +21,7 @@ export interface BarDatum {
   label: string;
   value: number;
   color?: string;
-  /** barras atenuadas (opacidad 0.35), como `dim` de la v1 */
+  /** barras atenuadas (opacidad 0.35), como `dim`  */
   dim?: boolean;
   /** tooltip propio; si falta se usa `label: valor` */
   tip?: string;
@@ -49,13 +49,13 @@ export interface HeatCell {
   value: number;
 }
 
-/** Redondeo a un decimal sin pasar por string (los `toFixed(1)` de la v1). */
+/** Redondeo a un decimal sin pasar por string (los `toFixed(1)` ). */
 export const r1 = (n: number): number => {
   const r = Math.round(n * 10) / 10;
   return r === 0 ? 0 : r; // `Math.round(-0.01)` devuelve -0 y `-0` no es `0` para Object.is
 };
 
-/** Etiqueta de eje según el tipo de dato, idéntica a la v1. */
+/** Etiqueta de eje según el tipo de dato, idéntica a antes. */
 export function fmtVal(v: number, kind: ChartFormat = 'w'): string {
   if (kind === 'vol') return fmtVol(v);
   if (kind === 'time') return fmtDur(v);
@@ -64,7 +64,7 @@ export function fmtVal(v: number, kind: ChartFormat = 'w'): string {
 }
 
 /**
- * Techo "bonito" (1/2/2,5/5/10 × 10^n): el `niceMax` de la v1. `<= 0` devuelve
+ * Techo "bonito" (1/2/2,5/5/10 × 10^n): el `niceMax`. `<= 0` devuelve
  * 1 para que el eje no se colapse con datos a cero.
  */
 export function niceMax(v: number): number {
@@ -84,7 +84,7 @@ export const labelStep = (n: number): number => (n > 8 ? Math.ceil(n / 6) : 1);
 export interface BarLayoutOptions {
   width?: number;
   height?: number;
-  /** `false` = barras casi pegadas (hueco mínimo), como `gap:false` de la v1 */
+  /** `false` = barras casi pegadas (hueco mínimo), como `gap:false`  */
   gap?: boolean;
 }
 
@@ -116,7 +116,7 @@ export interface BarLayout {
   labelStep: number;
 }
 
-/** ¿No hay nada que dibujar? (todos a cero o sin datos, como el guard de la v1). */
+/** ¿No hay nada que dibujar? (todos a cero o sin datos, como el guard ). */
 export const barsEmpty = (data: readonly BarDatum[]): boolean =>
   !data.length || data.every((d) => num(d.value) === 0);
 
@@ -176,11 +176,11 @@ export const targetY = (l: BarLayout, target: number): number =>
 export interface LineLayoutOptions {
   width?: number;
   height?: number;
-  /** suelo forzado (la v1 lo solo usa para `spec.min`) */
+  /** suelo forzado (antes lo solo usa para `spec.min`) */
   min?: number;
   /** eje arrancando en 0 */
   zero?: boolean;
-  /** dibujar relleno bajo la línea (solo con una serie, como la v1) */
+  /** dibujar relleno bajo la línea (solo con una serie, como antes) */
   area?: boolean;
 }
 
@@ -191,7 +191,7 @@ export interface LineDot {
   last: boolean;
   value: number;
   label: string;
-  /** con varias series y más de 10 puntos solo se dibuja el último (regla v1) */
+  /** con varias series y más de 10 puntos solo se dibuja el último (regantes) */
   hidden: boolean;
 }
 
@@ -223,7 +223,7 @@ export interface LineLayout {
 /**
  * Las series sin puntos dibujables se descartan (el filtro de `renderLine`).
  *
- * Matiz heredado de la v1: `isFinite(U.num(p.value))` ahí solo cazaba el `null`,
+ * Matiz heredado: `isFinite(U.num(p.value))` ahí solo cazaba el `null`,
  * porque `num(NaN)` devuelve 0 y 0 es finito. Aquí se descarta además el punto
  * cuyo valor ES `NaN`/`Infinity`: pintar un 0 inventado peor que saltárselo.
  */
@@ -284,7 +284,7 @@ export function lineLayout(
         last,
         value: num(p.value),
         label: p.label,
-        /* con varias series y más de 10 puntos la v1 solo dibuja el último */
+        /* con varias series y más de 10 puntos antes solo dibuja el último */
         hidden: many && !last && s.points.length > 10,
       };
     });
@@ -388,7 +388,7 @@ export interface HeatLayoutOptions {
   color?: string;
 }
 
-/** Las claves `YYYY-MM-DD` se comparan como texto (el truco de fechas de la v1). */
+/** Las claves `YYYY-MM-DD` se comparan como texto (el truco de fechas ). */
 export function heatLayout(cells: readonly HeatCell[], opts: HeatLayoutOptions = {}): HeatLayout {
   const weeks = Math.max(1, Math.trunc(num(opts.weeks, 16)));
   const now = opts.todayIso ?? today();
@@ -431,8 +431,8 @@ export function heatLayout(cells: readonly HeatCell[], opts: HeatLayoutOptions =
 /* ---------- sparkline ---------- */
 
 /**
- * Trazo de la mini-línea de récords (92×26 como la v1). Devuelve `null` con
- * menos de dos puntos: la v1 no pintaba nada en ese caso.
+ * Trazo de la mini-línea de récords (92×26 como antes). Devuelve `null` con
+ * menos de dos puntos: antes no pintaba nada en ese caso.
  */
 export function sparkPath(points: readonly number[], w = 92, h = 26): string | null {
   const vals = points.map((p) => num(p)).filter((v) => Number.isFinite(v));

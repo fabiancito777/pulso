@@ -1,9 +1,9 @@
 /**
- * Setters del store que la v1 maneja en `legacy/js/store.js`: rutinas y `state.meta`.
+ * Setters del store que antes maneja en: rutinas y `state.meta`.
  *
  * Se prueban con `localStorage` simulado porque lo que hay que verificar es que la
  * escritura es de verdad lectura-modificación-escritura (si no, una pestaña con la
- * v1 abierta perdería lo que escribas aquí).
+ * antes abierta perdería lo que escribas aquí).
  *
  * Ojo: `storageAvailable` se decide AL CARGAR el módulo, así que el localStorage
  * simulado tiene que estar montado antes del import — por eso el import es dinámico.
@@ -136,7 +136,7 @@ describe('rutinas', () => {
 });
 
 describe('meta', () => {
-  it('arranca con las claves de la v1', () => {
+  it('arranca con las claves de sembrado', () => {
     expect(store.meta.value).toEqual({ onboarded: false, lastPlanAt: null, lastAiAt: null });
   });
 
@@ -544,7 +544,7 @@ describe('sesiones: updateSession / removeSession', () => {
     expect(store.sessions.value[0]?.name).toBe('Tren inferior');
   });
 
-  it('updateSession no reordena por startedAt (la v1 solo ordenaba al apilar)', () => {
+  it('updateSession no reordena por startedAt ', () => {
     const vieja = { ...realSession('s_vieja'), startedAt: '2026-09-01T18:00:00.000Z' };
     const reciente = { ...realSession('s_reciente'), startedAt: '2026-09-08T18:00:00.000Z' };
     store.appendSessions([vieja, reciente]);
@@ -555,7 +555,7 @@ describe('sesiones: updateSession / removeSession', () => {
     expect(store.sessions.value.map((s) => s.id)).toEqual(['s_reciente', 's_vieja']);
   });
 
-  it('removeSession quita la sesión y NO desmarca el día (así lo hacía la v1)', () => {
+  it('removeSession quita la sesión y NO desmarca el día ', () => {
     store.commitSession({ ...realSession('s_borra'), date: '2026-09-05' });
     expect(store.schedule.value['2026-09-05']).toMatchObject({
       status: 'done',
@@ -566,7 +566,7 @@ describe('sesiones: updateSession / removeSession', () => {
 
     expect(store.sessions.value).toHaveLength(0);
     expect(persistedSessions()).toHaveLength(0);
-    /* la v1 no tocaba el calendario: el día se queda hecho (views-calendar
+    /* antes no tocaba el calendario: el día se queda hecho (views-calendar
        pintaba `p.status === 'done'` aunque la sesión ya no existiera) */
     expect(store.schedule.value['2026-09-05']).toMatchObject({
       status: 'done',
@@ -602,7 +602,7 @@ describe('sesiones: updateSession / removeSession', () => {
 /* ---------- calendario: clearDay ---------- */
 
 describe('calendario: clearDay', () => {
-  it('setDay con undefined NO borra la clave; clearDay sí (como la v1)', () => {
+  it('setDay con undefined NO borra la clave; clearDay sí', () => {
     store.setDay('2026-09-30', { status: 'planned', title: 'Ciclo', routineId: 'rt_1' });
     store.setDay('2026-09-29', { status: 'rest', type: 'descanso' });
 
@@ -654,7 +654,7 @@ describe('export / import', () => {
     const importado = store.importState(copia);
 
     /* mismo contenido que la copia (la única diferencia permitida es `meta`,
-       que `importState` completa con `onboarded: true` como la v1) */
+       que `importState` completa con `onboarded: true` como antes) */
     expect(importado.settings).toEqual(copia.settings);
     expect(importado.equipment).toEqual(copia.equipment);
     expect(importado.sessions).toEqual(copia.sessions);
@@ -735,7 +735,7 @@ describe('export / import', () => {
   });
 });
 
-/* ---------- semilla personal (v1: seedPersonalRoutines / applyPersonalSetup) ---------- */
+/* ---------- semilla personal (antes: seedPersonalRoutines / applyPersonalSetup) ---------- */
 
 /** El día de hoy, ya como plan del calendario. */
 function planDeHoy(state: ReturnType<typeof store.readState>): ScheduleDay | undefined {
@@ -746,7 +746,7 @@ function planDeHoy(state: ReturnType<typeof store.readState>): ScheduleDay | und
 }
 
 describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () => {
-  it('instalación limpia: siembra la rutina, agenda hoy y deja las claves de la v1', () => {
+  it('instalación limpia: siembra la rutina, agenda hoy y deja las claves de sembrado', () => {
     mem.clear();
 
     store.loadInitialState();
@@ -832,7 +832,7 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
     const guardadas = persistedRoutines();
     expect(guardadas.map((r) => r.id)).toEqual(['rt-mia', 'rt-personal-kroc']);
     expect(guardadas[0]).toMatchObject({ name: 'Empuje A' });
-    /* la v1 solo rellenaba el día si estaba libre */
+    /* antes solo rellenaba el día si estaba libre */
     expect(planDeHoy(tras)).toEqual({ status: 'rest', type: 'descanso', title: 'Viaje' });
   });
 
@@ -847,7 +847,7 @@ describe('semilla personal (pulso.seeded-routines / pulso.applied-setup)', () =>
     const tras = store.readState();
     expect(persistedRoutines()).toHaveLength(1);
     expect(persistedRoutines()[0]).toMatchObject({ name: 'Mía, copiada a mano' });
-    /* la v1 hacía `return` antes de agendar el día */
+    /* antes hacía `return` antes de agendar el día */
     expect(planDeHoy(tras)).toBeUndefined();
     expect(store.readStored<string[]>(store.SEED_KEY)).toEqual(['rt-personal-kroc']);
   });

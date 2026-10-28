@@ -1,13 +1,13 @@
 /**
- * Ajustes: port de `legacy/js/views-settings.js`.
+ * Ajustes: port de.
  *
- * La v1 tenía 8 subsecciones repintadas con `innerHTML` y guardaba escuchando el
+ * antes tenía 8 subsecciones repintadas con `innerHTML` y guardaba escuchando el
  * `change` de cada campo con `data-key` (leyendo el valor del DOM al guardar).
  * Aquí el valor sale del propio componente y las subsecciones leen los signals,
  * así que cambiar un ajuste repinta solo lo que depende de él.
  *
  * Nota: los ajustes SIN `onInput` se guardan al perder el foco (su `onChange` de
- * Preact es el evento `change` del navegador), igual que hacía la v1.
+ * Preact es el evento `change` del navegador), igual que hacía antes.
  */
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
@@ -381,7 +381,7 @@ function SecPerfil() {
           onChange={(u) => {
             if (u === st.units) return;
             setSettingsPath('units', u);
-            /* igual que la v1 (app.js:199): cambiar la unidad no convierte nada,
+            /* igual que antes (app.js:199): cambiar la unidad no convierte nada,
                los discos del inventario pasan a leerse en la nueva */
             toast('Los discos del inventario se interpretan en la unidad elegida', {
               kind: 'warn',
@@ -478,7 +478,7 @@ function SecApariencia() {
           value={st.notify}
           onChange={(v) => {
             setSettingsPath('notify', v);
-            /* solo al ACTIVAR (la v1 callaba al desactivar); tiene que ser dentro
+            /* solo al ACTIVAR (antes callaba al desactivar); tiene que ser dentro
                del propio click: Safari iOS no deja pedirlo fuera de un gesto */
             if (!v) return;
             const state = requestNotifyPermission();
@@ -498,9 +498,9 @@ function SecApariencia() {
           onChange={(v) => setSettingsPath('keepAwake', v)}
         />
       </div>
-      {/* Botón de prueba (v1 `6361477`, `T.testRestNotice`): comprueba la capa
+      {/* Botón de prueba (`T.testRestNotice`): comprueba la capa
           del service worker en el móvil real. Está en Apariencia, junto a los
-          avisos, igual que en la v1. */}
+          avisos, igual que el resto de avisos. */}
       <div class="card flush mt">
         <ListButton
           icon="timer"
@@ -508,7 +508,7 @@ function SecApariencia() {
           sub={`Programa un aviso de prueba en ${TEST_NOTICE_SEC} segundos para comprobar que te llega`}
           onClick={() => {
             /* `testRestNotice` decide y programa; los toasts son de la UI
-               (`state/` no importa de `ui/`), igual que los de la v1 */
+               (`state/` no importa de `ui/`), igual que los  */
             const result = testRestNotice(TEST_NOTICE_SEC);
             if (result === 'rest-running') {
               toast('Hay un descanso en curso: primero termínalo o sáltalo', {
@@ -737,6 +737,9 @@ function SecDiscos() {
   const st = settings.value;
   const plates = st.plates ?? [];
   const bars = st.bars;
+  /* El peso de cada barra solo tiene sentido si ese material está activo: una
+     barra EZ desmarcada en Equipo no debe seguir pidiendo su peso aquí. */
+  const eq = equipment.value;
   const active = plates.filter((p) => p.on !== false);
   const bar = maxLoadable({ plates, bars, mode: 'bar' });
   const dbs = maxLoadable({ plates, bars, mode: 'db2' });
@@ -789,44 +792,56 @@ function SecDiscos() {
         <Icon name="plus" />
         Añadir medida de disco
       </button>
-      <div class="card flush mt">
-        <div class="list">
-          <NumRow
-            label="Peso de la barra"
-            hint={barHint(bars.olimpica)}
-            help="opt.bars"
-            value={bars.olimpica}
-            step={0.5}
-            min={0}
-            max={100}
-            onChange={(v) => setSettingsPath('bars.olimpica', v)}
-          />
-          <NumRow
-            label="Peso de la barra EZ"
-            hint={barHint(bars.ez)}
-            value={bars.ez}
-            step={0.5}
-            min={0}
-            max={100}
-            onChange={(v) => setSettingsPath('bars.ez', v)}
-          />
-          <NumRow
-            label="Peso del mango de mancuerna"
-            hint={barHint(bars.mancuerna)}
-            value={bars.mancuerna}
-            step={0.5}
-            min={0}
-            max={50}
-            onChange={(v) => setSettingsPath('bars.mancuerna', v)}
-          />
+      {eq.barra_olimpica || eq.barra_ez || eq.mancuernas_ajustables ? (
+        <div class="card flush mt">
+          <div class="list">
+            {eq.barra_olimpica ? (
+              <NumRow
+                label="Peso de la barra"
+                hint={barHint(bars.olimpica)}
+                help="opt.bars"
+                value={bars.olimpica}
+                step={0.5}
+                min={0}
+                max={100}
+                onChange={(v) => setSettingsPath('bars.olimpica', v)}
+              />
+            ) : null}
+            {eq.barra_ez ? (
+              <NumRow
+                label="Peso de la barra EZ"
+                hint={barHint(bars.ez)}
+                /* el ⓘ de las barras va en la primera fila visible */
+                help={eq.barra_olimpica ? undefined : 'opt.bars'}
+                value={bars.ez}
+                step={0.5}
+                min={0}
+                max={100}
+                onChange={(v) => setSettingsPath('bars.ez', v)}
+              />
+            ) : null}
+            {eq.mancuernas_ajustables ? (
+              <NumRow
+                label="Peso del mango de mancuerna"
+                hint={barHint(bars.mancuerna)}
+                help={!eq.barra_olimpica && !eq.barra_ez ? 'opt.bars' : undefined}
+                value={bars.mancuerna}
+                step={0.5}
+                min={0}
+                max={50}
+                onChange={(v) => setSettingsPath('bars.mancuerna', v)}
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
       <InfoCard>
         Con el inventario actual, 60 kg en barra se montan como{' '}
         {solvePlates(60, { plates, bars, mode: 'bar' })
           .perHole.map((p) => `${p.n}×${fmtN(p.kg, 2)} kg`)
           .join(' + ') || '—'}{' '}
-        por lado. La calculadora de la pestaña Entrenar te deja probarlo con cualquier peso.
+        por lado. Durante la sesión, el botón «discos» de cada ejercicio abre esta calculadora con
+        su peso.
       </InfoCard>
     </>
   );
@@ -898,7 +913,7 @@ function SecEjercicios() {
   const summary = useMemo(() => exerciseSummary(sessions.value), [sessions.value]);
 
   /* Los de la biblioteca no se borran: `removeExercise` devuelve `false` y aquí
-     se avisa (en la v1 lo hacía el toast del store). */
+     se avisa ( lo hacía el toast del store). */
   const confirmDelete = (ex: Exercise): void => {
     if (!window.confirm(`¿Eliminar «${ex.name}» de tu biblioteca personal?`)) return;
     if (removeExercise(ex.id)) {
@@ -1231,7 +1246,7 @@ function SecEjercicios() {
  * (`useState`), sin bloque de modales compartido, y con la validación en
  * `domain/exercise-draft.ts` — aquí solo se pinta y se llamó a `saveExercise`.
  *
- * Ojo: los materiales se exponen como CLAVE SIMPLE (como en la v1): escribir un
+ * Ojo: los materiales se exponen como CLAVE SIMPLE (como ): escribir un
  * `equip` compuesto perdería la parte `a&b|c` del ejercicio editado. Por eso el
  * editor solo se abre para ejercicios propios.
  */
@@ -1247,7 +1262,7 @@ function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClos
     const value = Number(raw);
     setDraft((prev) => {
       const next = { ...prev, [key]: Number.isFinite(value) ? value : prev[key] };
-      /* la v1 igualaba repMax al subir repMin (escuchaba el change de repMin) */
+      /* antes igualaba repMax al subir repMin (escuchaba el change de repMin) */
       if (key === 'repMin' && next.repMax < next.repMin) next.repMax = next.repMin;
       return next;
     });
@@ -1538,7 +1553,7 @@ function SecCoach() {
   const key = ai.apiKey ?? '';
   const masked = key ? `${key.slice(0, 6)}…${key.slice(-4)}` : '';
 
-  /* Decisión híbrida de la v1 (`V.models`): catálogo remoto si lo hay, si no el
+  /* Decisión híbrida  (`V.models`): catálogo remoto si lo hay, si no el
      estático; el modelo actual entra aunque no esté en ninguno («personalizado»)
      y todo ordenado por id. */
   const models: ModelOption[] = [...(remote.length ? remote : AI_MODELS)];
@@ -1548,7 +1563,7 @@ function SecCoach() {
   models.sort((a, b) => (a.id < b.id ? -1 : 1));
 
   /* «Probar conexión»: spinner mientras va y, si falla, el modal con las
-     pistas de la v1 — con la key mala el título es el de `kind === 'auth'`. */
+     pistas  — con la key mala el título es el de `kind === 'auth'`. */
   const runTest = async (): Promise<void> => {
     if (busy) return;
     if (!key) {
@@ -1793,7 +1808,7 @@ function SecCoach() {
 }
 
 /**
- * Modal de fallo de «Probar conexión»: con la key mala usa el título de la v1
+ * Modal de fallo de «Probar conexión»: con la key mala usa el título
  * (`errAuth`) y siempre muestra el detalle crudo de `fetch`.
  */
 function ConnErrModal({
@@ -1937,7 +1952,7 @@ function SecDatos() {
                 : 'PWA · sin instalación automática, te enseñamos cómo añadirla'
           }
           onClick={() => {
-            /* ya instalada ⇒ aviso y nada más (la v1 no volvía a preguntar) */
+            /* ya instalada ⇒ aviso y nada más (antes no volvía a preguntar) */
             if (installed()) {
               toast('Ya la estás usando como app instalada', { kind: 'ok' });
               return;
@@ -1955,7 +1970,7 @@ function SecDatos() {
           sub="JSON con ajustes, equipo, rutinas, sesiones y calendario"
           help="opt.export"
           onClick={() => {
-            /* mismo prefijo que la v1 (`pulso-backup-<fecha>.json`) */
+            /* mismo prefijo que antes (`pulso-backup-<fecha>.json`) */
             downloadJSON(exportState({ includeApiKey: includeKey }), 'pulso-backup');
             setMsg(
               includeKey
@@ -2012,7 +2027,7 @@ function SecDatos() {
                   setMsg('Ese archivo no parece una copia de Pulso.');
                   return;
                 }
-                /* igual que la v1 (`views-settings.js`): se confirma ANTES de pisar nada */
+                /* igual que antes (`views-settings.js`): se confirma ANTES de pisar nada */
                 if (
                   !window.confirm(
                     'Se reemplazarán todos los datos del perfil actual por los del archivo.',
@@ -2080,12 +2095,11 @@ function SecDatos() {
       <InfoCard>
         <b>Acerca de</b> · Pulso, app de entrenamiento sin dependencias externas: datos 100 %
         locales, sin cuentas ni servidores propios · Coach AI opcional con tu propia API key de
-        Gemini. Se lee y escribe el mismo formato que la v1, así que las dos ramas abren los mismos
-        datos. Versión {APP_VERSION}.
+        Gemini. Todos los perfiles comparten el mismo formato de datos. Versión {APP_VERSION}.
       </InfoCard>
 
       {/* Instrucciones manuales: cuando `install()` no ha podido (navegador sin
-          `beforeinstallprompt`, o abierto con doble clic). Texto de la v1
+          `beforeinstallprompt`, o abierto con doble clic). Texto de instalación
           (`app.js:327-333`), con el matiz del service worker según `hasSW()`. */}
       {howto ? (
         <Modal
@@ -2159,7 +2173,7 @@ export function SettingsView({ sub }: { sub: string | null }) {
   const key: SubKey = SUBS.find((s) => s.key === sub)?.key ?? 'perfil';
   return (
     <>
-      {/* `.seg` de la v1 estiliza `button`, así que la subnavegación va con botones
+      {/* `.seg` estiliza `button`, así que la subnavegación va con botones
           que cambian el hash (el router es la única fuente de la subsección). El ?
           de la pestaña va fuera del `.seg` (que es scrollable) en su fila. */}
       <div class="help-row mb">

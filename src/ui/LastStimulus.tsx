@@ -1,5 +1,5 @@
 /**
- * «Último estímulo» por grupo muscular: la fila que la v1 montaba dentro del
+ * «Último estímulo» por grupo muscular: la fila que antes montaba dentro del
  * bloque de reparto (`lastTrainedList`, `views-stats.js:76-89`).
  *
  * Va DENTRO de «Reparto por grupo muscular» (por eso entra como `groupExtra`

@@ -1,5 +1,5 @@
 /**
- * Tema y acento. Portado de `A.applyTheme()` de la v1 (`legacy/js/app.js`).
+ * Tema y acento.
  *
  * Se calcula el color de tinta del acento con la luminancia relativa en vez de
  * fijar blanco/negro a mano: así un acento claro (lima) lleva texto oscuro y uno

@@ -1,12 +1,11 @@
 /**
  * El contexto que se le pega al system prompt antes de cada petición.
  *
- * Es el port de `C.buildContext` de la v1 (`legacy/js/coach.js`) con tres
- * secciones nuevas que la v1 no tenía: `APRENDIZAJE DEL COACH` (desviaciones
- * frente a la plantilla, cambios en plena rutina y resumen de `buildInsights`),
- * `HISTORIAL CONSOLIDADO` (una ficha por ejercicio con TODO el histórico, la
- * memoria a largo plazo del modelo) y `MEMORIA DEL COACH` (el markdown de
- * `settings.ai.memory` tal cual).
+ * El contexto incluye tres secciones propias: `APRENDIZAJE DEL COACH`
+ * (desviaciones frente a la plantilla, cambios en plena rutina y resumen de
+ * `buildInsights`), `HISTORIAL CONSOLIDADO` (una ficha por ejercicio con TODO el
+ * histórico, la memoria a largo plazo del modelo) y `MEMORIA DEL COACH` (el
+ * markdown de `settings.ai.memory` tal cual).
  *
  * Todo entra por parámetro —ajustes, sesiones, rutinas, calendario, material,
  * biblioteca y `todayIso`—: ni estado global ni DOM, así que el texto se puede
@@ -103,7 +102,7 @@ function sessionLine(
 /**
  * Monta el bloque de contexto completo. `opts.todayIso` hace el texto
  * determinista (si falta, se usa el reloj) y `opts.maxSessions` limita el
- * HISTORIAL (por defecto 10, como en la v1).
+ * HISTORIAL (por defecto 10, como ).
  */
 export function buildContext(params: BuildContextParams): string {
   const { settings, sessions, routines, schedule, equipment, exercises, opts = {} } = params;

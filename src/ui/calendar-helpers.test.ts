@@ -67,7 +67,7 @@ describe('estado de un día', () => {
     expect(dayState(undefined, 2)).toBe('done');
   });
 
-  it('respeta el orden de la v1: hecho > descanso > saltado > planificado', () => {
+  it('respeta el orden: hecho > descanso > saltado > planificado', () => {
     expect(dayState({ status: 'done' }, 0)).toBe('done');
     expect(dayState({ status: 'rest' }, 0)).toBe('rest');
     expect(dayState({ type: 'descanso' }, 0)).toBe('rest');
@@ -116,7 +116,7 @@ describe('resumen de la semana', () => {
     expect(weekCounts(['free', 'rest', 'skipped'])).toEqual({ done: 0, planned: 0 });
   });
 
-  it('el subtítulo de la pestaña es el literal de la v1', () => {
+  it('el subtítulo de la pestaña es el literal', () => {
     expect(weekSubtitle('2026-09-28', ['done', 'planned', 'rest', 'free'])).toBe(
       'Semana del 28 sep 2026 · 1/2 completados',
     );
@@ -137,11 +137,11 @@ describe('cuadrícula mensual', () => {
     expect(monthDays('2026-01')).toHaveLength(31);
   });
 
-  it('la intensidad de la v1 solo marca `lv3` a partir de 2 sesiones', () => {
+  it('la intensidad solo marca `lvl3` a partir de 2 sesiones', () => {
     expect(monthLevel(0)).toBe('');
     expect(monthLevel(1)).toBe('');
-    expect(monthLevel(2)).toBe('lv3');
-    expect(monthLevel(5)).toBe('lv3');
+    expect(monthLevel(2)).toBe('lvl3');
+    expect(monthLevel(5)).toBe('lvl3');
   });
 });
 
@@ -236,7 +236,7 @@ describe('plan del coach', () => {
 });
 
 describe('propuesta: local vs IA', () => {
-  it('solo "ia" cuenta como IA (el fallback de la v1 etiqueta el local)', () => {
+  it('solo "ia" cuenta como IA (el fallback local se etiqueta como local)', () => {
     expect(planEngine('ia')).toBe('ia');
     expect(planEngine('local')).toBe('local');
     expect(planEngine('local (IA no disponible)')).toBe('local');
@@ -309,7 +309,7 @@ describe('propuesta: local vs IA', () => {
 });
 
 /* La distinción no acaba en la UI: así queda en el ESTADO al aplicar el plan.
-   Misma regla que `C.applyWeek` de la v1 (`legacy/js/coach.js:579`): el día
+   Misma regla que `C.applyWeek`  (): el día
    guarda el `source` del plan tal cual y la rutina que nace de él se guarda
    como 'generador' si no vino de la IA. */
 describe('applyWeek: la fuente del plan distingue local de IA', () => {

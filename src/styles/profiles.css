@@ -74,13 +74,15 @@
   flex: none;
 }
 
-/* Gestión en Ajustes → Perfil */
+/* Gestión en Ajustes → Perfil: avatar, nombre y acciones en la MISMA fila
+   cuando caben. Antes era una rejilla que mandaba los botones a una segunda
+   línea siempre y quedaban desalineados (sobre todo al faltar «Usar» en el
+   perfil activo); con flex, si no caben, bajan solos y siguen a la derecha. */
 .pf-manage-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  column-gap: 10px;
-  row-gap: 6px;
+  gap: 6px 10px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-soft);
 }
@@ -92,21 +94,20 @@
 .pf-manage-row .pf-avatar {
   width: 34px;
   height: 34px;
-  grid-row: 1;
 }
 
 .pf-manage-row .grow {
-  grid-column: 2;
+  flex: 1 1 140px;
   min-width: 0;
 }
 
 .pf-manage-actions {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .pf-manage-actions .btn {

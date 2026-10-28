@@ -3,10 +3,10 @@
  *
  * Antes era una tarjeta de "comprobación del port" con sus propios KPIs y sus
  * barras de volumen, que salían DUPLICADOS junto a los de `ProgressCharts` (la
- * única rejilla que replica a la v1). Ahora es la cabecera de la pestaña: el
- * subtítulo `V.sub` de la v1 (`N sesiones · N kg movidos · racha N días`) y la
+ * única rejilla que replica a antes). Ahora es la cabecera de la pestaña: el
+ * subtítulo `V.sub`  (`N sesiones · N kg movidos · racha N días`) y la
  * fecha desde la que hay datos; los KPIs y los gráficos viven en
- * `ProgressCharts`, que es donde los pinta la v1 también.
+ * `ProgressCharts`, que es donde los pinta antes también.
  *
  * Su estado vacío se fue a `ProgressView`, que monta este componente SOLO si
  * hay sesiones.
@@ -18,7 +18,7 @@ import { sessions } from '@/state/store';
 
 import { HelpBtn } from './HelpModal';
 
-/** El `V.sub` de la v1 (`views-stats.js:13-17`), en componentes. */
+/** El `V.sub`  (`views-stats.js:13-17`), en componentes. */
 function subtitle(count: number, volume: number, streak: number): string {
   if (!count) return 'Aún sin datos · empieza a entrenar';
   return `${fmtN(count, 0)} sesiones · ${fmtVol(volume)} kg movidos · racha ${fmtN(streak, 0)} días`;

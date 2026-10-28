@@ -430,7 +430,7 @@ describe('scheduleRoutinePatch', () => {
     });
   });
 
-  it('sin nombre usa el «Entrenamiento» de la v1', () => {
+  it('sin nombre usa «Entrenamiento»', () => {
     expect(scheduleRoutinePatch({ id: 'rt1' }).title).toBe('Entrenamiento');
   });
 });

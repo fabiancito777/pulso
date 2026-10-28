@@ -9,8 +9,8 @@
  *    `Clock` son los únicos que leen `restSeconds`/`sessionSeconds`, así que son los
  *    únicos que se repintan cada segundo. Si los leyera la tarjeta entera, cada tic
  *    reescribiría el `value` de los inputs y borraría lo que estás escribiendo (el
- *    problema que la v1 esquivaba refrescando a mano solo los campos de abajo).
- * 2. **Los campos se guardan en `change`, no en `input`.** Fue la decisión de la v1
+ *    problema que antes esquivaba refrescando a mano solo los campos de abajo).
+ * 2. **Los campos se guardan en `change`, no en `input`.** Fue la decisión
  *    por el mismo motivo, y es lo que hace útil el arrastre: el valor se copia a las
  *    series de abajo cuando terminas de escribir, no en cada tecla.
  */
@@ -66,7 +66,7 @@ function Clock() {
 /**
  * Cuenta atrás del descanso, aislada para no repintar los inputs de las series.
  *
- * Es el ÚNICO recuadro de descanso de la app (v1 `#session-rest`, `trainer.js:380`):
+ * Es el ÚNICO recuadro de descanso de la app (antes `#session-rest`, `trainer.js:380`):
  * también pinta el temporizador libre cuando no hay sesión (`free`), y por eso la
  * app solo lo monta una vez (el gate de `App.tsx` + esta rama de `!session`).
  */
@@ -231,7 +231,7 @@ function EntryCard(props: {
   const showRpe = settingsSignal.value.showRpe;
 
   /* El ejercicio recién añadido queda varias pantallas más abajo: si no, parece
-     que no se ha añadido nada (v1 `focusEntry`, views-train.js:274). El scroll va
+     que no se ha añadido nada (antes `focusEntry`, views-train.js:274). El scroll va
      en el efecto y no en el render para no arrastrar el navegador en cada repintado. */
   useEffect(() => {
     if (!highlight) return;

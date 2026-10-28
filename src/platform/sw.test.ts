@@ -1,7 +1,7 @@
 /**
  * `platform/sw.ts`: `postToSW`, el canal de los avisos de descanso.
  *
- * El fix que hay que fijar (v1 `e2c49b9`, `swPost`) es la VÍA 2: sin un SW
+ * El fix que hay que fijar (antes `e2c49b9`, `swPost`) es la VÍA 2: sin un SW
  * controlando la página — p. ej. tras actualizar la PWA sin recargar — el
  * mensaje se perdía en silencio y el descanso quedaba sin programar. Ahora se
  * entrega en cuanto `serviceWorker.ready` resuelva.

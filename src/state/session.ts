@@ -1,22 +1,22 @@
 /**
- * Estado de la sesión activa y del descanso. Portado del resto de `legacy/js/trainer.js`
- * (lo que en la v1 era `S.setActive`, `T.rest` y el bucle de `T.loop`).
+ * Estado de la sesión activa y del descanso. Portado del resto de
+ * (lo que  era `S.setActive`, `T.rest` y el bucle de `T.loop`).
  *
- * Escribe en los **mismos sitios** que la v1, para que las dos ramas compartan datos:
+ * Escribe en los **mismos sitios** que antes, para que las dos ramas compartan datos:
  *
  * | qué | dónde |
  * |---|---|
- * | sesión en curso | `pulso.state` → `active` (la v1 la lee igual) |
+ * | sesión en curso | `pulso.state` → `active` (antes la lee igual) |
  * | descanso | `pulso.rest` → `{endsAt,total,label}` o `null` |
  *
  * El descanso se guarda aparte (no dentro del estado) porque cambia cada 15 segundos
- * y no merece reescribir todo el estado; es la misma decisión que en la v1.
+ * y no merece reescribir todo el estado; es la misma decisión que.
  *
  * Aquí viven los EFECTOS de lo que deciden las reglas puras de `domain/session.ts` y
  * `domain/rest.ts`: marcar una serie puede arrancar el descanso, el bucle avisa con
  * pitido y vibración, y cerrar la sesión la apila y marca el día en el calendario.
  *
- * El aviso de fin de descanso son **tres capas a propósito** (v1 `trainer.js:263`):
+ * El aviso de fin de descanso son **tres capas a propósito** (antes `trainer.js:263`):
  * pitido largo + vibración (`platform/audio.ts`), keep-alive de audio y wake lock
  * (`platform/keepAlive.ts`) y la notificación programada en el service worker
  * (`platform/sw.ts` → `public/sw.js`). Cada una cubre un fallo de la anterior:
@@ -121,11 +121,11 @@ function update(fn: (session: ActiveSession) => ActiveSession): void {
 }
 
 /**
- * Al arrancar una sesión (v1 `T.start` + `app.js:1254`): se pide el permiso de
+ * Al arrancar una sesión (antes `T.start` + `app.js:1254`): se pide el permiso de
  * notificaciones y se enciende el wake lock si el ajuste lo deja encendido.
  * Apagar `keepAwake` lo apaga TODO (keep-alive y wake lock).
  *
- * OJO: aquí NO se enciende el keep-alive (v1 `ff21864`). El `<audio>` de
+ * OJO: aquí NO se enciende el keep-alive (antes `ff21864`). El `<audio>` de
  * silencio pide el foco de audio y el sistema atenúa la música de fondo
  * (Spotify…) durante TODA la sesión: solo se enciende mientras corre un
  * descanso (ver `keepAliveWith`).
@@ -143,7 +143,7 @@ function startSessionEffects(): void {
 /**
  * Sugerencia de progresión con la que arrancan TODAS las sesiones: la unidad sale
  * de los ajustes y `reps` (si la trae la prescripción) se pasa como objetivo, que
- * es como pedía el peso la v1 (`T.prefill`, `trainer.js:30`). Sin `reps` se
+ * es como pedía el peso antes (`T.prefill`, `trainer.js:30`). Sin `reps` se
  * comporta como antes: `suggestWeight` elige él.
  */
 const suggestForStart = (exId: string, reps?: number): Suggestion =>
@@ -153,7 +153,7 @@ const suggestForStart = (exId: string, reps?: number): Suggestion =>
   });
 
 /**
- * Empieza una sesión. Si ya hay una en curso devuelve esa: es lo que hacía la v1
+ * Empieza una sesión. Si ya hay una en curso devuelve esa: es lo que hacía antes
  * (`T.start` con una sesión activa no la pisaba) y evita perder un entrenamiento a
  * medias por tocar "empezar" dos veces.
  */
@@ -204,14 +204,14 @@ export function startFromRoutine(routineId: string): ActiveSession | null {
 
 /**
  * Arranca una sesión desde un PLAN: el plan de hoy, una repetición («repetición de
- * 24 sep») o la sugerencia del coach. Es el `startFromItems` de la v1
+ * 24 sep») o la sugerencia del coach. Es el `startFromItems`
  * (`views-train.js:299`), que era `T.start({name, dayIso})` + los items escritos a
  * mano; aquí hace falta menos porque `startSession` ya soporta `opts.plan`.
  *
  * Los items pueden traer `basis`, `reps` concretas y `notes` (los llevan
  * `repeatItems` y `todayPlan` de `hoy-helpers`): `resolvePlan` los copia al
  * snapshot y a la entrada, así la tarjeta de cada ejercicio dice de dónde sale el
- * peso propuesto. `dayIso` por defecto es hoy, igual que en la v1.
+ * peso propuesto. `dayIso` por defecto es hoy, igual que.
  *
  * Si ya hay una sesión en curso devuelve ESA, igual que `startFreeSession`: tocar
  * «Empezar» dos veces no pisa un entrenamiento a medias.
@@ -248,7 +248,7 @@ export function startFromPlan(
 
 /**
  * Índice del ejercicio recién añadido: `SessionCard` lo usa para hacer scroll y
- * marcar la tarjeta con `.new` (1,5 s), igual que `focusEntry` de la v1
+ * marcar la tarjeta con `.new` (1,5 s), igual que `focusEntry`
  * (`views-train.js:274`). Vive aquí y no dentro del componente para que "Añadir
  * rutina" desde la vista de Rutinas también lleve la vista al sitio.
  */
@@ -302,7 +302,7 @@ export function addRoutineToSession(routineId: string): number | null {
 /**
  * "Usar X kg" del modal de discos: escribe la serie que eligió `plateTarget`
  * (la primera pendiente sin peso, si no la última). Sin arrastre — igual que la
- * v1 (`views-train.js:485`) — porque el valor ya viene calculado para esa serie.
+ * antes (`views-train.js:485`) — porque el valor ya viene calculado para esa serie.
  */
 export function applyPlateWeight(entryIndex: number, weight: number): void {
   update((session) => {
@@ -392,7 +392,7 @@ export function finishSession(notes?: string): FinishResult {
   const done = finishActive(current, { notes });
   if (!done) return { ok: false, reason: 'empty' };
   const volume = sessionProgress(current).volume;
-  /* apila la sesión y marca el día: dos cosas que en la v1 hacía el store
+  /* apila la sesión y marca el día: dos cosas que  hacía el store
      (`commitSession` también limpia `active`, la signal única) */
   if (!commitSession(done)) return { ok: false, reason: 'save' };
   sessionSeconds.value = 0;
@@ -458,8 +458,8 @@ function cancelRestNotice(): void {
 }
 
 /**
- * Enciende el keep-alive SOLO mientras dura un descanso (v1 `trainer.js`, con
- * los fixes `ff21864` + `6361477`). Tres guardas, en el mismo orden que la v1:
+ * Enciende el keep-alive SOLO mientras dura un descanso (antes `trainer.js`, con
+ * los fixes `ff21864` + `6361477`). Tres guardas, en el mismo orden que antes:
  *
  * 1. `keepAwake: false` lo apaga del todo;
  * 2. `keepAliveNeeded()` es la guarda de Android con SW: ahí el aviso lo
@@ -477,7 +477,7 @@ function keepAliveWith(): void {
   keepAliveOn();
 }
 
-/** Segundos del aviso de prueba de Ajustes (la v1 usaba 5, con mínimo 3). */
+/** Segundos del aviso de prueba de Ajustes (antes usaba 5, con mínimo 3). */
 export const TEST_NOTICE_SEC = 5;
 
 /** Qué devuelve `testRestNotice`: la UI traduce cada caso a su toast. */
@@ -487,7 +487,7 @@ export type TestNoticeResult = 'rest-running' | 'notify-off' | 'no-sw' | 'ok';
 const TEST_NOTICE_TAG = 'pulso-test';
 
 /**
- * Aviso de prueba (v1 `6361477`, `T.testRestNotice`): programa un aviso en el
+ * Aviso de prueba (antes `6361477`, `T.testRestNotice`): programa un aviso en el
  * SW para comprobar en el móvil que llega con la pantalla bloqueada. Devuelve el
  * motivo si no se puede lanzar, y aquí NO se avisa — los toasts los pinta la UI
  * (`state/` no importa de `ui/`).
@@ -513,7 +513,7 @@ export function testRestNotice(sec: number = TEST_NOTICE_SEC): TestNoticeResult 
 }
 
 /* Al abrir la app con un descanso en marcha se vuelve a programar en el SW: si no,
-   el aviso se habría perdido con la pestaña cerrada (v1 `T.rest.restore()`). El
+   el aviso se habría perdido con la pestaña cerrada (antes `T.rest.restore()`). El
    keep-alive también se recupera, pero SOLO si sigue corriendo un descanso. */
 scheduleRestNotice();
 if (rest.value.running) keepAliveWith();
@@ -534,7 +534,7 @@ export function stopRestTimer(): void {
   setRest(stopRest());
   cancelRestNotice();
   /* el silencio ya cumplió: se suelta el foco de audio para que la música de
-     fondo (Spotify…) recupere su volumen cuanto antes (v1 `ff21864`) */
+     fondo (Spotify…) recupere su volumen cuanto antes (antes `ff21864`) */
   keepAliveOff();
 }
 
@@ -557,7 +557,7 @@ export function subRestSeconds(sec = 15): void {
  *
  * Pinta la cuenta atrás, suelta los tics de los últimos 3 s y lanza el aviso de fin
  * una sola vez: pitido largo y vibración (capa 1) y notificación (capa 3: el SW si
- * la pestaña está oculta, la propia página si está visible — igual que la v1).
+ * la pestaña está oculta, la propia página si está visible — igual que antes).
  * El descanso programado en el SW se cancela al terminar y al cerrarse solo a los 30 s.
  */
 export function loop(): void {

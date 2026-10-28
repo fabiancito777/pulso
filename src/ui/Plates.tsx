@@ -1,6 +1,6 @@
 /**
- * Calculadora de discos. Portada del modal de la v1 (`ui.plates` en
- * `legacy/js/app.js`) a un componente: el cálculo ya no se hace a mano en el
+ * Calculadora de discos. Portada del modal  (`ui.plates` en
+ * ) a un componente: el cálculo ya no se hace a mano en el
  * evento `input` — se recalcula solo cuando cambia lo que importa y el DOM lo
  * actualiza Preact, así que desaparecen los `innerHTML` y los `U.$('#pc-out')`.
  */

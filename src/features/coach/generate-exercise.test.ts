@@ -83,7 +83,7 @@ describe('GENERATOR_SYSTEM', () => {
     expect(GENERATOR_SYSTEM).toContain(AI_EXERCISE_SCHEMA);
   });
 
-  it('enumera TODAS las claves de grupo (13 de la v1 + 6 añadidas a mano)', () => {
+  it('enumera TODAS las claves de grupo (13 + 6 añadidas a mano)', () => {
     expect(GROUPS).toHaveLength(19);
     for (const g of GROUPS) expect(GENERATOR_SYSTEM).toContain(g.key);
   });

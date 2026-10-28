@@ -49,7 +49,7 @@ describe('mergeSeed', () => {
   });
 
   it('sanea valores imposibles guardados', () => {
-    /* sets 0 y rest -10 se acotan igual que en la v1 (1 y 0) */
+    /* sets 0 y rest -10 se acotan igual que  (1 y 0) */
     const saved: Exercise[] = [
       { ...seedPress, custom: true, sets: 0, rest: -10, repMin: 0, repMax: NaN },
     ];
@@ -65,7 +65,7 @@ describe('mergeSeed', () => {
     expect(list[0]).toMatchObject({ sets: 3, rest: 90, repMin: 8, repMax: 12, allowed: true });
   });
 
-  it('no muta la lista guardada (a diferencia de la v1)', () => {
+  it('no muta la lista guardada', () => {
     const saved: Exercise[] = [{ ...seedPress, allowed: false }];
     const before = JSON.stringify(saved);
     mergeSeed(SEED, saved);

@@ -1,5 +1,5 @@
 /**
- * Pestaña **Hoy**: el panel diario de la v1 (`legacy/js/views-train.js` →
+ * Pestaña **Hoy**: el panel diario  ( →
  * `V.render` sin sesión activa) con el mismo orden de bloques:
  *
  * saludo → hero del día → semana → Recomendado → KPIs 7d → Herramientas →
@@ -22,7 +22,7 @@
  * - **Sin API key nada falla en silencio**: «Mejorar con IA» avisa y te lleva a
  *   Ajustes (spec `hoy.md`, decisión 9). El caso contrario — «Plan
  *   automático» — NUNCA exige key: pide el plan al Calendario y, si no la hay,
- *   ese plan sale del dispositivo (v1 `coach:quick` → `autoPlan`, que sin key
+ *   ese plan sale del dispositivo (antes `coach:quick` → `autoPlan`, que sin key
  *   resolvía en local).
  */
 import { useEffect, useMemo, useState } from 'preact/hooks';
@@ -85,7 +85,7 @@ import { toast } from './toast';
 
 import '../styles/hoy.css';
 
-/** Presetas del temporizador libre (las mismas de `ui.timer` de la v1). */
+/** Presetas del temporizador libre (las mismas de `ui.timer` ). */
 const TIMER_PRESETS = [30, 45, 60, 90, 120, 180, 300];
 
 /** Clase de la celda de la semana por estado (el vocabulario de `base.css`). */
@@ -105,7 +105,7 @@ interface Notice {
 
 /* ---------- saludo ---------- */
 
-/** Saludo + fecha: el `V.sub` de la v1 (appbar) como línea arriba de Hoy. */
+/** Saludo + fecha: el `V.sub`  (appbar) como línea arriba de Hoy. */
 function Greeting({ name }: { name: string }) {
   return (
     <div class="hy-greet">
@@ -132,7 +132,7 @@ function Hero({
   onStart: () => void;
   onSkip: () => void;
   onExtra: () => void;
-  /** «Plan automático»: pide la semana al Calendario (v1 `coach:quick`) */
+  /** «Plan automático»: pide la semana al Calendario (antes `coach:quick`) */
   onAutoPlan: () => void;
 }) {
   const now = today();
@@ -436,9 +436,9 @@ function FreeTimer({ onClose }: { onClose: () => void }) {
   const [sec, setSec] = useState(90);
 
   /* MIENTRAS corre, la cuenta atrás la pinta el recuadro ÚNICO de descanso (el de
-     `SessionCard`, igual que el `#session-rest` de la v1; `App.tsx` lo monta con
+     `SessionCard`, igual que el `#session-rest`; `App.tsx` lo monta con
      `rest.running`). Aquí solo se avisa y se cancela: dos cuentas atrás para el
-     mismo `pulso.rest` sería el duplicado que la v1 esquivaba con un solo nodo. */
+     mismo `pulso.rest` sería el duplicado que antes esquivaba con un solo nodo. */
   if (rest.value.running) {
     return (
       <div class="card tight mt-s hy-timer">
@@ -536,7 +536,7 @@ function SessionDetail({ session }: { session: Session }) {
             const sets = Array.isArray(entry.sets) ? entry.sets : [];
             const text = sets
               .map((set) => {
-                /* peso vacío = como el input en blanco de la v1: «×8», no «0×8» */
+                /* peso vacío = como el input en blanco: «×8», no «0×8» */
                 const reps = fmtN(set.reps);
                 const load = set.weight === null ? `×${reps}` : `${fmtN(set.weight)}×${reps}`;
                 return `${load}${set.rpe ? ` (RPE ${fmtN(set.rpe, 1)})` : ''}`;
@@ -754,7 +754,7 @@ export function HoyView() {
   }
 
   /**
-   * «Plan automático» (`coach:quick` con `kind="week"` de la v1): va al
+   * «Plan automático» (`coach:quick` con `kind="week"` ): va al
    * Calendario y le pide la propuesta — IA si hay key, dispositivo si no, que
    * es lo que hacía `autoPlan(C.hasKey())`—. La petición viaja en
    * `autoPlanRequest` y la consume la propia vista, que pinta el preview y deja

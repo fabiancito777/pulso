@@ -2,15 +2,15 @@
    Pulso v2 · icons.ts — catálogo de iconos (trazos SVG)
 
    ARCHIVO GENERADO (histórico): se produjo una vez desde los `ico(...)` de
-   `legacy/js/core.js` (v1, tag `v1-final`) con el generador `tools/port-icons.mjs`, ya
+    (antes, tag `la versión anterior`) con el generador `tools/port-icons.mjs`, ya
    retirado. Ahora es un fichero base congelado. El componente que los pinta (y que decide
    el tamaño y el color) es `src/ui/Icon.tsx`.
    ========================================================================== */
 
-/** Un icono: sus trazos y, si la v1 los engordó, el grosor. */
+/** Un icono: sus trazos y, si antes los engordó, el grosor. */
 export interface IconSpec {
   paths: string;
-  /** grosor del trazo (por defecto 1.9, como en la v1) */
+  /** grosor del trazo (por defecto 1.9, como ) */
   sw?: number;
 }
 

@@ -1,5 +1,5 @@
 /**
- * Instalación de la PWA (`legacy/js/app.js:291-338`).
+ * Instalación de la PWA ().
  *
  * El navegador emite `beforeinstallprompt` cuando considera que la app se puede
  * instalar; si no se cancela con `preventDefault()` muestra su propio banner, y
@@ -9,7 +9,7 @@
  *   la página) captura el evento y lo guarda, escucha `appinstalled` y avisa;
  * - `install()` dispara `prompt()` y devuelve si el usuario aceptó;
  * - Firefox/Safari no emiten el evento ⇒ `install()` devuelve `false` y la UI
- *   abre el modal de instrucciones manuales (es el comportamiento de la v1).
+ *   abre el modal de instrucciones manuales (es el comportamiento ).
  *
  * Todo con guardas de soporte: sin `window` (tests en Node) nada se registra.
  */
@@ -60,7 +60,7 @@ export function hasSW(): boolean {
 
 /**
  * Pide la instalación. Devuelve `true` si el usuario aceptó (el aviso de
- * «instalada» lo dispara el evento `appinstalled`, igual que en la v1).
+ * «instalada» lo dispara el evento `appinstalled`, igual que ).
  */
 export async function install(): Promise<boolean> {
   const event = deferred;

@@ -5,10 +5,10 @@
  *
  * Lo que hay que verificar aquí, y no en `domain/session.test.ts`, es el ENVOLVENTE:
  * que la sesión llega a la signal `active` y a `pulso.state.active` (el mismo sitio
- * que la v1) con `source: 'plan'`, que el `basis` del plan («repetición de …»)
+ * que antes) con `source: 'plan'`, que el `basis` del plan («repetición de …»)
  * sobrevive hasta la entrada, que tocar «Empezar» dos veces no pisa un
  * entrenamiento a medias, y que cerrar apila la sesión en el historial y marca el
- * día como hecho (las dos comprobaciones del auto-test de la v1).
+ * día como hecho (las dos comprobaciones del auto-test ).
  *
  * Mismo patrón que `store.test.ts`: `localStorage` simulado ANTES del import
  * dinámico, porque `storageAvailable` y el estado inicial se deciden al cargar.
@@ -67,7 +67,7 @@ describe('startFromPlan', () => {
     });
     expect(creada.entries.map((entry) => entry.exId)).toEqual([firstId()]);
     expect(session.active.value?.id).toBe(creada.id);
-    /* lo mismo que escribe la v1: `pulso.state.active` */
+    /* lo mismo que escribe antes: `pulso.state.active` */
     expect(store.readState().active?.id).toBe(creada.id);
   });
 
@@ -120,13 +120,13 @@ describe('startFromPlan', () => {
     });
   });
 
-  it('el día por defecto es hoy (v1 `startFromItems`)', () => {
+  it('el día por defecto es hoy ', () => {
     const creada = session.startFromPlan([{ exId: firstId() }]);
     expect(creada.dayIso).toBe(today());
   });
 });
 
-/* ---------- cerrar la sesión: las dos comprobaciones del auto-test de la v1
+/* ---------- cerrar la sesión: las dos comprobaciones del auto-test
    («sesión: se guarda en el historial» y «sesión: día marcado como hecho») ---------- */
 
 describe('finishSession', () => {
@@ -144,7 +144,7 @@ describe('finishSession', () => {
     if (!resultado.ok) return;
     const guardada = resultado.session;
     expect(guardada.date).toBe('2026-09-28');
-    /* la v1 también estrena id al cerrar (`T.finish` → `U.uid('s')`) */
+    /* antes también estrena id al cerrar (`T.finish` → `U.uid('s')`) */
     expect(guardada.id).not.toBe(creada.id);
     expect(store.sessions.value.map((s) => s.id)).toEqual([guardada.id]);
     expect((store.readState().sessions as { id: string }[]).map((s) => s.id)).toEqual([guardada.id]);

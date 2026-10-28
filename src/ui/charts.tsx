@@ -1,21 +1,21 @@
 /**
- * Gráficos de progreso de la v1 como componentes Preact, sin librerías.
+ * Gráficos de progreso  como componentes Preact, sin librerías.
  *
- * Port de `legacy/js/charts.js` (barras, línea/área, donut, barras horizontales,
+ * Port de  (barras, línea/área, donut, barras horizontales,
  * heatmap de consistencia y sparkline) con el mismo look, los mismos datos y el
- * mismo orden de secciones que `legacy/js/views-stats.js`.
+ * mismo orden de secciones que.
  *
  * Decisión de API: los gráficos son componentes **PROPS puros** (los datos entran
  * por parámetro) para poder reutilizarlos desde cualquier tarjeta; el único que
  * lee signals es `ProgressCharts()`, el contenedor que monta la pestaña
  * Progreso entera a partir de `sessions`/`exercises` del store y de las métricas
- * de `domain/analytics`. El volumen se muestra SIEMPRE en kg, igual que la v1,
+ * de `domain/analytics`. El volumen se muestra SIEMPRE en kg, igual que antes,
  * así que `settings` no hace falta aquí.
  *
- * El ancho no se mide: la v1 repintaba con `mountAll` midiendo `clientWidth`,
+ * El ancho no se mide: antes repintaba con `mountAll` midiendo `clientWidth`,
  * aquí todo va en un `viewBox` con `width:100%` y se escala al contenedor. El
  * heatmap y la sparkline conservan su tamaño natural (`max-width:100%`) porque
- * en la v1 tampoco crecían con la tarjeta.
+ *  tampoco crecían con la tarjeta.
  *
  * Tooltips: `<title>` SVG nativo (se ve al pasar el ratón y es lo que usa la
  * accesibilidad), colores con `var(--…)` de `base.css` y ejes con `fmtN`.
@@ -80,7 +80,7 @@ export interface BarChartProps {
   height?: number;
   /** color por defecto de las barras (`var(--…)` de base.css) */
   color?: string;
-  /** valores sobre cada barra (la v1 solo los pinta con hueco de más de 26 px) */
+  /** valores sobre cada barra (antes solo los pinta con hueco de más de 26 px) */
   showValues?: boolean;
   /** `false` = barras casi pegadas */
   gap?: boolean;
@@ -178,7 +178,7 @@ export interface LineChartProps {
   series: readonly LineSeries[];
   format?: ChartFormat;
   height?: number;
-  /** relleno bajo la línea (solo con una serie, como en la v1) */
+  /** relleno bajo la línea (solo con una serie, como ) */
   area?: boolean;
   /** etiqueta con el último valor (por defecto sí) */
   showLast?: boolean;
@@ -492,18 +492,18 @@ const RANGES: readonly { k: number; l: string }[] = [
 const DOW_NAMES = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 export interface ProgressChartsProps {
-  /** Contenido tras el reparto por grupo (el «último estímulo» de la v1). */
+  /** Contenido tras el reparto por grupo (el «último estímulo» ). */
   groupExtra?: ComponentChildren;
   /** Contenido tras la lista de récords (el botón de «Ver tabla completa»). */
   prExtra?: ComponentChildren;
 }
 
 /**
- * La pestaña Progreso de la v1 (`views-stats.js`) montada con componentes:
+ * La pestaña Progreso  (`views-stats.js`) montada con componentes:
  * KPIs → volumen semanal → sesiones/series/minutos → reparto por grupo →
  * progresión del ejercicio elegido → récords con sparkline → frecuencia por día
  * → consistencia. Lee `sessions` y `exercises` del store; los datos intermedios
- * salen de `domain/analytics` igual que en la v1.
+ * salen de `domain/analytics` igual que.
  *
  * Los dos huecos externos (`groupExtra`, `prExtra`) son la forma de montar el
  * resto de la pestaña SIN que este archivo tenga que conocerlo: el «último
@@ -539,7 +539,7 @@ export function ProgressCharts({ groupExtra, prExtra }: ProgressChartsProps = {}
   const delta = prev.volume ? Math.round(((cur.volume - prev.volume) / prev.volume) * 100) : 0;
   const recordCount = Object.keys(prs(list)).length;
 
-  /* --- series semanales (la v1 pide 52 y se queda con la ventana elegida) --- */
+  /* --- series semanales (antes pide 52 y se queda con la ventana elegida) --- */
   const all = weeklySeries(list, 52);
   const series = range ? all.slice(-range) : all.filter((w) => w.sessions || w.volume);
   const volBars: BarDatum[] = series.map((w) => ({ label: w.label, value: w.volume }));

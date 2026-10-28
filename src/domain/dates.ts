@@ -1,6 +1,7 @@
 /**
- * Fechas en ISO local `YYYY-MM-DD`. Portado de `U.d` de la v1.
- * ⚠️ Nunca uses `toISOString().slice(0, 10)` para fechas de calendario: eso
+ * Fechas en ISO local `YYYY-MM-DD`.
+ *
+ * Nunca uses `toISOString().slice(0, 10)` para fechas de calendario: eso
  * convierte a UTC y desplaza el día según la zona horaria.
  */
 import { int } from './num';

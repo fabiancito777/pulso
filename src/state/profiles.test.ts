@@ -6,6 +6,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defaultEquipment } from '@/domain/data';
+import { PLATES_DEFAULT } from '@/domain/defaults';
 import type { Session } from '@/domain/types';
 
 const mem = new Map<string, string>();
@@ -60,6 +62,15 @@ describe('migración y claves', () => {
     expect(profiles.stateKeyFor(profiles.DEFAULT_PROFILE_ID)).toBe('pulso.state');
     expect(profiles.stateKeyFor('p-ana')).toBe('pulso.state.p-ana');
     expect(profiles.restKeyFor('p-ana')).toBe('pulso.rest.p-ana');
+  });
+
+  it('un perfil nuevo arranca con el material y los discos de fábrica', () => {
+    const ana = store.createProfile('Ana');
+    expect(ana).not.toBeNull();
+    if (!ana) return;
+    const state = store.readProfileState(ana.id);
+    expect(state.equipment).toEqual(defaultEquipment());
+    expect(state.settings.plates).toEqual(PLATES_DEFAULT.map((p) => ({ ...p })));
   });
 
   it('cada perfil escribe en su propia clave (aislamiento)', () => {

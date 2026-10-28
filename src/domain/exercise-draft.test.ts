@@ -1,6 +1,6 @@
 /**
  * Borrador de ejercicio del editor de Ajustes: validación e id en dominio puro.
- * Aquí quedan fijadas las reglas de la v1 (`ui.exerciseEditor`) que cambian el
+ * Aquí quedan fijadas las reglas  (`ui.exerciseEditor`) que cambian el
  * resultado del form: nombre recortado y obligatorio, `repMax >= repMin`
  * subiendo repMax, rangos del formulario y un id que NUNCA se regenera.
  */
@@ -28,7 +28,7 @@ const propio: Exercise = {
 };
 
 describe('draftFrom', () => {
-  it('con null devuelve el borrador por defecto de la v1', () => {
+  it('con null devuelve el borrador por defecto', () => {
     expect(draftFrom(null)).toEqual(emptyDraft());
     expect(emptyDraft()).toMatchObject({
       name: '',
@@ -61,7 +61,7 @@ describe('draftFrom', () => {
 });
 
 describe('validateDraft', () => {
-  it('sin nombre (o con espacios) no se puede guardar, igual que la v1', () => {
+  it('sin nombre (o con espacios) no se puede guardar', () => {
     expect(validateDraft({ ...emptyDraft(), name: '' })).toEqual({
       ok: false,
       error: 'El nombre es obligatorio',
@@ -75,7 +75,7 @@ describe('validateDraft', () => {
     if (out.ok) expect(out.value.name).toBe('Sentadilla');
   });
 
-  it('repMin > repMax se iguala SUBIENDO repMax (regla de la v1)', () => {
+  it('repMin > repMax se iguala SUBIENDO repMax ', () => {
     const out = validateDraft({ ...emptyDraft(), name: 'Prensa', repMin: 12, repMax: 8 });
     expect(out.ok).toBe(true);
     if (out.ok) expect(out.value).toMatchObject({ repMin: 12, repMax: 12 });

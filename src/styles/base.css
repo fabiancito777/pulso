@@ -318,9 +318,7 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 .day-dot{position:absolute; right:6px; top:8px; width:6px; height:6px; border-radius:50%; background:var(--accent)}
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .month-cell{aspect-ratio:1;border-radius:var(--radius-xs);background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid transparent}
-.month-cell.lv1{background:color-mix(in srgb,var(--accent) 22%,var(--surface-2));color:var(--text)}
-.month-cell.lv2{background:color-mix(in srgb,var(--accent) 45%,var(--surface-2));color:var(--accent-ink);font-weight:700}
-.month-cell.lv3{background:color-mix(in srgb,var(--accent) 75%,var(--surface-2));color:var(--accent-ink);font-weight:700}
+.month-cell.lvl3{background:color-mix(in srgb,var(--accent) 75%,var(--surface-2));color:var(--accent-ink);font-weight:700}
 .month-cell.today{border-color:var(--accent)}
 
 /* ---------- coach / chat ---------- */

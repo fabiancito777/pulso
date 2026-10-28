@@ -8,10 +8,10 @@
  *   nombre contra la biblioteca: lo que resuelva, al aplicarlo (`applySuggestionAsRoutine`)
  *   no se cae; lo que no, se pinta marcado para que se vea antes de aplicar.
  * - **La búsqueda de ejercicios** tolera tildes, faltas de ortografía y búsquedas
- *   por grupo muscular, igual que la de la v1 (`U.similarity`).
+ *   por grupo muscular, igual que la  (`U.similarity`).
  * - **La generación local** («Generar auto», sin API key) monta la rutina desde una
  *   plantilla del catálogo y resuelve el peso con `suggestWeight`: es `S.routineFromTemplate`
- *   + `richItems` de la v1, con el ajuste por objetivo del modal `routines:generate`.
+ *   + `richItems`, con el ajuste por objetivo del modal `routines:generate`.
  * - **Agendar** propone el próximo día libre del calendario y valida el ISO del input.
  */
 import { addDays } from '@/domain/dates';
@@ -98,7 +98,7 @@ export function weightOrNull(raw: string): number | null {
 
 /* ---------- rutinas: datos para pintar ---------- */
 
-/** Total de series que prescribe una rutina (cada item sin `sets` vale 3, como la v1). */
+/** Total de series que prescribe una rutina (cada item sin `sets` vale 3, como antes). */
 export function routineSets(items: readonly RoutineItem[] | undefined): number {
   return (items ?? []).reduce((total, item) => total + int(item.sets, 3), 0);
 }
@@ -244,7 +244,7 @@ export function toSuggestion(raw: unknown, library: readonly Exercise[]): Routin
 
 /* ---------- generación local (plantillas, sin API key) ---------- */
 
-/** Rotación que ofrece el selector de «Generar auto» (la v1: 0/2/3/5). */
+/** Rotación que ofrece el selector de «Generar auto» (antes: 0/2/3/5). */
 export const ROTATE_OPTIONS: readonly { value: string; label: string }[] = [
   { value: '0', label: 'No rotar' },
   { value: '2', label: '2 sesiones' },
@@ -252,7 +252,7 @@ export const ROTATE_OPTIONS: readonly { value: string; label: string }[] = [
   { value: '5', label: '5 sesiones' },
 ];
 
-/** Rotación por defecto: pesan las últimas 3 sesiones, como la v1. */
+/** Rotación por defecto: pesan las últimas 3 sesiones, como antes. */
 export const DEFAULT_ROTATE = 3;
 
 /**
@@ -302,7 +302,7 @@ export interface AutoProposal {
  * Rutina generada a partir de una plantilla del catálogo, SIN red y SIN API key
  * (es la vía principal de generación de la pestaña Rutinas).
  *
- * Tres decisiones, todas de la v1 (`views-routines.js:115`, modal `routines:generate`):
+ * Tres decisiones, todas  (`views-routines.js:115`, modal `routines:generate`):
  *
  * - **Material y prohibiciones**: los elige `routineFromTemplate` → `pickForGroup`,
  *   que solo contempla ejercicios permitidos y disponibles con `input.equipment`.
@@ -369,7 +369,7 @@ export function generateAuto(
 /**
  * Los items de la propuesta como `RoutineItem` para `addRoutine`: se quedan solo
  * con los campos que guarda el estado (los de pantalla —nombre, grupo, `basis`—
- * viven en la propuesta, no en el `localStorage` compartido con la v1).
+ * viven en la propuesta, no en el `localStorage` compartido con antes).
  */
 export function autoRoutineItems(items: readonly AutoItem[]): RoutineItem[] {
   return items.map((item) => ({
@@ -388,7 +388,7 @@ export function autoRoutineItems(items: readonly AutoItem[]): RoutineItem[] {
 /**
  * Primer día (desde `fromIso`, incluido) sin nada planificado ni sesión
  * registrada: es con lo que se abre el picker de «Agendar» (`App.ui.dayPicker`
- * de la v1 empezaba en hoy y listaba 14 jornadas).
+ *  empezaba en hoy y listaba 14 jornadas).
  *
  * El criterio de "libre" es el del calendario (`dayState(...) === 'free'`), así
  * que un día con sesión encima de un plan vacío NO se propone. Si las `horizon`
@@ -416,7 +416,7 @@ export function nextFreeDay(
 
 /**
  * Patch que escribe `setDay` al agendar una rutina: la misma semántica de
- * `routines:schedule` + `App.ui.dayPicker` de la v1 (`app.js:454`) — rutina,
+ * `routines:schedule` + `App.ui.dayPicker`  (`app.js:454`) — rutina,
  * tipo `entreno`, estado `planificado`, el nombre como título y origen manual.
  *
  * Va en helper (y no en línea en el componente) porque `setDay` hace merge: lo

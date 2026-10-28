@@ -1,18 +1,18 @@
 /**
  * Catálogo: API pública del dominio para grupos, material, ejercicios y
  * plantillas. Los datos en sí viven en dos sitios: `catalog.ts` (el catálogo
- * COMPLETO, generado desde la v1) y `seed.ts` (la semilla por defecto de 24
+ * COMPLETO, generado des) y `seed.ts` (la semilla por defecto de 24
  * ejercicios y 7 plantillas, que es lo que de verdad se le pone a un usuario
  * nuevo). Aquí viven las funciones que los consultan.
  *
  * `TEMPLATES` y `seedExercises` se vuelven a exportar DESPUÉS del
  * `export * from './catalog'`: son los que manda la app, y si se importaran de
  * `@/domain/catalog` se quedarían con las 9 plantillas y los 136 ejercicios de
- * la v1.
+ * antes.
  *
  * Igual que en `plates.ts`, todo entra por parámetro: el material disponible se
  * pasa como mapa (`{ clave: boolean }`) en vez de leerlo del estado global, que
- * es lo que hacía `S.isAvailable()` en la v1 y obligaba a probarlo en el navegador.
+ * es lo que hacía `S.isAvailable()`  y obligaba a probarlo en el navegador.
  */
 import {
   DEFAULT_EQUIPMENT,
@@ -82,7 +82,7 @@ export function defaultEquipment(): EquipmentMap {
 export type EquipPresetKind = 'todo' | 'gym' | 'kit' | 'basico' | 'ninguno';
 
 /**
- * Presets que NO salen del catálogo de la v1. Viven aquí y no en `catalog.ts`
+ * Presets que NO salen del catálogo. Viven aquí y no en `catalog.ts`
  * porque ese fichero es generado (históricamente con `tools/port-catalog.mjs`) y
  * volver a generarlo los borraría (AGENTS.md §4).
  *
@@ -131,7 +131,7 @@ export function equipPresetList(): readonly EquipPresetOption[] {
  * Material que activa cada preset (fuente única para onboarding y Ajustes).
  * `gym` = todo el catálogo menos las piezas excluidas; `kit` = los manuales de
  * arriba; el resto son listas. Un preset desconocido cae en `basico`, igual que
- * en la v1 (lo fija `data.test.ts`).
+ *  (lo fija `data.test.ts`).
  */
 export function equipPreset(kind: string): EquipmentMap {
   const all: EquipmentMap = {};
@@ -215,7 +215,7 @@ export function allowedExercises(exercises: readonly Exercise[]): Exercise[] {
  * Busca por nombre, sin acentos y sin mayúsculas. Lo necesitan los planes del
  * coach IA, que a veces traen el nombre en vez del id.
  * El id de la biblioteca es el slug del nombre (y los ejercicios propios también,
- * ver `S.addExercise` de la v1), así que primero se prueba el atajo; el recorrido
+ * ver `S.addExercise` ), así que primero se prueba el atajo; el recorrido
  * por nombre se queda por si el slug chocó con otro ejercicio y llevó un `uid`.
  */
 export function findExerciseByName(

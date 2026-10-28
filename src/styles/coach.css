@@ -1,7 +1,7 @@
 /* ==========================================================================
    Pulso v2 · vista Coach (chat)
 
-   `base.css` trae ya de la v1 las burbujas (`.msg`), el composer, el
+   `base.css` trae ya  las burbujas (`.msg`), el composer, el
    «pensando…» (`.typing`) y los bloques markdown dentro de `.msg`: aquí solo
    va LO PROPIO de esta vista, y todo va bajo `.coach-view` para no tocar lo que
    el resto de la app hereda de `base.css`.
@@ -65,7 +65,7 @@
   padding: 2px 2px 4px;
 }
 
-/* Salto de línea literal: en la v1 eran <br>, y el markdown del modelo se
+/* Salto de línea literal:  eran <br>, y el markdown del modelo se
    respeta tal cual dentro de sus párrafos. */
 .coach-view .msg.me {
   white-space: pre-wrap;
@@ -207,7 +207,7 @@
    en vez de perderse fuera del recorte y por debajo solo hay bloques, no
    mensajes legibles.
    El `.v2-shell` del selector es a propósito: gana en especificidad al
-   `body.has-rest .composer` de base.css (0,2,1) sin tocar esa hoja. */
+   `body.has-rest.composer` de base.css (0,2,1) sin tocar esa hoja. */
 .v2-shell .coach-view .composer {
   position: sticky;
   bottom: 0;

@@ -1,8 +1,7 @@
 /**
- * Registro del service worker de la v2 (port del `init()` de `legacy/js/app.js`).
+ * Registro del service worker.
  *
- * La v1 registraba `sw.js` a pelo si el protocolo era http/https. Aquí además
- * hay dos guardas explícitas:
+ * Hay dos guardas explícitas:
  *  - **solo producción**: en dev el SW estorba al HMR (sirve respuestas de la
  *    caché y hay que ir a DevTools → Application para desregistrarlo);
  *  - **solo https o localhost**: el navegador no da service worker en `file://`
@@ -12,7 +11,7 @@
  * pasar por Vite, porque no puede llevar imports ni hashes).
  */
 
-/** Mensajes que entiende `public/sw.js` (contrato heredado de la v1). */
+/** Mensajes que entiende `public/sw.js` (contrato heredado ). */
 export type SWMessage =
   | { type: 'notify'; title?: string; body?: string; tag?: string; requireInteraction?: boolean }
   | { type: 'schedule-rest'; at: number; title?: string; body?: string; tag?: string }
@@ -41,10 +40,10 @@ export function registerSW(): void {
 export const SW_READY_TIMEOUT_MS = 3000;
 
 /**
- * Manda un mensaje al service worker (`swPost()` de la v1). Es el canal de los
+ * Manda un mensaje al service worker (`swPost()` ). Es el canal de los
  * avisos de descanso (`notify` / `schedule-rest` / `cancel-rest`).
  *
- * Dos vías, igual que en la v1 (`e2c49b9`):
+ * Dos vías, igual que  (`e2c49b9`):
  *
  * 1. la página está controlada por el SW → `controller.postMessage` y `true`;
  * 2. **sin controlador** (p. ej. tras actualizar la PWA sin recargar) el mensaje

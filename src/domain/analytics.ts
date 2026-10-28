@@ -1,17 +1,16 @@
 /**
- * Analítica del entrenamiento. Portado de `S.a` de la v1 (`legacy/js/store.js`).
+ * Analítica del entrenamiento.
  *
- * Todo entra por parámetro (sesiones, ejercicios, unidad, `increment`): en la v1
- * estas funciones leían el estado global por dentro, así que la única forma de
- * comprobarlas era el auto-test del navegador con los datos del usuario encima.
+ * Todo entra por parámetro (sesiones, ejercicios, unidad, `increment`) para que
+ * las funciones sean puras y se puedan probar sin navegador.
  *
- * Convenio de la v1 que se respeta y conviene no olvidar: los pesos guardados en
+ * Convenio que se respeta y conviene no olvidar: los pesos guardados en
  * una serie están en la unidad de **su** sesión (`session.unit`), y ahí se pueden
  * mezclar kg y lb. Aquí todo se convierte a kg antes de sumar o comparar, y todo
  * lo que se devuelve está en kg.
  *
- * Otra trampa heredada: una serie sin `done` no cuenta para nada (ni volumen, ni
- * PR, ni series hechas), y `e1rm(0, …)` es 0, no NaN.
+ * Una serie sin `done` no cuenta para nada (ni volumen, ni PR, ni series hechas),
+ * y `e1rm(0, …)` es 0, no NaN.
  */
 import {
   addDays,
@@ -249,7 +248,7 @@ export function weeklySeries(
 /* ---------- rachas ---------- */
 
 /**
- * Racha actual. Detalle heredado de la v1: si hoy todavía no has entrenado, la
+ * Racha actual. Detalle heredado: si hoy todavía no has entrenado, la
  * cuenta empieza ayer, así que la racha no se "rompe" hasta que pasa un día
  * entero sin sesión.
  */
@@ -406,7 +405,7 @@ export interface SuggestOptions {
  * Peso para la próxima vez: 1RM estimado de la mejor serie del último día,
  * recalculado a las repeticiones objetivo.
  *
- * Detalle de la v1 que se conserva a propósito (y que parece un bug hasta que se ve
+ * Detalle  que se conserva a propósito (y que parece un bug hasta que se ve
  * el caso): si el cálculo sale **igual o por encima** del peso de la última vez, se
  * propone `anterior + increment` en vez del cálculo. Con las mismas repeticiones
  * Epley devuelve exactamente el peso anterior, así que repetir el entreno sugiere

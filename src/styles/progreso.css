@@ -4,7 +4,7 @@
    LastStimulus).
 
    Prefijo `pg2-`. Todo lo demás (`.card`, `.list`, `.list-item`, `.icon-btn`,
-   `.seg`, `.empty`, `.btn`, `.badge`…) es el CSS heredado de la v1 que vive en
+   `.seg`, `.empty`, `.btn`, `.badge`…) es el CSS heredado  que vive en
    `base.css`: aquí NO se repite, como en el resto de las vistas portadas.
    ========================================================================== */
 
@@ -23,7 +23,7 @@
 
 /* Los grupos y las series no se cortan con «…»: `.li-sub` de base.css va con
    `nowrap` y aquí hacen falta dos líneas. La especificidad va explícita porque
-   `.list-item .li-sub` manda si no. */
+   `.list-item.li-sub` manda si no. */
 .list-item .li-sub.pg2-groups,
 .list-item .li-sub.pg2-sets {
   white-space: normal;

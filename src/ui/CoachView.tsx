@@ -1,23 +1,23 @@
 /**
  * Vista Coach: chat con Gemini, acciones rápidas y memoria editable.
  *
- * Port de `legacy/js/views-coach.js` (paridad: tarjeta de estado, acciones
+ * Port de  (paridad: tarjeta de estado, acciones
  * rápidas, burbujas con razonamiento, composer pegajoso y «Limpiar») sobre la
  * capa `state/coach.ts`, que es la que habla con `features/coach`.
  *
  * Decisiones que conviene no olvidar:
  *
  * - **Historial**: `state/chat.ts` (señal + `state.chat` persistido en el
- *   estado, 80 mensajes, mismo formato que la v1).
+ *   estado, 80 mensajes, mismo formato que antes).
  * - **Markdown**: propio y mínimo (`parseMd`/`mdInline` de `state/chat.ts`)
  *   convertido a nodos de Preact: nunca `innerHTML`, así que el texto del
  *   modelo queda escapado solo.
  * - **JSON de `suggest`/`plan`**: no se pinta en crudo; se guarda como `payload`
  *   del mensaje y se resume en una tarjeta con su botón de «Aplicar».
  * - **Tarjeta de estado**: «Probar» hace el ping real con `testConnection` (el
- *   `coach:test` de la v1) y deja ms/ok en la propia tarjeta. Son los mismos 6
+ *   `coach:test` ) y deja ms/ok en la propia tarjeta. Son los mismos 6
  *   chips rápidos de `views-coach.js:30`: los tres que faltaban van a un `chat`
- *   con el prompt literal de la v1.
+ *   con el prompt literal.
  * - **Chips + caja**: al pulsar un chip, si la caja tiene texto escrito viaja
  *   como contexto detrás del `ask` (`chipText`) y la caja se vacía; con la caja
  *   vacía el chip manda su `ask` literal, igual que siempre. La caja libre
@@ -89,7 +89,7 @@ function asText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/** Pie de un mensaje de éxito: modelo · ms · tokens · memoria (el `aiFooter` de la v1). */
+/** Pie de un mensaje de éxito: modelo · ms · tokens · memoria (el `aiFooter` ). */
 function footerOf(out: CoachOutcome, model: string): string {
   const bits = [`Coach IA · ${model}`, `${(out.ms / 1000).toFixed(1)} s`];
   if (out.usage) bits.push(`${out.usage.total} tokens`);
@@ -353,7 +353,7 @@ function Spans({ spans }: { spans: MdSpan[] }) {
         if (span.kind === 'i') return <i key={i}>{span.text}</i>;
         if (span.kind === 'code') return <code key={i}>{span.text}</code>;
         if (span.kind === 'a') {
-          /* Enlace automático: la v1 lo abría con `target="_blank"
+          /* Enlace automático: antes lo abría con `target="_blank"
              rel="noopener"`; el href es texto plano, nunca HTML del modelo. */
           return (
             <a key={i} href={span.href} target="_blank" rel="noopener">
@@ -385,7 +385,7 @@ function renderMd(text: string): ComponentChildren[] {
       );
     }
     if (block.kind === 'table') {
-      /* Las clases las pone el CSS de la v1 (`.msg table`, heredado en base.css):
+      /* Las clases las pone el CSS  (`.msg table`, heredado en base.css):
          cabecera con `th` y filas con `td`, igual que el `<table>` de `U.md`. */
       return (
         <table key={i}>
@@ -593,7 +593,7 @@ function Bubble({
 
 /* ---------- tarjeta de estado ---------- */
 
-/** Resultado del último «Probar» (el `coach:test` de la v1), pintado en la tarjeta. */
+/** Resultado del último «Probar» (el `coach:test` ), pintado en la tarjeta. */
 export interface TestResult {
   ok: boolean;
   ms: number;
@@ -606,7 +606,7 @@ function secs(ms: number): string {
 
 /**
  * Etiqueta del badge de la tarjeta de estado: `listo` antes del primer test y
- * `ok · 0,8 s` / `error · 2,1 s` después (el ms/ok que pide la v1).
+ * `ok · 0,8 s` / `error · 2,1 s` después (el ms/ok que pi).
  */
 export function testBadge(result: TestResult | null): string {
   if (!result) return 'listo';
@@ -619,7 +619,7 @@ function StatusCard() {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
 
-  /** «Probar» (v1 `coach:test`): un ping real y el ms/ok en la propia tarjeta. */
+  /** «Probar» (antes `coach:test`): un ping real y el ms/ok en la propia tarjeta. */
   async function runTest(): Promise<void> {
     if (testing) return;
     setTesting(true);
@@ -803,10 +803,10 @@ export interface QuickAction {
   task: CoachTask;
   label: string;
   icon: string;
-  /** lo que se apila en el chat como pregunta del usuario (paridad con la v1) */
+  /** lo que se apila en el chat como pregunta del usuario (paridad con antes) */
   ask: string;
   /**
-   * pestaña a la que saltar cuando la tarea termina. La v1 solo lo hacía el
+   * pestaña a la que saltar cuando la tarea termina. antes solo lo hacía el
    * chip «Sesión de hoy» (`coach:quick` → `App.router.go('hoy')`): la
    * propuesta ya está lista y la pestaña Hoy tiene su tarjeta con «Empezar».
    */
@@ -815,7 +815,7 @@ export interface QuickAction {
 
 /**
  * Los 6 chips de `views-coach.js:30`, con sus mismos iconos y textos. Los tres
- * últimos la v1 los mandaba al chat con `send(prompts[kind])`, así que aquí son
+ * últimos antes los mandaba al chat con `send(prompts[kind])`, así que aquí son
  * una tarea `chat` con el MISMO `ask` (se apila como mensaje del usuario).
  */
 export const QUICK_ACTIONS: readonly QuickAction[] = [
@@ -1092,7 +1092,7 @@ export function CoachView() {
       ts: nowTs(),
     });
     /* El plan YA está en el calendario: se salta a verlo, igual que acababa la
-       v1 (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). Si
+       antes (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). Si
        quedan creables, NO se salta: la tarjeta está en esta pestaña. */
     toast(`Semana agendada: ${out.days} días, ${out.routines} rutinas creadas`, { kind: 'ok' });
     if (warnings.length) {

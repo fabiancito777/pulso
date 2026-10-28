@@ -3,7 +3,7 @@
  *
  * Estaba dentro de `App.tsx` (v2 solo la enseñaba en la pestaña Entrenar); la
  * pestaña Hoy la muestra también, así que sale a su propio módulo. El `TOOL_MODE_KEY`
- * recuerda el modo por herramienta (barra/mancuerna…) igual que en la v1, donde
+ * recuerda el modo por herramienta (barra/mancuerna…) igual que, donde
  * cada sitio donde vivía la calculadora tenía su llave.
  */
 import { useState } from 'preact/hooks';
@@ -24,7 +24,7 @@ export function PlatesCard() {
           <b>Calculadora de discos</b>
           <HelpBtn id="opt.plates" title="Discos disponibles" />
         </div>
-        <span class="tiny muted">usa tus ajustes reales de la v1</span>
+        <span class="tiny muted">usa tus ajustes reales</span>
       </div>
       <Plates
         plates={s.plates}

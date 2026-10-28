@@ -1,6 +1,6 @@
 /**
  * Picker de rutinas en modal para añadir una rutina a la sesión EN CURSO
- * (v1 `ui.routinePicker` de `app.js:372`, con el mismo aviso: lo que ya está
+ * (antes `ui.routinePicker` de `app.js:372`, con el mismo aviso: lo que ya está
  * hecho no se toca y la rutina se apila al final).
  *
  * Es el "añadir rutina" del criterio 3 de la spec: la rutina se transforma en

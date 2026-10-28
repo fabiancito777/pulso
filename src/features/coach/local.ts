@@ -2,13 +2,8 @@
  * Planificador LOCAL del coach: `localSuggest` (entreno de hoy) y `localWeek`
  * (plan de 7 días) sin red, sin API key y sin estado.
  *
- * Es el port de `C.localSuggest` / `C.localWeek` de la v1
- * (`legacy/js/coach.js` ~309 y ~367) a la forma que ya consumen la v2:
- * `applySuggestionAsRoutine` y `applyWeek` (`state/coach.ts`), la tarjeta de
- * CoachView y `RoutinesView`/`CalendarView`, que leen `outcome.text` con
- * `parseJSON`. Por eso la salida es JSON «de modelo»: `SuggestJSON` con
- * `exercises` y `PlanJSON` con `days` (la v1 devolvía `items`/`iso`, que
- * `apply…` de la v2 también acepta como alias).
+ * La salida es JSON «de modelo»: `SuggestJSON` con `exercises` y `PlanJSON` con
+ * `days`. `apply…` también acepta `items`/`iso` como alias.
  *
  * Las decisiones que no se pueden romper:
  *
@@ -19,8 +14,8 @@
  *   aparece (no se propone nada imposible de cargar).
  * - **Peso**: `suggestWeight` de `analytics` (inyectable con `suggest`, igual
  *   que `StartOptions.suggest`), siempre en la unidad del usuario.
- * - **`source: 'local'`** (la v1): al guardar, `apply…` lo traduce a
- *   `generador`, que es como la v1 etiquetaba la rutina nacida aquí.
+ * - **`source: 'local'`** (antes): al guardar, `apply…` lo traduce a
+ *   `generador`, que es como antes etiquetaba la rutina nacida aquí.
  */
 import { daysSince, groupSets, lastTrained, sessionsSince } from '@/domain/analytics';
 import { GOAL_REPS, GOAL_SETS, GROUPS, goalLabel, groupKeysInUse, groupLabel } from '@/domain/data';
@@ -104,7 +99,7 @@ interface ScoredGroup {
   score: number;
 }
 
-/** `serie`/`series`, el `U.plural` de la v1. */
+/** `serie`/`series`, el `U.plural`. */
 function plural(n: number, singular: string, pluralWord: string): string {
   return `${n} ${n === 1 ? singular : pluralWord}`;
 }
@@ -142,7 +137,7 @@ function focusOf(items: readonly PlanExercise[]): string {
  * bloque de core si no ha salido).
  *
  * **Primer día** (0 sesiones): no hay nada que puntuar, así que se va DIRECTO a
- * la receta de cuerpo completo de la v1 (`cuadriceps 1 + pecho 1 + espalda 1`),
+ * la receta de cuerpo completo  (`cuadriceps 1 + pecho 1 + espalda 1`),
  * igual que cuando ningún grupo punteado tiene material: «Sugerir entreno»
  * nunca devuelve una lista vacía y el `rationale` dice de dónde sale.
  */
@@ -157,7 +152,7 @@ export function localSuggest(params: LocalParams): SuggestJSON {
   const sets7 = groupSets(week, exercises);
   const sinHistorial = sessions.length === 0;
 
-  /* cardio y movilidad se miden en minutos: aquí no puntúan (v1). Y los grupos
+  /* cardio y movilidad se miden en minutos: aquí no puntúan (antes). Y los grupos
      sin ningún ejercicio (cardio/movilidad de serie y los añadidos a mano) no
      son candidatos: puntuarlos haría que un grupo vacío gastara un hueco. */
   const skip = new Set(['cardio', 'movilidad']);
@@ -183,7 +178,7 @@ export function localSuggest(params: LocalParams): SuggestJSON {
 
   scored.slice(0, counts.length).forEach((entry, i) => {
     const picked = pickForGroup(input, entry.key, counts[i], { used, rotate: 2 });
-    if (!picked.length) return; /* sin material: el grupo no sale (v1) */
+    if (!picked.length) return; /* sin material: el grupo no sale  */
     for (const ex of picked) used[ex.id] = true;
     items.push(
       ...richItems(

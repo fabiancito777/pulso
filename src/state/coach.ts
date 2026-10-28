@@ -4,13 +4,13 @@
  * `features/coach` y `store`, nunca `@/ui`).
  *
  * Es el port de `C.suggestWorkout` / `C.planWeek` / `C.analyzeProgress` /
- * `C.chat` / `C.applySuggestionAsRoutine` / `C.applyWeek` de la v1
- * (`legacy/js/coach.js`), sin red ni DOM: el texto se monta en `context` +
+ * `C.chat` / `C.applySuggestionAsRoutine` / `C.applyWeek`
+ * (), sin red ni DOM: el texto se monta en `context` +
  * `prompts`, la llamada sale por `client.generate` (inyectable con
  * `CoachDeps.generateFn`) y lo único que se persiste es la memoria
  * (`patchSettings`) y las rutinas, días y `meta` del store.
  *
- * Reglas que no se pueden romper (las mismas que la v1):
+ * Reglas que no se pueden romper (las mismas que antes):
  *
  * - **Bucle de consulta**: solo `chat` y `analyze` pueden emitir un bloque
  *   ```consulta```; la app lo responde con `queryHistory` y repite la llamada
@@ -27,7 +27,7 @@
  *   throw, para que «probar el coach» sin key no acabe en un error rojo.
  * - **Con key pero la llamada falla**: se cae al plan local SOLO en
  *   `GeminiError` de kind `auth`/`network`/`quota` y SOLO en `suggest`/`plan`
- *   (misma idea que el `.catch` de la v1, que devolvía el local con «IA no
+ *   (misma idea que el `.catch`, que devolvía el local con «IA no
  *   disponible»); `blocked`/`parse`/`empty`/`http` se propagan porque son
  *   fallos que el usuario debe ver, no un plan que disfraza un error.
  *   Ese caída **se MARCA** en el outcome (`origin: 'local'` + `fallback` con el
@@ -168,7 +168,7 @@ export const CREABLE_REASON = 'no está en tu biblioteca';
 
 /* ---------- constantes ---------- */
 
-/** Sesiones de contexto por tarea (el mismo reparto que la v1). */
+/** Sesiones de contexto por tarea (el mismo reparto que antes). */
 const SESSIONS_BY_TASK: Record<CoachTask, number> = {
   chat: 8,
   suggest: 10,
@@ -196,7 +196,7 @@ const QUERY_ALIAS: Record<string, keyof HistoryQuery> = {
   limit: 'limit',
 };
 
-/** Semanas del análisis (el mismo tope que la v1). */
+/** Semanas del análisis (el mismo tope que antes). */
 const ANALYZE_WEEKS = 6;
 
 /**
@@ -255,7 +255,7 @@ function dayIsoOf(value: unknown): string {
 
 /**
  * Resuelve una lista de ejercicios propuestos contra la biblioteca: acepta
- * `name`/`exercise`/`ejercicio` (los del coach IA) y `exId` (los de la v1), con
+ * `name`/`exercise`/`ejercicio` (los del coach IA) y `exId` (los ), con
  * el MISMO matcher que `resolveName` y `resolvePlan` (`domain/match`, umbral
  * 0,85 + veto de atributos).
  *
@@ -308,7 +308,7 @@ function resolveItems(list: unknown): {
 
 /**
  * `notes` de una rutina propuesta: lo que traiga el objeto + el `rationale`
- * concatenado, separados con ` | ` y sin trozos vacíos (la v1 dejaba un `|`
+ * concatenado, separados con ` | ` y sin trozos vacíos (antes dejaba un `|`
  * suelto cuando no había `notes`).
  */
 function joinNotes(notes: string, rationale: string): string {
@@ -329,8 +329,8 @@ function rationaleText(value: unknown): string {
 /**
  * Origen que se guarda en la RUTINA: `'ia'` manda y lo que traía
  * `localSuggest`/`localWeek` (`'local'`) se guarda como `'generador'`, que es
- * como la v1 etiquetaba lo nacido en el planificador del dispositivo
- * (`sug.source === 'ia' ? 'ia' : 'generador'`). El resto de orígenes pasa tal
+ * como antes etiquetaba lo nacido en el planificador del dispositivo
+ * (`sug.source === 'ia' ? 'ia': 'generador'`). El resto de orígenes pasa tal
  * cual, para no pisar rutinas importadas o manuales.
  */
 function routineSource(raw: string): string {
@@ -371,7 +371,7 @@ function parseQuery(block: string): HistoryQuery | null {
   return query;
 }
 
-/** Bloque extra del contexto, igual que la v1 (`DÍA DE HOY` / `SEMANA OBJETIVO`). */
+/** Bloque extra del contexto, igual que antes (`DÍA DE HOY` / `SEMANA OBJETIVO`). */
 function contextExtra(
   task: CoachTask,
   todayIso: string,
@@ -759,7 +759,7 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
 
 /**
  * Aplica un plan semanal del coach: cada día apunta el calendario
- * (`status: 'rest'` para `descanso`, `'planned'` para el resto, como la v1) y,
+ * (`status: 'rest'` para `descanso`, `'planned'` para el resto, como antes) y,
  * si el día trae ejercicios reconocibles, se crea su rutina (`source: 'ia'` o
  * `'generador'` para el plan local, nombre `título · fecha`) y se enlaza con
  * `routineId`.

@@ -1,5 +1,5 @@
 /**
- * Datos de ejemplo (port puro de `S.demoData` de la v1): aquí solo se verifica
+ * Datos de ejemplo (port puro de `S.demoData` ): aquí solo se verifica
  * lo que decide SI las gráficas de ejemplo salen iguales en las dos ramas —
  * patrón de días, plantillas, ausencia de fechas futuras, progresión de peso y
  * marca `demo` — sin tocar el estado.
@@ -30,7 +30,7 @@ function options(over: Partial<DemoOptions> = {}): DemoOptions {
 }
 
 describe('demoSessions', () => {
-  it('genera sesiones con la forma de la v1: demo, source, rpe y sin futuro', () => {
+  it('genera sesiones con la forma esperada: demo, source, rpe y sin futuro', () => {
     const list = demoSessions(options());
     expect(list.length).toBeGreaterThan(0);
 

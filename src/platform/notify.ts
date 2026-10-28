@@ -1,12 +1,10 @@
 /**
- * Permiso y notificaciones del sistema. Port de lo que la v1 hacía suelto en
- * `legacy/js/app.js:196` (al activar el ajuste) y `:1255` (al arrancar una
- * sesión): aquí es una sola función para que Ajustes (y quien arranque sesión)
- * la llamen SIN envolver en `setTimeout` — Safari iOS solo permite
- * `requestPermission` dentro de un gesto del usuario.
+ * Permiso y notificaciones del sistema. Una sola función para que Ajustes (y
+ * quien arranque sesión) la llamen SIN envolver en `setTimeout`: Safari iOS solo
+ * permite `requestPermission` dentro de un gesto del usuario.
  *
  * Solo se pide si el permiso está en `default`; si ya está concedido o
- * denegado se devuelve tal cual y la UI avisa (la v1 se callaba).
+ * denegado se devuelve tal cual y la UI avisa (antes se callaba).
  *
  * A eso se suman `pageNotify` y `notifyEnd` (`core.js:370`, `trainer.js:285-300`),
  * las dos formas de lanzar el aviso:
@@ -16,7 +14,7 @@
  * - `notifyEnd`: fin de descanso. Con la pestaña OCULTA el aviso lo manda el
  *   service worker (`notify`), que además ya tenía la hora programada; si el SW no
  *   controla la página (dev, `file://`, primera carga) se notifica en la página.
- *   Con la pestaña VISIBLE manda `pageNotify`, igual que la v1: el sistema no
+ *   Con la pestaña VISIBLE manda `pageNotify`, igual que antes: el sistema no
  *   muestra la notificación si la app está delante y el pitido ya avisa.
  *
  * Todo envuelto en try/catch y con el permiso comprobado dentro: un aviso que no
@@ -52,7 +50,7 @@ export function requestNotifyPermission(): NotifyPermissionState {
 }
 
 export interface NotifyOptions {
-  /** Mismo `tag` que la v1: una sola notificación de descanso viva. */
+  /** Mismo `tag` que antes: una sola notificación de descanso viva. */
   tag?: string;
 }
 

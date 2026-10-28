@@ -2,14 +2,15 @@
 import type { BarWeights, PlateStock, Settings } from './types';
 
 /**
- * Inventario por defecto en DISCOS sueltos: 16 de 3 kg (8 por lado), etc.
+ * Inventario por defecto en DISCOS sueltos: 8 de 3 kg (4 por lado), 4 de 2,5 kg,
+ * 4 de 1,25 kg y 4 de cada medida en libras.
  */
 export const PLATES_DEFAULT: readonly PlateStock[] = [
-  { w: 3, unit: 'kg', discs: 16, on: true },
-  { w: 2.5, unit: 'kg', discs: 8, on: true },
-  { w: 1.25, unit: 'kg', discs: 8, on: true },
-  { w: 5, unit: 'lb', discs: 8, on: true },
-  { w: 2.5, unit: 'lb', discs: 8, on: true },
+  { w: 3, unit: 'kg', discs: 8, on: true },
+  { w: 2.5, unit: 'kg', discs: 4, on: true },
+  { w: 1.25, unit: 'kg', discs: 4, on: true },
+  { w: 5, unit: 'lb', discs: 4, on: true },
+  { w: 2.5, unit: 'lb', discs: 4, on: true },
 ];
 
 /** Barra de plástico: pesa 0 kg, todo el peso lo ponen los discos. */

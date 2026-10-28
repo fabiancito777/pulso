@@ -1,6 +1,6 @@
 /**
  * Descargar y leer archivos (exportar/importar copia de seguridad).
- * Es la parte con DOM de `U.download`/`U.readFile` de la v1, separada del dominio
+ * Es la parte con DOM de `U.download`/`U.readFile`, separada del dominio
  * para que el store siga siendo probable en Node.
  */
 import { iso } from '@/domain/dates';

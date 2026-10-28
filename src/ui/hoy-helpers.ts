@@ -17,7 +17,7 @@
  * - **La semana se dibuja desde el lunes** con `weekDates` (ISO local), nunca
  *   con `toISOString()`.
  * - **`repeatItems` reparte el peso máximo** de cada ejercicio (el de la serie
- *   con más peso, como la v1) y deja el `basis` «repetición de …» para que la
+ *   con más peso, como antes) y deja el `basis` «repetición de …» para que la
  *   sesión cargada diga de dónde sale el peso.
  */
 import { sessionDate, volumeOf, weeklySeries } from '@/domain/analytics';
@@ -38,7 +38,7 @@ import type { RoutineSuggestion } from './routines-helpers';
 export type TodayStatus = 'done' | 'plan' | 'empty';
 
 /**
- * `PlanItem` con lo que la v1 metía dentro de `day.plan` y de la repetición:
+ * `PlanItem` con lo que antes metía dentro de `day.plan` y de la repetición:
  * `reps` concretas, el `basis` («repetición de 24 sep») y las `notes`.
  *
  * Es un PLANO del plan, no una sesión: `startFromPlan` lo recibe tal cual y
@@ -46,7 +46,7 @@ export type TodayStatus = 'done' | 'plan' | 'empty';
  * con lo que la tarjeta de cada ejercicio explica de dónde sale el peso.
  */
 export interface PlanLine extends PlanItem {
-  /** reps concretas (la v1 las traía en `day.plan`; en repetición, la del top set) */
+  /** reps concretas (antes las traía en `day.plan`; en repetición, la del top set) */
   reps?: number;
   /** de dónde sale el peso propuesto («repetición de 24 sep 2026») */
   basis?: string;
@@ -59,7 +59,7 @@ export interface TodayPlan {
   title: string;
   /** Etiqueta del tipo de día ya resuelta («Entreno», «Descanso», «Libre»…). */
   type: string;
-  /** Ejercicios a arrancar (rutina resuelta o `day.plan` de la v1). */
+  /** Ejercicios a arrancar (rutina resuelta o `day.plan` ). */
   items: PlanLine[];
   /** Rutina del día; `null` si no hay o colgaba de una rutina borrada. */
   routineId: string | null;
@@ -85,7 +85,7 @@ function isPlain(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * `day.plan` (los días con plan suelto de la v1, sin rutina asociada). Lo que no
+ * `day.plan` (los días con plan suelto, sin rutina asociada). Lo que no
  * traiga ni `exId` ni `name` se descarta: un item sin ejercicio no se puede
  * arrancar ni resolver (`resolvePlan` lo saltaría igual).
  */
@@ -121,7 +121,7 @@ function dayItems(day: ScheduleDay | null | undefined): PlanLine[] {
 
 /**
  * Plan de hoy resuelto: qué estado tiene el hero, con qué título y con qué
- * ejercicios se puede arrancar. Es el `todayPlan` de `legacy/js/views-train.js`
+ * ejercicios se puede arrancar. Es el `todayPlan` de
  * con el estado ya normalizado a los tres casos que pinta la vista.
  */
 export function todayPlan(
@@ -141,7 +141,7 @@ export function todayPlan(
   const status: TodayStatus =
     day?.status === 'done' || doneToday > 0 ? 'done' : items.length ? 'plan' : 'empty';
 
-  /* El tipo sin escribir: una rutina o un `day.plan` es «Entreno» (la v1 lo
+  /* El tipo sin escribir: una rutina o un `day.plan` es «Entreno» (antes lo
      resolvía en el hero con `plan.type || 'entreno'`), lo demás lo decide el
      estado del día («Libre», «Descanso», «Sesión»…). */
   const state = dayState(day, doneToday);
@@ -168,7 +168,7 @@ export interface PlanRow {
 
 /**
  * Filas del hero (los primeros 8 ejercicios del plan). El nombre se resuelve
- * contra la biblioteca y el texto es el de la v1: `sets × reps` con las reps
+ * contra la biblioteca y el texto es el: `sets × reps` con las reps
  * concretas si las hay, si no la media del rango, y `@ peso` solo si hay peso
  * (un peso vacío no es 0: es «sin peso»).
  */
@@ -247,7 +247,7 @@ export interface WeekKpis {
   volume: number;
   sets: number;
   minutes: number;
-  /** % frente a la semana previa; `null` = sin comparativa (como la v1). */
+  /** % frente a la semana previa; `null` = sin comparativa (como antes). */
   deltaPct: number | null;
   /** `settings.daysPerWeek` */
   objective: number;
@@ -256,7 +256,7 @@ export interface WeekKpis {
 /**
  * KPIs de los últimos 7 días con su comparativa contra la semana anterior.
  *
- * El `0` de la v1 no se pinta como «+0 %»: si la semana previa está vacía (o el
+ * El `0`  no se pinta como «+0 %»: si la semana previa está vacía (o el
  * resultado redondea a 0) devuelve `null` y la UI escribe «sin comparativa»,
  * exactamente como el `kpis()` de `views-train.js`.
  */
@@ -286,7 +286,7 @@ export function weekKpis(
 /* ---------- repetir una sesión ---------- */
 
 /**
- * Items para repetir una sesión: nº de series de la v1, el peso y las reps de la
+ * Items para repetir una sesión: nº de series, el peso y las reps de la
  * serie MEJOR cargada (mayor peso) y el `basis` que dirá de dónde sale el peso.
  *
  * Una entrada sin series (JSON a mano) sigue devolviendo 1 serie: no se puede
@@ -317,7 +317,7 @@ export function repeatItems(session: Session): PlanLine[] {
 }
 
 /**
- * Las últimas sesiones (las 4 de la v1) ya ordenadas de más reciente a más
+ * Las últimas sesiones (las 4 ) ya ordenadas de más reciente a más
  * antigua. El orden lo manda `startedAt` (no `date`, que puede repetirse al
  * importar datos), y como `readState` acepta cualquier JSON, el sort es
  * DEFENSIVO: no muta la lista original ni asume que hay `startedAt`.
@@ -334,7 +334,7 @@ export function lastSessions(sessions: readonly Session[], limit = 4): Session[]
 
 /**
  * Saludo del día: mañana (< 13 h), tarde (< 20 h) o noche, con el PRIMER
- * nombre si hay nombre guardado (era lo que ponía `V.sub` en la barra de la v1).
+ * nombre si hay nombre guardado (era lo que ponía `V.sub` en la barra ).
  */
 export function greeting(hour: number, name: string): string {
   const greet = hour < 13 ? 'Buenos días' : hour < 20 ? 'Buenas tardes' : 'Buenas noches';
@@ -352,7 +352,7 @@ export interface SuggestRow {
   /** clave de grupo muscular («» si el ejercicio no está en la biblioteca) */
   group: string;
   sets: number;
-  /** reps concretas: la media del rango, como la v1 */
+  /** reps concretas: la media del rango, como antes */
   reps: number;
   weight: number | null;
   matched: boolean;
@@ -360,7 +360,7 @@ export interface SuggestRow {
 
 /**
  * Filas de la sugerencia: el grupo sale de la biblioteca (la propuesta solo
- * trae el nombre), y las reps son la media del rango como en la v1
+ * trae el nombre), y las reps son la media del rango como
  * (`i.sets + '×' + i.reps`).
  */
 export function suggestionRows(
@@ -400,8 +400,8 @@ export function suggestionPlan(suggestion: RoutineSuggestion): PlanLine[] {
 }
 
 /**
- * Origen visible de la sugerencia: el mismo badge de la v1
- * (`source === 'ia' ? 'IA' : 'local'`, `views-train.js:68`).
+ * Origen visible de la sugerencia: el mismo badge
+ * (`source === 'ia' ? 'IA': 'local'`, `views-train.js:68`).
  *
  * `fallback` cubre el caso del payload SIN `source`: calculado aquí es `local`,
  * pero cuando el payload viene del coach ya sabemos que fue IA (aunque el modelo

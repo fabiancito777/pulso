@@ -1,7 +1,7 @@
 /**
  * Onboarding de primera vez (`meta.onboarded`).
  *
- * La v1 lo hacía todo dentro del modal (`legacy/js/app.js:204`); aquí la lógica
+ * antes lo hacía todo dentro del modal (); aquí la lógica
  * se separa de la UI para poder probarla sin DOM: el modal solo recoge los
  * valores y llama a `applyOnboarding`.
  *
@@ -12,7 +12,7 @@
 import { equipPreset } from '@/domain/data';
 import { applyEquipment, setMeta, setSettingsPath } from '@/state/store';
 
-/** Lo que el usuario elige en el modal (los mismos campos que la v1). */
+/** Lo que el usuario elige en el modal (los mismos campos que antes). */
 export interface OnboardingValues {
   name: string;
   goal: string;
@@ -30,7 +30,7 @@ export function markOnboarded(): void {
 /**
  * Aplica lo elegido y cierra el onboarding.
  *
- * `values === null` = «Configurar después»: solo se marca como visto (la v1
+ * `values === null` = «Configurar después»: solo se marca como visto (antes
  * hacía exactamente lo mismo, `app.js:253-254`). Con datos se escriben las 4
  * claves de ajustes (una a una, con la misma ruta que usa Ajustes) y el preset
  * de material entero de una sola escritura.

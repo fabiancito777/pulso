@@ -1,5 +1,5 @@
 /**
- * El bloque de contexto completo: secciones de la v1 más las dos nuevas
+ * El bloque de contexto completo: secciones  más las dos nuevas
  * (`APRENDIZAJE DEL COACH` y `MEMORIA DEL COACH`).
  *
  * Todo se monta con fixtures y `todayIso` fijo, así que el texto es estable y
@@ -95,7 +95,7 @@ const params = (over: Partial<BuildContextParams> = {}): BuildContextParams => (
 
 const context = (over: Partial<BuildContextParams> = {}): string => buildContext(params(over));
 
-describe('secciones de la v1', () => {
+describe('secciones del contexto', () => {
   const text = context();
 
   it('monta las ocho secciones originales', () => {
@@ -126,7 +126,7 @@ describe('secciones de la v1', () => {
     expect(text).toContain('Inventario de discos');
     expect(text).toContain('unidades = discos sueltos');
     expect(text).toContain('con original entre paréntesis');
-    expect(text).toContain('3 kg · 16 discos');
+    expect(text).toContain('3 kg · 8 discos');
     expect(text).toContain('Máximo cargable total');
   });
 

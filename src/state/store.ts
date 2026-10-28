@@ -56,14 +56,14 @@ import {
 export const STATE_KEY = 'pulso.state';
 /**
  * Versión documental del formato. La migración de placas NO depende de aquí
- * (v1 y v2 inicial exportan `1`): el marcador es por fila, un `discs` presente
+ * (antes y v2 inicial exportan `1`): el marcador es por fila, un `discs` presente
  * significa «ya en unidades» (`normalizePlates`).
  */
 export const STATE_VERSION = 2;
 
 /**
  * Claves sueltas de `localStorage` (fuera del estado), con el mismo nombre que les
- * da la v1 (`U.st` prefija `pulso.`). El descanso va aparte porque cambia cada 15
+ * da antes (`U.st` prefija `pulso.`). El descanso va aparte porque cambia cada 15
  * segundos y no merece reescribir todo el estado.
  */
 export const STORAGE_KEYS = { state: STATE_KEY, rest: 'pulso.rest' } as const;
@@ -235,7 +235,7 @@ export function readStored<T = unknown>(key: string): T | null {
   }
 }
 
-/** Escribe (o borra, con `null`) una clave suelta. Mismo formato que la v1. */
+/** Escribe (o borra, con `null`) una clave suelta. Mismo formato que antes. */
 export function writeStored(key: string, value: unknown): boolean {
   if (!storageAvailable) return false;
   try {
@@ -252,12 +252,12 @@ export function writeStored(key: string, value: unknown): boolean {
 
 /**
  * Registro de «ya están sembradas las rutinas personales» (array de ids).
- * MISMO nombre que en la v1 (`U.st` de `store.js` prefija `pulso.`), y vive
+ * MISMO nombre que  (`U.st` de `store.js` prefija `pulso.`), y vive
  * FUERA del estado: si borras todo desde Ajustes no vuelven a aparecer.
  */
 export const SEED_KEY = 'pulso.seeded-routines';
 
-/** Registro de «ya apliqué el inventario por defecto de la v1» (`store.js:210`). */
+/** Registro de «ya apliqué el inventario por defecto » (`store.js:210`). */
 export const SETUP_KEY = 'pulso.applied-setup';
 
 /** Id de esa migración (el `SETUP_ID` de `store.js:211`). */
@@ -268,7 +268,7 @@ const SETUP_ID = 'inventario-v2';
  * rutinas concretas que el usuario pidió dejar cargadas una sola vez. Es el
  * `PERSONAL_ROUTINES` de `store.js:36`, con el MISMO orden y el mismo contenido
  * (series, reps, descansos y notas), pero los `exId` apuntan a la semilla de 24:
- * los ids de la v1 (`remo-con-mancuerna-a-una-mano`…) dejaron de existir y un
+ * los ids  (`remo-con-mancuerna-a-una-mano`…) dejaron de existir y un
  * id huerfano se pintaría como «ejercicio desconocido» en la tarjeta.
  */
 const PERSONAL_ROUTINES: readonly Routine[] = [
@@ -405,7 +405,7 @@ interface SeedResult {
  *
  * - el registro va en `pulso.seeded-routines`, fuera del estado;
  * - si el id YA está en `state.routines` solo se marca como sembrada: no se
- *   duplica y NO se toca el calendario (igual que la v1, que hacía `return`
+ *   duplica y NO se toca el calendario (igual que antes, que hacía `return`
  *   antes de agendar);
  * - `schedule[hoy]` solo se rellena si ese día está libre
  *   (`sin routineId, sin plan y sin title`);
@@ -454,11 +454,11 @@ function seedPersonalRoutines(state: AppState, profileId: string): SeedResult {
 }
 
 /**
- * Registra la migración de inventario de la v1 (`applyPersonalSetup`,
+ * Registra la migración de inventario  (`applyPersonalSetup`,
  * `store.js:212`) con su MISMA clave y su MISMO id, para que no se vuelva a
  * aplicar desde ninguna de las dos ramas.
  *
- * La v1 REESCRIBÍA aquí `settings.plates`, `settings.bars` y `equipment` con
+ * antes REESCRIBÍA aquí `settings.plates`, `settings.bars` y `equipment` con
  * los valores nuevos por defecto. En v2 esos valores YA son los de
  * `inventario-v2` (`DEFAULT_SETTINGS` y `defaultEquipment()` están portados de
  * `data.js`), así que aplicarlos de nuevo solo pisaría el inventario que ya
@@ -487,7 +487,7 @@ function markProfileSeeded(profileId: string): void {
 }
 
 /**
- * Carga inicial del estado: lo que hacía `S.load()` de la v1 (`store.js:136`)
+ * Carga inicial del estado: lo que hacía `S.load()`  (`store.js:136`)
  * al arrancar — leer `pulso.state`, aplicar el setup personal y sembrar las
  * rutinas personales.
  *
@@ -564,7 +564,7 @@ export function setEquipment(key: string, on: boolean): void {
 /**
  * Semilla de la biblioteca por defecto: los 24 ejercicios curados de
  * `domain/seed.ts`. El catálogo completo de `catalog.ts` (136) ya no se le pone
- * al usuario: sigue ahí para las copias de la v1 y para los tests de integridad.
+ * al usuario: sigue ahí para las copias  y para los tests de integridad.
  * `mergeSeed` se aplica SIEMPRE sobre esta lista, no sobre `SEED_EXERCISES`.
  */
 const SEED: readonly Exercise[] = seedExercises();
@@ -573,12 +573,12 @@ const SEED: readonly Exercise[] = seedExercises();
  * Qué se persiste de la biblioteca: los propios, los prohibidos y los que
  * llevan un flag de usuario (★ u oculto). El resto se rederiva de la semilla al
  * arrancar, así que guardarlo solo hincharía el `pulso.state` que comparten
- * v2 y `v1-final`.
+ * v2 y `la versión anterior`.
  *
  * Ojo con los dos flags: sin este filtro una estrella puesta en un ejercicio del
  * catálogo «funcionaría» en pantalla y **desaparecería al recargar**. Los que no
  * están activos se omiten de la fila persistida, así que el formato que lee la
- * v1 no cambia (solo se le añaden dos claves opcionales cuando valen `true`).
+ * antes no cambia (solo se le añaden dos claves opcionales cuando valen `true`).
  */
 function persistExercises(next: readonly Exercise[]): void {
   const state = readState();
@@ -594,7 +594,7 @@ function persistExercises(next: readonly Exercise[]): void {
 }
 
 /**
- * Biblioteca ya fusionada con lo guardado (se lee al arrancar, igual que la v1).
+ * Biblioteca ya fusionada con lo guardado (se lee al arrancar, igual que antes).
  * Los ejercicios de biblioteca son la semilla; los del usuario (`custom`), los
  * flags permitido/prohibido y los flags de usuario (★ / oculto) vienen del
  * estado y se conservan.
@@ -614,7 +614,7 @@ export function setExerciseAllowed(id: string, allowed: boolean): void {
 /* ---------- ajustes anidados ---------- */
 
 /**
- * Ajusta una ruta de ajustes (`bars.olimpica`, `ai.temperature`). En la v1 esto
+ * Ajusta una ruta de ajustes (`bars.olimpica`, `ai.temperature`).  esto
  * era `App.setSettingPath` y se usaba desde los `data-key` de la vista de Ajustes;
  * aquí se resuelve con una ruta explícita en vez de por DOM.
  */
@@ -693,7 +693,7 @@ export function findRoutine(id: string | null | undefined): Routine | null {
 /* ---------- rutinas: edición ---------- */
 
 /**
- * Normaliza los items como hacía `S.addRoutine` de la v1: números con su valor por
+ * Normaliza los items como hacía `S.addRoutine`: números con su valor por
  * defecto y `weight` en `null` cuando no hay peso prescrito (un `''` no es un peso).
  * Así una rutina escrita desde la v2 se lee exactamente igual en `main`.
  */
@@ -720,7 +720,7 @@ function normalizeRoutineItems(value: unknown): RoutineItem[] {
  * Añade una rutina (generando el id si no trae) y la persiste.
  *
  * Mismo read-modify-write que el resto de setters: se parte SIEMPRE de lo que hay
- * en `localStorage`, nunca del signal, porque la v1 puede estar escribiendo el mismo
+ * en `localStorage`, nunca del signal, porque antes puede estar escribiendo el mismo
  * estado en otra pestaña.
  */
 export function addRoutine(r: Omit<Routine, 'id'> & { id?: string }): Routine {
@@ -744,7 +744,7 @@ export function addRoutine(r: Omit<Routine, 'id'> & { id?: string }): Routine {
 
 /**
  * Parchea una rutina existente. El `id` NO se puede cambiar: el calendario lo
- * referencia (`schedule[día].routineId`). Devuelve `null` si no existe, como la v1.
+ * referencia (`schedule[día].routineId`). Devuelve `null` si no existe, como antes.
  */
 export function updateRoutine(id: string, patch: Partial<Routine>): Routine | null {
   const state = readState();
@@ -760,7 +760,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
 
 /**
  * Borra una rutina y desatasca el calendario: los días que la apuntaban pierden su
- * `routineId` (la v1 borraba ese campo, no el día entero).
+ * `routineId` (antes borraba ese campo, no el día entero).
  */
 export function removeRoutine(id: string): void {
   const state = readState();
@@ -784,12 +784,12 @@ export function removeRoutine(id: string): void {
 
 /**
  * Duplica una rutina: id nuevo, nombre «… (copia)» y `createdAt` de ahora —
- * tal cual `S.duplicateRoutine` de la v1 (`store.js:357`).
+ * tal cual `S.duplicateRoutine`  (`store.js:357`).
  *
  * Los items pasan por `normalizeRoutineItems` (lo mismo que `addRoutine`) y el
  * resto se clona en profundidad: la copia NO puede compartir objetos con el
  * original, o editar una rutina modificaría también la otra. Devuelve `null`
- * si no existe, como la v1.
+ * si no existe, como antes.
  */
 export function duplicateRoutine(id: string): Routine | null {
   const state = readState();
@@ -812,15 +812,15 @@ export function duplicateRoutine(id: string): Routine | null {
 /* ---------- meta ---------- */
 
 /**
- * Lo que la v1 guarda en `state.meta` (¿quién vio el onboarding?, cuándo pidió el
+ * Lo que antes guarda en `state.meta` (¿quién vio el onboarding?, cuándo pidió el
  * coach un plan por última vez…). Mismas claves que `store.js` de `main`.
  */
 export const DEFAULT_META = { onboarded: false, lastPlanAt: null, lastAiAt: null };
 
-/** `state.meta`, reactivo. Las claves desconocidas se conservan (mismo merge que la v1). */
+/** `state.meta`, reactivo. Las claves desconocidas se conservan (mismo merge que antes). */
 export const meta = signal<Record<string, unknown>>(withDefaults(initial.meta, DEFAULT_META));
 
-/** Mezcla claves en `state.meta` (lo que hacía `S.setMeta` de la v1). */
+/** Mezcla claves en `state.meta` (lo que hacía `S.setMeta` ). */
 export function setMeta(patch: Record<string, unknown>): void {
   const next: Record<string, unknown> = { ...meta.value, ...patch };
   const state = readState();
@@ -836,7 +836,7 @@ export const schedule = signal<Record<string, ScheduleDay>>(
   isPlainObject(initial.schedule) ? { ...(initial.schedule as Record<string, ScheduleDay>) } : {},
 );
 
-/** Apunta un día (es lo que hacía `S.setDay` de la v1). */
+/** Apunta un día (es lo que hacía `S.setDay` ). */
 export function setDay(iso: string, patch: Partial<ScheduleDay>): void {
   const next = { ...schedule.value, [iso]: { ...(schedule.value[iso] ?? {}), ...patch } };
   const state = readState();
@@ -846,15 +846,15 @@ export function setDay(iso: string, patch: Partial<ScheduleDay>): void {
 }
 
 /**
- * Borra un día del calendario entero: es `S.clearDay` de la v1 (`store.js:402`).
+ * Borra un día del calendario entero: es `S.clearDay`  (`store.js:402`).
  *
  * NO se cubre con `setDay(iso, { …: undefined })`: el merge de `setDay` deja la
- * clave en el mapa (un `{}` que además se persiste), mientras que la v1 hacía
+ * clave en el mapa (un `{}` que además se persiste), mientras que antes hacía
  * `delete state.schedule[iso]` y `S.getDay(iso)` devolvía `null`.
  *
  * Ojo, es distinto del `clearDayPatch` del Calendario, que vacía la
  * planificación PERO conserva `sessionId` (el enlace a la sesión registrada);
- * este setter borra el día completo, como la v1.
+ * este setter borra el día completo, como antes.
  */
 export function clearDay(iso: string): void {
   const state = readState();
@@ -943,7 +943,7 @@ export function saveExercise(patch: Exercise): Exercise {
 
 /**
  * Borra un ejercicio. Los de la biblioteca NO se borran (la semilla los
- * reharía en `refresh`): se devuelven `false`, como en la v1, y el aviso lo
+ * reharía en `refresh`): se devuelven `false`, como, y el aviso lo
  * pinta la UI.
  */
 export function removeExercise(id: string): boolean {
@@ -1008,9 +1008,9 @@ function normalizeEquipment(value: unknown): EquipmentMap {
 
 /**
  * Reemplaza el estado entero (importación). Se conserva tal cual lo que traiga el
- * archivo, porque el formato es el mismo de la v1: importar una copia hecha en
+ * archivo, porque el formato es el mismo: importar una copia hecha en
  * `main` tiene que dejar los datos igual que allí. Única excepción:
- * `meta.onboarded = true` (lo que hacía la v1, `store.js:197`) y el inventario
+ * `meta.onboarded = true` (lo que hacía antes, `store.js:197`) y el inventario
  * de discos, que se migra a unidades (`discs`) antes de persistirlo.
  *
  * Los ajustes se completan con `withDefaults` y el material se filtra contra las
@@ -1259,7 +1259,7 @@ export function importProfilesBackup(raw: unknown): number {
 /**
  * Borra SOLO los datos del perfil activo y vuelve a su estado inicial.
  * No toca el índice de perfiles, la API key compartida ni los demás perfiles.
- * Tampoco borra las claves de «ya sembrado» de este perfil, igual que la v1: si
+ * Tampoco borra las claves de «ya sembrado» de este perfil, igual que antes: si
  * se borrara todo, el inventario personalizado y las rutinas personales
  * volverían a aparecer después de un «Borrar todo».
  */
@@ -1303,7 +1303,7 @@ export function refresh(): void {
 /**
  * Sesiones guardadas. Se filtran las que no tienen forma de sesión para que un
  * `pulso.state` tocado a mano (o a medias entre versiones) no rompa la analítica:
- * la v1 ya era tolerante al leer el JSON, pero no validaba cada sesión.
+ * antes ya era tolerante al leer el JSON, pero no validaba cada sesión.
  * Es de solo lectura: apilar y editar sesiones llega con el bloque de la sesión activa.
  */
 function asSessions(value: unknown): Session[] {
@@ -1324,7 +1324,7 @@ export const active = signal<ActiveSession | null>(asActive(initial.active));
 
 /**
  * Una sesión en curso solo es válida si trae sus entradas: un `pulso.state` escrito a
- * mano o a medias no debe colarse en la UI (misma tolerancia que la v1 al leerlo).
+ * mano o a medias no debe colarse en la UI (misma tolerancia que antes al leerlo).
  */
 function asActive(value: unknown): ActiveSession | null {
   return isPlainObject(value) && Array.isArray(value.entries)
@@ -1332,7 +1332,7 @@ function asActive(value: unknown): ActiveSession | null {
     : null;
 }
 
-/** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee la v1. */
+/** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee antes. */
 export function writeActive(next: ActiveSession | null): boolean {
   const state = readState();
   state.active = next;
@@ -1343,10 +1343,10 @@ export function writeActive(next: ActiveSession | null): boolean {
 
 /**
  * Apila una sesión terminada y marca el día como hecho: es lo que hacían juntos
- * `S.addSession` + `S.setDay(iso, {status:'done'})` en la v1, así que el calendario
+ * `S.addSession` + `S.setDay(iso, {status:'done'})`, así que el calendario
  * de la rama `main` ve el día igual que si lo hubieras entrenado allí.
  */
-/** Misma ordenación que la v1: `startedAt` descendente y empate resuelto por `id`. */
+/** Misma ordenación que antes: `startedAt` descendente y empate resuelto por `id`. */
 function byStartedAtDesc(a: Session, b: Session): number {
   const sa = a.startedAt ?? '';
   const sb = b.startedAt ?? '';
@@ -1384,12 +1384,12 @@ export function commitSession(session: Session): boolean {
 
 /**
  * Edita una sesión guardada (nombre, notas, fecha, RPE…): es `S.updateSession`
- * de la v1 (`store.js:376`), que aplicaba el parche tal cual sobre la sesión
+ *  (`store.js:376`), que aplicaba el parche tal cual sobre la sesión
  * encontrada. Devuelve `null` si no existe, como allí.
  *
  * - El `id` NO se puede cambiar (igual que en `updateRoutine`): el calendario
  *   lo referencia con `schedule[día].sessionId`.
- * - Como la v1, NO reordena por `startedAt`: el orden solo lo fija `addSession`
+ * - Como antes, NO reordena por `startedAt`: el orden solo lo fija `addSession`
  *   al apilar, así que editar una fecha no reorganiza la lista.
  */
 export function updateSession(id: string, patch: Partial<Session>): Session | null {
@@ -1405,9 +1405,9 @@ export function updateSession(id: string, patch: Partial<Session>): Session | nu
 }
 
 /**
- * Borra una sesión guardada (`S.removeSession` de la v1, `store.js:383`).
+ * Borra una sesión guardada (`S.removeSession`, `store.js:383`).
  *
- * La v1 NO tocaba el calendario, y aquí se hereda tal cual: el día se queda con
+ * antes NO tocaba el calendario, y aquí se hereda tal cual: el día se queda con
  * su `status: 'done'` y su `sessionId`, así que sigue pintándose hecho (en
  * `views-calendar.js` el día sale hecho si `p.status === 'done'`, no solo si
  * hay sesiones). Quien quiera desmarcarlo lo hace a mano con `clearDay`.
@@ -1439,9 +1439,9 @@ export function appendSessions(list: readonly Session[]): Session[] {
 }
 
 /**
- * Crea `weeks` semanas de sesiones de ejemplo (8, como la v1) para ver las
+ * Crea `weeks` semanas de sesiones de ejemplo (8, como antes) para ver las
  * gráficas con contenido. Van al MISMO array que las reales —la analítica no
- * las filtra, igual que en la v1— y no se deduplican: dos clics = doble sesión.
+ * las filtra, igual que — y no se deduplican: dos clics = doble sesión.
  * Devuelve cuántas se han añadido.
  */
 export function demoData(weeks = 8): number {
@@ -1482,14 +1482,14 @@ export function clearDemo(): number {
 
 /**
  * Persiste el historial del chat del coach (`state.chat`): los últimos 80
- * mensajes con la MISMA forma que la v1 (`{role, text, ts, thoughts?, notes?}`),
+ * mensajes con la MISMA forma que antes (`{role, text, ts, thoughts?, notes?}`),
  * así que exportar los datos o volver a la rama `main` conserva la
  * conversación — una clave suelta tipo `pulso.chat` se quedaría fuera de
  * `pulso.state` y no sobreviviría a un import.
  *
  * Solo guarda: la signal que repinta la vista vive en `state/chat.ts` (nada de
  * UI aquí), y la escritura usa el mismo read-modify-write que el resto de
- * setters (se parte SIEMPRE de lo que hay en `localStorage`, por si la v1 está
+ * setters (se parte SIEMPRE de lo que hay en `localStorage`, por si antes está
  * escribiendo el mismo estado en otra pestaña).
  */
 export function setChat(value: unknown): void {

@@ -1,4 +1,4 @@
-/** kg ↔ lb y redondeos de peso. Portado de `U.units` de la v1. */
+/** kg ↔ lb y redondeos de peso. */
 import { num } from './num';
 import type { Unit } from './types';
 

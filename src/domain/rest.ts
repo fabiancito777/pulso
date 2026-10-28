@@ -1,18 +1,17 @@
 /**
- * Timer de descanso. Portado del bloque `R` de `legacy/js/trainer.js`.
+ * Timer de descanso.
  *
- * La clave del diseño de la v1 (y la razón de que haya un timestamp y no un
- * contador): el tiempo restante se calcula con `endsAt - now`, así que sigue siendo
- * correcto aunque la pestaña quede en segundo plano o el móvil se bloquee. Aquí eso
- * se mantiene tal cual, y el "ahora" entra SIEMPRE por parámetro para poder probarlo
- * sin esperar 90 segundos de verdad.
+ * El tiempo restante se calcula con `endsAt - now` (nunca con un contador), así
+ * que sigue siendo correcto aunque la pestaña quede en segundo plano o el móvil
+ * se bloquee. El "ahora" entra SIEMPRE por parámetro para poder probarlo sin
+ * esperar 90 segundos de verdad.
  *
  * Lo que hace el módulo: transiciones (`start`/`add`/`sub`/`stop`) y el tick del
  * bucle (que dice si toca tic, si acaba de terminar y si el aviso de "completado"
  * ya se puede cerrar). Lo que NO hace: sonar, vibrar, notificar o pintar. Eso lo
  * decide quien llama a partir de lo que devuelve.
  *
- * Dos rarezas de la v1 que se conservan a propósito (y que parecían bugs):
+ * Dos rarezas que se conservan a propósito (y que parecían bugs):
  *
  * - **`add` con el descanso ya terminado arranca una cuenta NUEVA desde ahora.** Si
  *   se sumara al `endsAt` ya pasado, el botón "+15 s" del aviso de "completado" no
@@ -35,7 +34,7 @@ export const IDLE_REST: RestState = {
   lastTick: null,
 };
 
-/** Lo que se guarda en `pulso.rest` (mismo formato que la v1). */
+/** Lo que se guarda en `pulso.rest` (mismo formato que antes). */
 export interface PersistedRest {
   endsAt: number;
   total: number;
@@ -135,7 +134,7 @@ export interface RestTick {
 }
 
 /**
- * Un paso del bucle (la v1 lo llama cada 500 ms).
+ * Un paso del bucle (antes lo llama cada 500 ms).
  *
  * Deja el estado listo para pintar: marca `lastTick` para no repetir el mismo tic
  * (el bucle corre dos veces por segundo), dispara `finished` una sola vez por
@@ -176,7 +175,7 @@ export function toPersisted(state: RestState): PersistedRest | null {
 /**
  * Reconstruye el descanso guardado al arrancar. Si ya había terminado mientras la
  * app estaba cerrada, devuelve `IDLE_REST`: no tiene sentido pintar un descanso
- * caducado (la v1 borraba esa clave).
+ * caducado (antes borraba esa clave).
  */
 export function fromPersisted(value: unknown, now: number): RestState {
   const raw = value as Partial<PersistedRest> | null | undefined;
@@ -199,7 +198,7 @@ export const restNoticeBody = (label: string): string =>
   label ? `Siguiente serie: ${trunc(label, 40)}` : 'Siguiente serie cuando estés listo';
 
 /**
- * Título del aviso (la v1 lo tenía en `restTitle()` dentro de `trainer.js`). El
+ * Título del aviso (antes lo tenía en `restTitle()` dentro de `trainer.js`). El
  * `tag` va aquí también porque es parte del MISMO aviso: con el mismo tag el
  * navegador sustituye la notificación anterior en vez de apilar dos.
  */

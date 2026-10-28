@@ -1,5 +1,5 @@
 /**
- * Onboarding de primera vez (el `onboarding()` de `legacy/js/app.js:204`).
+ * Onboarding de primera vez (el `onboarding()` de ).
  *
  * Modal **no descartable**: ni ESC, ni clic fuera, ni la X cierran — las dos
  * salidas son los botones del pie («Configurar después» y «Empezar»), y las dos
@@ -21,7 +21,7 @@ import { toast } from '@/ui/toast';
 import '../styles/onboarding.css';
 
 /**
- * Material: los presets que ofrece `domain/data.ts` (los 4 de la v1 más «Mi
+ * Material: los presets que ofrece `domain/data.ts` (los 4  más «Mi
  * kit»), con su etiqueta larga. Ajustes y Onboarding comparten la MISMA lista,
  * así que añadir un preset sigue costando un solo sitio.
  */
@@ -40,9 +40,9 @@ export function Onboarding() {
   const [equip, setEquip] = useState<string>('basico');
 
   /* Los dos caminos marcan `onboarded`; con datos se guardan los ajustes y el
-     material, y se avisa (la v1 decía «desde Plan», aquí la pestaña es
+     material, y se avisa (antes decía «desde Plan», aquí la pestaña es
      Calendario). El nombre se usa solo para el saludo y el primer nombre es el
-     que ya usaba el toast de la v1. */
+     que ya usaba el toast. */
   const finish = (values: OnboardingValues | null): void => {
     applyOnboarding(values);
     if (!values) return;

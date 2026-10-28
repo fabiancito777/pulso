@@ -1,5 +1,5 @@
 /**
- * `parseJSON`: el puerto tolerante de la v1. El modelo a veces enmarca la
+ * `parseJSON`: el puerto tolerante. El modelo a veces enmarca la
  * respuesta, a veces la rodea de prosa y a veces deja una coma final: todas esas
  * manías están fijadas aquí.
  *
@@ -77,7 +77,7 @@ describe('parseJSON', () => {
   });
 
   it('JSON y después un bloque ```memoria``` (así FALLABA el smoke test)', () => {
-    /* la v1 quitaba la PRIMERA cercilla fuera de sitio: se quedaba con las
+    /* antes quitaba la PRIMERA cercilla fuera de sitio: se quedaba con las
        viñetas de la memoria (sin llaves) y reventaba con el JSON perfecto */
     const raw =
       '{\n  "title": "Tracción y Core",\n  "exercises": [{ "name": "Dominadas" }]\n}\n' +
@@ -88,11 +88,11 @@ describe('parseJSON', () => {
     });
   });
 
-  it('JSON truncado sigue lanzando el error de la v1', () => {
+  it('JSON truncado sigue lanzando el error esperado', () => {
     expect(() => parseJSON('{"a": {"b": 1}')).toThrow('no pude interpretar el JSON');
   });
 
-  it('lanza el error de la v1 cuando no hay ningún JSON', () => {
+  it('lanza el error esperado cuando no hay ningún JSON', () => {
     expect(() => parseJSON('no voy a darte JSON hoy')).toThrow('no pude interpretar el JSON');
     expect(() => parseJSON('')).toThrow('no pude interpretar el JSON');
     expect(() => parseJSON('{"a":')).toThrow('no pude interpretar el JSON');

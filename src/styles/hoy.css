@@ -10,7 +10,7 @@
 
 /* ---------- saludo ---------- */
 
-/* Saludo y fecha en UNA línea (el `V.sub` de la v1): el hueco lo pone el
+/* Saludo y fecha en UNA línea (el `V.sub` ): el hueco lo pone el
    `gap` de `.v2-main`, aquí solo hay que alinearlos. */
 .hy-greet {
   display: flex;
@@ -21,7 +21,7 @@
 
 /* ---------- hero ---------- */
 
-/* Kicker de las tarjetas del día: la regleta de la v1 («Plan de hoy · jueves»),
+/* Kicker de las tarjetas del día: la regleta  («Plan de hoy · jueves»),
    que era `.tiny` con `text-transform` y `letter-spacing` puestos a mano. */
 .hy-kicker {
   text-transform: uppercase;

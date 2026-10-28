@@ -2,10 +2,10 @@
  * Modal de discos de un ejercicio: el `Plates` ya portado dentro del primitivo
  * `Modal`, en vez de en línea (el dibujo es ancho y en móvil empujaría las series).
  *
- * El peso inicial es el último peso ≠ 0 de la entrada (v1 `views-train.js:477`) y
+ * El peso inicial es el último peso ≠ 0 de la entrada (antes `views-train.js:477`) y
  * "Usar X" lo escribe donde decida `plateTarget` — la primera serie pendiente sin
  * peso, si no la última (`views-train.js:485`). El modo de carga se recuerda POR
- * EJERCICIO, como en la v1, así que al reabrirlo sale el que usarías.
+ * EJERCICIO, como, así que al reabrirlo sale el que usarías.
  */
 import { plateInitialWeight } from '@/domain/session';
 import type { ActiveEntry } from '@/domain/types';

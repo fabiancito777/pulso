@@ -1,6 +1,6 @@
 /**
  * Picker de ejercicios en modal, con multiselección: sustituye al `<select>` de
- * una sola opción de la tarjeta de sesión (v1 `App.ui.exercisePicker({multi:true})`
+ * una sola opción de la tarjeta de sesión (antes `App.ui.exercisePicker({multi:true})`
  * de `app.js:353`, con el mismo comportamiento):
  *
  * - **excluye** los `exId` que ya están en la sesión (no se pueden añadir dos veces);
@@ -14,7 +14,7 @@
  * - búsqueda tolerante a tildes (`domain/text.norm`) y filtro por grupo;
  * - el contador dice «N seleccionados» mientras no confirmes;
  * - con `onlyIds` solo se pueden elegir los que ya aparecen en el historial (es
- *   el `onlyDone` de la v1, con el que Progresión abre el picker de «Otro»).
+ *   el `onlyDone`, con el que Progresión abre el picker de «Otro»).
  */
 import { useState } from 'preact/hooks';
 
@@ -30,7 +30,7 @@ export interface ExercisePickerModalProps {
   title?: string;
   /** `exId` que no se pueden elegir (los que ya están en la sesión). */
   exclude?: readonly string[];
-  /** Si se pasa, SOLO se pueden elegir estos (v1 `onlyDone`: los ya entrenados). */
+  /** Si se pasa, SOLO se pueden elegir estos (antes `onlyDone`: los ya entrenados). */
   onlyIds?: readonly string[];
   onClose: () => void;
   onPick: (ids: string[]) => void;
@@ -52,7 +52,7 @@ export function ExercisePickerModal({
   const equip = equipment.value;
   const needle = norm(query);
 
-  /* familiaridad: cuántas sesiones del historial traen cada ejercicio (v1 `S.familiarity`) */
+  /* familiaridad: cuántas sesiones del historial traen cada ejercicio (antes `S.familiarity`) */
   const fam = new Map<string, number>();
   for (const session of sessions.value) {
     for (const entry of session.entries) fam.set(entry.exId, (fam.get(entry.exId) ?? 0) + 1);

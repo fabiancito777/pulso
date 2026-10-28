@@ -1,5 +1,5 @@
 /**
- * Copiar al portapapeles. Es el `U.copy` de la v1 (`legacy/js/core.js:661`),
+ * Copiar al portapapeles. Es el `U.copy`  (),
  * separado aquí para que la vista no tenga que tratar con `navigator` ni con el
  * fallback de `execCommand` (necesario en http y en navegadores viejos).
  *

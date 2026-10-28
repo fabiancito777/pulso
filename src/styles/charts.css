@@ -1,14 +1,14 @@
 /* ==========================================================================
    Pulso v2 · charts.css — estilos de los gráficos de Progreso (src/ui/charts.tsx)
 
-   Port del aspecto de `legacy/js/charts.js` + `views-stats.js`. Las clases
-   genéricas de la v1 (`.chart-wrap`, `.ct-grid`, `.ct-axis`, `.ct-line`,
+   Port del aspecto de  + `views-stats.js`. Las clases
+   genéricas  (`.chart-wrap`, `.ct-grid`, `.ct-axis`, `.ct-line`,
    `.ct-dot`, `.bar`, `.empty`, `.sec-head`, `.kpi`…) ya viven en `base.css` y
    aquí NO se repiten: solo se añade lo propio con prefijo `ch-`, para poder
    podar `base.css` cuando la vista esté entera en componentes.
    ========================================================================== */
 
-/* Contenedor de un gráfico: misma caja que `.chart-wrap` de la v1. */
+/* Contenedor de un gráfico: misma caja que `.chart-wrap`. */
 .ch-wrap {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -25,12 +25,12 @@
   overflow: visible;
 }
 
-/* Estado vacío: mismo aspecto que `.empty`, con el padding suelto de la v1. */
+/* Estado vacío: mismo aspecto que `.empty`, con el padding suelto. */
 .ch-empty {
   padding: 18px;
 }
 
-/* ---------- donut: SVG a tamaño fijo + leyenda al lado (la v1 lo centraba) ---------- */
+/* ---------- donut: SVG a tamaño fijo + leyenda al lado (antes lo centraba) ---------- */
 .ch-donut {
   display: flex;
   align-items: center;
@@ -90,7 +90,7 @@
 }
 
 /* ---------- heatmap de consistencia ----------
-   Tamaño natural (13 px por celda, como la v1): no crece con la tarjeta, solo
+   Tamaño natural (13 px por celda, como antes): no crece con la tarjeta, solo
    se encoge si la tarjeta es más estrecha. */
 .ch-heat svg {
   display: block;
@@ -110,7 +110,7 @@
   height: auto;
 }
 
-/* ---------- fila de récord (columna central de la v1) ---------- */
+/* ---------- fila de récord (columna central ) ---------- */
 .ch-pr {
   flex: none;
   text-align: center;

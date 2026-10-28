@@ -2,7 +2,7 @@
  * Edge cases 75–90 de `_specs/edge-cases-300.md` · `domain/rest`.
  *
  * El tiempo sale de `endsAt - now`; `now` entra siempre por parámetro. Dos
- * rarezas de la v1 conservadas: `+15 s` sobre un descanso terminado arranca una
+ * rarezas  conservadas: `+15 s` sobre un descanso terminado arranca una
  * cuenta nueva y `-15 s` nunca baja de 1 s.
  */
 import { describe, expect, it } from 'vitest';

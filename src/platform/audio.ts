@@ -1,5 +1,5 @@
 /**
- * Sonido y vibración. Portado de `U.beep`/`U.vibrate` de la v1 (`legacy/js/core.js`).
+ * Sonido y vibración.
  *
  * Vive en `src/platform/` y no en `src/domain/` porque toca la Web Audio API y el
  * navegador: el dominio tiene que poder probarse sin nada de esto.
@@ -13,7 +13,7 @@
  * un módulo de plataforma no debería saber cómo se guardan las cosas, y así se puede
  * probar en el navegador subiendo el volumen a mano.
  *
- * El `AudioContext` **no se queda abierto** (v1 `e2c49b9`): un contexto en idle
+ * El `AudioContext` **no se queda abierto** (antes `e2c49b9`): un contexto en idle
  * retiene la salida de audio y varios Android dejaban la música de fondo
  * (Spotify…) atenuada de forma permanente. `ensureAudio()` lo desbloquea con el
  * gesto y lo suspende solo a los 1,5 s; `beep()` programa el suyo propio para no
@@ -34,7 +34,7 @@ const TONES: Record<
   BeepKind,
   { freq: number; count: number; gap: number; dur: number; releaseMs: number }
 > = {
-  /* `releaseMs` es cuánto hay pitidos sonando o programados (v1 `U.audio.release`):
+  /* `releaseMs` es cuánto hay pitidos sonando o programados (antes `U.audio.release`):
      pasado ese tiempo el AudioContext se suspende solo. Cubre la secuencia entera
      con margen, para no cortarla. */
   end: { freq: 988, count: 5, gap: 0.7, dur: 0.5, releaseMs: 4200 },
@@ -53,7 +53,7 @@ let busyUntil = 0;
 let suspendTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Programa el auto-suspend (v1 `_armSuspend`): al dispararse comprueba que ya no
+ * Programa el auto-suspend (antes `_armSuspend`): al dispararse comprueba que ya no
  * haya pitidos pendientes (`now >= busyUntil`) y que el contexto siga `running`.
  * Cada llamada cancela la anterior, así que el último gesto/pitido manda.
  */
@@ -91,7 +91,7 @@ function release(c: AudioContext, ms: number): void {
  * El AudioContext solo se puede abrir con un gesto del usuario: se llama en los
  * clicks. NO deja el contexto abierto: si no hay pitidos pendientes se suspende
  * solo al poco (`IDLE_SUSPEND_MS`), que es lo que evita el ducking tras cada
- * gesto (v1 `e2c49b9`).
+ * gesto (antes `e2c49b9`).
  */
 export function ensureAudio(): AudioContext | null {
   try {

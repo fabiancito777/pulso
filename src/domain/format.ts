@@ -1,9 +1,7 @@
 /**
- * Formato de números y duraciones en es-ES. Portado de la v1 (`U.fmt`).
+ * Formato de números y duraciones en es-ES.
  *
- * Nota de v2: en la v1 todo texto que venía del usuario pasaba por `U.esc()`
- * porque las vistas montaban HTML a mano. Con componentes ya no hace falta:
- * Preact escapa solo. `esc()` se queda en la v1 y aquí no se porta.
+ * Preact escapa solo el texto: no hay helpers de escape de HTML.
  */
 import { num } from './num';
 
@@ -73,7 +71,7 @@ export const fmtRpe = (v: unknown): string => (num(v) ? fmtN(v, 1) : '—');
 /**
  * Valor para un `<input type="number">`: punto decimal y sin separadores.
  * ⚠️ `fmtN()` usa la coma de es-ES y el navegador DESCARTA ese `value` (el campo
- * sale vacío). Fue un bug real de la v1; aquí vive en un solo sitio.
+ * sale vacío). Fue un bug real; aquí vive en un solo sitio.
  */
 export function inputNum(v: unknown): string {
   if (v === undefined || v === null || v === '') return '';

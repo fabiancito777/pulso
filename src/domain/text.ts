@@ -1,4 +1,4 @@
-/** Texto y normalización. Portado de `U.norm`, `U.slug`, `U.similarity` y `U.trunc` de la v1. */
+/** Texto y normalización. */
 
 /** Solo los tipos que se pueden convertir a texto con sentido (evita "[object Object]"). */
 function asText(v: unknown): string {

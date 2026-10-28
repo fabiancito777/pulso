@@ -1,7 +1,7 @@
 /**
- * Anillo de progreso del descanso. Misma geometría que `U.ring` de la v1: radio
+ * Anillo de progreso del descanso. Misma geometría que `U.ring`: radio
  * `(size - grosor)/2` y un `stroke-dashoffset` que va de la circunferencia entera
- * (nada) a 0 (anillo completo). En la v1 esto se repintaba a mano con
+ * (nada) a 0 (anillo completo).  esto se repintaba a mano con
  * `U.ringUpdate`; aquí basta con volver a renderizar el componente.
  */
 export interface RingProps {

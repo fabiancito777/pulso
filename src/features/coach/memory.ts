@@ -38,7 +38,7 @@ import type { MemorySeed, MemoryUpdate } from './types';
 
 /**
  * El cierre ```` ```memoria … ``` ```` con SOLO espacio en blanco detrás: el
- * bloque cuenta únicamente si cierra la respuesta (regla de la v1 que sigue
+ * bloque cuenta únicamente si cierra la respuesta (regla  que sigue
  * vigente para no confundir un ejemplo con un aprendizaje).
  */
 const MEMORY_CLOSE = /```memoria[^\n]*\n?[\s\S]*?```([\s\S]*)$/i;
@@ -80,7 +80,7 @@ export function defaultMemory(seed: MemorySeed = {}): string {
  * Va sobre `extractBlocks` cuando la extracción sale LIMPIA: exactamente un
  * bloque y nada más allá de su cierre. Si el bloque viene en mitad del texto,
  * acompañado de otro o no cierra la respuesta, no se arranca (misma regla que
- * la v1, fijada en `memory.test.ts`).
+ * antes, fijada en `memory.test.ts`).
  */
 export function extractMemoryBlock(text: string): { rest: string; block: string | null } {
   const raw = String(text ?? '');

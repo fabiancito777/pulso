@@ -1,13 +1,12 @@
 /**
  * Borrador de ejercicio para el editor de Ajustes: validación en dominio puro,
- * sin DOM y sin estado. Port de la parte de `ui.exerciseEditor` de la v1
- * (`legacy/js/app.js` ~608-671) que decide SI el ejercicio se puede guardar y
- * con qué valores definitivos.
+ * sin DOM y sin estado. Decide SI el ejercicio se puede guardar y con qué
+ * valores definitivos.
  *
- * Reglas de la v1 que NO se pueden cambiar sin querer:
+ * Reglas que NO se pueden cambiar sin querer:
  * - el nombre es obligatorio y viaja recortado;
- * - `repMin > repMax` se iguala SUBIENDO repMax (la v1 escuchaba el `change` de
- *   repMin y escribía su valor en repMax);
+ * - `repMin > repMax` se iguala SUBIENDO repMax (al cambiar repMin se ajusta
+ *   repMax);
  * - `bw` (peso corporal) es simplemente `!equip`: el form solo expone material
  *   simple, así que un `a&b|c` de la biblioteca no se puede editar aquí;
  * - el id sale del slug del nombre y, si ya existe (¡incluso siendo de la
@@ -33,7 +32,7 @@ export interface ExerciseDraft {
 
 export type DraftResult = { ok: true; value: ExerciseDraft } | { ok: false; error: string };
 
-/** Borrador de un ejercicio nuevo: los mismos valores por defecto que la v1. */
+/** Borrador de un ejercicio nuevo: los mismos valores por defecto. */
 export function emptyDraft(): ExerciseDraft {
   return {
     name: '',
@@ -67,7 +66,7 @@ export function draftFrom(ex: Exercise | null | undefined): ExerciseDraft {
 /**
  * Normaliza y valida el borrador: nombre recortado, números dentro de los
  * mismos rangos del form (series 1-12, descanso 0-600, reps 1-100) y
- * `repMax >= repMin`. El único error posible es el nombre vacío, que en la v1
+ * `repMax >= repMin`. El único error posible es el nombre vacío, que
  * también abortaba el guardado.
  */
 export function validateDraft(draft: ExerciseDraft): DraftResult {

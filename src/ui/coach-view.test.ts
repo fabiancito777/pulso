@@ -1,10 +1,10 @@
 /**
  * `src/ui/CoachView.tsx`: paridad de la tarjeta de estado y de los chips
- * rápidos con `legacy/js/views-coach.js`.
+ * rápidos con.
  *
  * Los tests corren en node (sin DOM), así que aquí NO se monta el componente:
  * lo que hay que vigilar es el DATO, que es lo que se rompe sin darse cuenta —
- * los 6 chips de la v1 con sus prompts literales, iconos que existan de verdad
+ * los 6 chips  con sus prompts literales, iconos que existan de verdad
  * en el catálogo generado (`ui/icons.ts` es un archivo generado), el badge de
  * ms/ok del «Probar», las opciones de un turno (`turnOpts`), que es lo único
  * que manda la pregunta del usuario al modelo, y la unión chip + caja
@@ -51,13 +51,13 @@ describe('turno de la vista (`turnOpts` → runCoachTask)', () => {
   });
 });
 
-describe('chips rápidos (v1 `coach:quick`)', () => {
+describe('chips rápidos', () => {
   it('son 6 y las etiquetas no se repiten (son la key de React)', () => {
     expect(QUICK_ACTIONS).toHaveLength(6);
     expect(new Set(QUICK_ACTIONS.map((a) => a.label)).size).toBe(6);
   });
 
-  it('los tres que faltaban llevan el prompt LITERAL de la v1', () => {
+  it('los tres que faltaban llevan el prompt literal', () => {
     expect(QUICK_ACTIONS.slice(3).map((a) => [a.label, a.ask])).toEqual([
       [
         'Revisar volumen',
@@ -74,7 +74,7 @@ describe('chips rápidos (v1 `coach:quick`)', () => {
     ]);
   });
 
-  it('los tres nuevos van a un `chat` (la v1 los mandaba con send())', () => {
+  it('los tres nuevos van a un `chat` (se mandan con send())', () => {
     expect(QUICK_ACTIONS.map((a) => a.task)).toEqual([
       'suggest',
       'plan',
@@ -91,7 +91,7 @@ describe('chips rápidos (v1 `coach:quick`)', () => {
     }
   });
 
-  it('solo el chip de sesión de hoy salta de pestaña (v1: App.router.go)', () => {
+  it('solo el chip de sesión de hoy salta de pestaña (salta de pestaña)', () => {
     const jumps = QUICK_ACTIONS.filter((a) => a.jump);
     expect(jumps.map((a) => a.label)).toEqual(['Sugerir entreno']);
     expect(jumps[0]?.jump).toEqual({ tab: 'hoy', toast: 'Sesión lista en la pestaña Hoy' });
@@ -99,7 +99,7 @@ describe('chips rápidos (v1 `coach:quick`)', () => {
 });
 
 describe('chip con contexto de la caja (`chipText`)', () => {
-  it('caja vacía → el chip manda su `ask` EXACTO (paridad con la v1)', () => {
+  it('caja vacía → el chip manda su `ask` EXACTO (mismo ask)', () => {
     for (const action of QUICK_ACTIONS) {
       expect(chipText(action.ask, ''), action.label).toBe(action.ask);
       expect(chipText(action.ask, '   \n\t '), action.label).toBe(action.ask);
@@ -120,7 +120,7 @@ describe('chip con contexto de la caja (`chipText`)', () => {
   });
 });
 
-describe('tarjeta de estado (v1 `coach:test`)', () => {
+describe('tarjeta de estado', () => {
   it('badge: `listo` antes del primer test, y ok/error con los ms después', () => {
     expect(testBadge(null)).toBe('listo');
     expect(testBadge({ ok: true, ms: 812 })).toBe('ok · 0.8 s');

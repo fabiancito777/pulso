@@ -370,7 +370,7 @@ describe('parseMd · tablas', () => {
     ]);
   });
 
-  it('la cabecera NO se repite como primera fila (la v1 lo hacía)', () => {
+  it('la cabecera NO se repite como primera fila (no se repite)', () => {
     const table = tableOf(chat.parseMd('| a | b |\n| --- | --- |\n| 1 | 2 |'));
     expect(table.head).toHaveLength(2);
     expect(table.rows).toHaveLength(1);
@@ -384,7 +384,7 @@ describe('parseMd · tablas', () => {
     expect(p.kind === 'p' ? p.spans.map((s) => s.text).join('') : '').toBe('| a | b |\n| 1 | 2 |');
   });
 
-  it('una separadora suelta se descarta (como en la v1) y no corta el párrafo', () => {
+  it('una separadora suelta se descarta  y no corta el párrafo', () => {
     expect(chat.parseMd('| --- | --- |').map((b) => b.kind)).toEqual([]);
     expect(chat.parseMd('una línea\n|---|---|\n').map((b) => b.kind)).toEqual(['p']);
   });

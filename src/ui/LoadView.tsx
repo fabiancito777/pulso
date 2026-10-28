@@ -1,5 +1,5 @@
 /**
- * Dibujo de cómo se carga. Portado del modal de la v1, con la misma idea: fiel
+ * Dibujo de cómo se carga. Portado del modal, con la misma idea: fiel
  * al modo (una barra, UNA mancuerna o las DOS), disco a disco cuando caben y
  * agrupado por medida cuando el hueco lleva muchos.
  *

@@ -1,5 +1,5 @@
 /**
- * Sesión en curso: las reglas que en la v1 solo se podían comprobar entrenando de
+ * Sesión en curso: las reglas que  solo se podían comprobar entrenando de
  * verdad (o con el auto-test del navegador) y que son justo las que se rompen sin
  * querer al portar: el arrastre del valor hacia abajo, cuándo hay descanso, el peso
  * vacío frente a 0 y qué se guarda al cerrar la sesión.
@@ -333,7 +333,7 @@ describe('startSession', () => {
     expect(session.plan?.[0]).toEqual({ exId: 'press-banca', sets: 2 });
   });
 
-  it('la sugerencia se pide con las reps de la prescripción (v1 T.prefill)', () => {
+  it('la sugerencia se pide con las reps de la prescripción', () => {
     const seen: (number | undefined)[] = [];
     const conReps: PlanLine = { name: 'Press de banca', sets: 2, reps: 6 };
     nuevaSesion({
@@ -369,7 +369,7 @@ describe('editar una serie (el valor se arrastra hacia ABAJO)', () => {
     expect(next.entries[0]?.sets.map((s) => s.weight)).toEqual([65, 60, 65, 65]);
   });
 
-  it('el caso que fijaba el auto-test de la v1: 75/75/60/75 y después 75/80/60/80', () => {
+  it('el caso fijado: 75/75/60/75 y después 75/80/60/80', () => {
     const marcada = marcar(base, 0, 2, true)!.session;
     const primera = editSetField(marcada, 0, 0, 'weight', 75);
     expect(primera.entries[0]?.sets.map((s) => s.weight)).toEqual([75, 75, 60, 75]);

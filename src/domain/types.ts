@@ -92,7 +92,7 @@ export interface Exercise {
    * ★ preferido: manda en el orden de listas y pickers y desempata en el
    * generador local. **Opcional** a propósito: `E()` del catálogo generado y las
    * literales de los tests no lo traen, así que no hay que regenerar `catalog.ts`
-   * ni tocar la v1 (que lo ignora). En memoria `library.normalize()` lo
+   * ni tocar antes (que lo ignora). En memoria `library.normalize()` lo
    * materializa como boolean, y al escribir solo se persiste `=== true`.
    */
   fav?: boolean;
@@ -100,7 +100,7 @@ export interface Exercise {
    * Ocultación suave: solo presentación — fuera de los pickers y de la lista de
    * Ajustes por defecto (queda tras el segmento «Ocultos»). **No** lo leen ni el
    * coach ni el generador: para no proponer un ejercicio sigue estando
-   * `allowed: false`. Mismo porqué que `fav` respecto a la v1.
+   * `allowed: false`. Mismo porqué que `fav` respecto a antes.
    */
   hidden?: boolean;
   custom: boolean;
@@ -109,7 +109,7 @@ export interface Exercise {
   tips: string;
 }
 
-/** Opcionales de `E()` en la v1 (el generador los conserva tal cual). */
+/** Opcionales de `E()`  (el generador los conserva tal cual). */
 export interface ExerciseOpts {
   allowed?: boolean;
   bw?: boolean;
@@ -187,7 +187,7 @@ export interface SessionEntry {
   [key: string]: unknown;
 }
 
-/** Una sesión terminada (lo que `T.finish()` de la v1 apila en `state.sessions`). */
+/** Una sesión terminada (lo que `T.finish()`  apila en `state.sessions`). */
 export interface Session {
   id: string;
   name?: string;

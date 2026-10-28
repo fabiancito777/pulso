@@ -177,7 +177,7 @@ describe('buildBody', () => {
     expect('thinkingConfig' in (buildBody(opts()) as SentBody).generationConfig).toBe(false);
   });
 
-  it('temperature y maxOutputTokens: los pedidos, o los de la v1', () => {
+  it('temperature y maxOutputTokens: los pedidos, o los valores por defecto', () => {
     expect((buildBody(opts()) as SentBody).generationConfig).toMatchObject({
       temperature: 0.7,
       maxOutputTokens: 4096,
@@ -586,7 +586,7 @@ describe('testConnection', () => {
 });
 
 describe('testConnection · kind para la UI', () => {
-  it('con la key mala devuelve kind auth (la v1 abría el aviso de errAuth)', async () => {
+  it('con la key mala devuelve kind auth (se abre el aviso de errAuth)', async () => {
     const f = makeFetch(
       { error: { code: 403, message: 'API key no válida', status: 'PERMISSION_DENIED' } },
       403,

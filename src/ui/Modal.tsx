@@ -1,6 +1,6 @@
 /**
  * Modal compartido: scrim + cabecera + cuerpo + pie. Primitiva que reutiliza el
- * CSS heredado (`.modal-scrim/.modal-*` de `base.css`, el mismo de la v1) y que
+ * CSS heredado (`.modal-scrim/.modal-*` de `base.css`, el mismo ) y que
  * comparten los discos, el picker de ejercicios, el de rutinas, Ajustes y la
  * ayuda.
  *
@@ -32,11 +32,11 @@ export interface ModalProps {
   sub?: string;
   onClose: () => void;
   children?: ComponentChildren;
-  /** Botones del pie (van con `flex:1`, lo pone `.modal-foot .btn`). */
+  /** Botones del pie (van con `flex:1`, lo pone `.modal-foot.btn`). */
   foot?: ComponentChildren;
   /**
    * `false` = solo se cierra con los botones del pie: ni ESC, ni clic fuera, ni la
-   * X de la cabecera (el onboarding de la v1 era así, `dismissable:false`).
+   * X de la cabecera (el onboarding  era así, `dismissable:false`).
    */
   dismissable?: boolean;
   /** Tema de ayuda del modal: pinta el ⓘ en la cabecera. */

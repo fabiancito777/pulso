@@ -1,19 +1,18 @@
 /**
- * System prompt y peticiones al modelo. Puertos de `DEFAULT_SYSTEM` y de los
- * cuatro `C.suggestWorkout` / `C.planWeek` / `C.analyzeProgress` / `C.chat` de
- * la v1 (`legacy/js/coach.js`), sin tocar la red: aquí solo se montan strings.
+ * System prompt y peticiones al modelo. Aquí solo se montan strings, sin tocar
+ * la red.
  *
- * La semántica es la misma que en la v1:
+ * Reglas:
  *
  * - `suggest` y `plan` piden JSON: eso se traduce en
  *   `responseMimeType: application/json` + `responseSchema` en `client.ts`, de
  *   modo que la respuesta sale con la forma fijada por `schema.ts` y no por la
  *   prosa del modelo (por eso mismo estos dos prompts ya no llevan el ejemplo
- *   JSON de la v1: la forma vive en un solo sitio);
+ *   JSON: la forma vive en un solo sitio);
  * - `analyze` pide markdown de ≤ 400 palabras;
  * - **el historial de conversación viaja como `contents` en las CUATRO tareas**
  *   (campo `history` de la petición, que `client.ts` convierte en `contents`),
- *   acotado por turno y por número de turnos (`boundedHistory`). En la v1 el
+ *   acotado por turno y por número de turnos (`boundedHistory`).  el
  *   transcript de `suggest`/`plan`/`analyze` se metía DENTRO del prompt como
  *   bloque `CONVERSACIÓN PREVIA`: era texto caro dentro de un prompt que ya es
  *   grande, y encima el modelo lo leía como parte de las instrucciones;
@@ -31,7 +30,7 @@ import { trunc } from '@/domain/text';
 import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from './schema';
 import type { BuildRequestOpts, ChatMessage, CoachRequest, CoachTask } from './types';
 
-/** Personalidad y reglas del coach (port literal del system de la v1). */
+/** Personalidad y reglas del coach (port literal del system ). */
 export const DEFAULT_SYSTEM = [
   'Eres Pulso Coach, entrenador personal y planificador de entrenamiento basado en evidencia.',
   'Reglas:',
@@ -62,7 +61,7 @@ export const MEMORY_INSTRUCTION = [
   'Si no hay nada nuevo que guardar, no pongas el bloque.',
 ].join('\n');
 
-/** Cuántos mensajes de historial se mandan en el chat (el mismo tope que la v1). */
+/** Cuántos mensajes de historial se mandan en el chat (el mismo tope que antes). */
 export const CHAT_HISTORY_LIMIT = 12;
 
 /**
@@ -181,7 +180,7 @@ function questionTail(opts: BuildRequestOpts): string[] {
  * Bloque `local` (propuesta del dispositivo) como DATOS de apertura del prompt:
  * el modelo lo recibe primero, como contexto que puede mejorar, y después vienen
  * las instrucciones y la petición. Cada tarea rotula el bloque a su manera
- * (mismos textos que en la v1).
+ * (mismos textos que ).
  */
 function localHead(opts: BuildRequestOpts, label: string): string[] {
   if (opts.local === undefined) return [];

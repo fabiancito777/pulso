@@ -1,6 +1,5 @@
 /**
- * Mantener la sesión viva con el móvil bloqueado. Port de `U.keepAlive` y
- * `U.wakeLock` (`core.js:376-452`).
+ * Mantener la sesión viva con el móvil bloqueado.
  *
  * Son las capas 2 y 3 del aviso de fin de descanso (la 1 es el pitido largo de
  * `platform/audio.ts`):
@@ -11,7 +10,7 @@
  *   donde el sistema no lo permita, el aviso fiable es el programado por el
  *   service worker (`schedule-rest`, en `state/session.ts`).
  *
- * Dos reglas que vienen de los fixes del ducking de Spotify (v1 `ff21864` y
+ * Dos reglas que vienen de los fixes del ducking de Spotify (antes `ff21864` y
  * `6361477`) y que DELEN juntas, porque las dos apuntan a lo mismo — el `<audio>`
  * pide el foco de audio y el sistema atenúa la música de fondo:
  *
@@ -98,7 +97,7 @@ function isIOS(): boolean {
 }
 
 /**
- * ¿Hace falta el `<audio>` de silencio? (v1 `6361477`, `trainer.js:keepAlive`).
+ * ¿Hace falta el `<audio>` de silencio? (antes `6361477`, `trainer.js:keepAlive`).
  *
  * Solo donde NO hay un service worker que programe el aviso: en Android moderno
  * la notificación la lanza el SW **sin pedir foco de audio**, así que encender el
@@ -132,8 +131,8 @@ function wakeLockRefresh(): void {
 }
 
 /**
- * Cablea los dos reintentos de la v1 (`app.js:135/270`): al primer toque y al
- * volver a primer plano. Una sola vez y para siempre, igual que en la v1.
+ * Cablea los dos reintentos  (`app.js:135/270`): al primer toque y al
+ * volver a primer plano. Una sola vez y para siempre, igual que.
  */
 function wire(): void {
   if (wired || typeof document === 'undefined') return;
@@ -148,7 +147,7 @@ function wire(): void {
 
 /**
  * Enciende el keep-alive. Sin etiqueta ni `mediaSession`: no hay nada que
- * anunciar (ver la cabecera del módulo) — la v1 dejó `label()` vacío por el
+ * anunciar (ver la cabecera del módulo) — antes dejó `label()` vacío por el
  * mismo motivo.
  */
 export function keepAliveOn(): void {
@@ -182,7 +181,7 @@ export function keepAliveOff(): void {
     el = null;
     /* Devolvemos los controles multimedia a quien los tuviera (Spotify…): sin
        pista no hay nada que anunciar, y `playbackState = 'none'` le dice al
-       sistema que esta página ya no reproduce nada (la v1 solo dejaba el
+       sistema que esta página ya no reproduce nada (antes solo dejaba el
        metadata en null y el sistema seguía creyendo que éramos el reproductor). */
     if (typeof navigator !== 'undefined' && navigator.mediaSession) {
       navigator.mediaSession.metadata = null;

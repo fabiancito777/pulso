@@ -1,7 +1,7 @@
 /**
- * Detalle de una sesión guardada (v1 `App.ui.sessionDetail`, `app.js:932-976`).
+ * Detalle de una sesión guardada (antes `App.ui.sessionDetail`, `app.js:932-976`).
  *
- * Paridad de acciones, ni más ni menos: **ver · eliminar · repetir**. La v1 no
+ * Paridad de acciones, ni más ni menos: **ver · eliminar · repetir**. antes no
  * deja editar nombre ni notas (`S.updateSession` no tenía ni un llamador allí),
  * así que aquí tampoco se abre esa puerta (spec S1 §1).
  *
@@ -10,7 +10,7 @@
  * - el bloque de «N récords nuevos» compara contra las sesiones ANTERIORES a
  *   esta (`prsBefore` + margen 0,01), no contra el histórico completo: borrar la
  *   sesión de antes puede convertir un récord en no-récord, y eso es correcto;
- * - «Repetir» se niega con un aviso si ya hay una sesión en curso (v1
+ * - «Repetir» se niega con un aviso si ya hay una sesión en curso (antes
  *   `views-train.js:375`), porque `startFromPlan` en ese caso devolvería la
  *   sesión que ya estaba y parecería que no hacía nada.
  */

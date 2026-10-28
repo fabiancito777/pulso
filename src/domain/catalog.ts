@@ -1,8 +1,8 @@
 /* ==========================================================================
    Pulso v2 · catalog.ts — catálogo base (grupos, material, ejercicios, plantillas)
 
-   ARCHIVO GENERADO (histórico): se produjo una vez desde `legacy/js/data.js` de la v1
-   (tag `v1-final`) con el generador `tools/port-catalog.mjs`, ya retirado. Ahora es un
+   ARCHIVO GENERADO (histórico): se produjo una vez desde
+   (tag `la versión anterior`) con el generador `tools/port-catalog.mjs`, ya retirado. Ahora es un
    fichero base congelado: si hay que tocar datos, se edita aquí a mano con cuidado y lo
    vigila `src/domain/data.test.ts`.
    ========================================================================== */
@@ -20,7 +20,7 @@ import type {
   RoutineTemplate,
 } from './types';
 
-/** Igual que `D.E()` de la v1: crea un ejercicio de biblioteca (custom: false). */
+/** Igual que `D.E()`: crea un ejercicio de biblioteca (custom: false). */
 function E(
   name: string,
   group: string,
@@ -51,7 +51,7 @@ function E(
 }
 
 /* ---------- grupos musculares ---------- */
-/* Los 13 de la v1 (generados) + los AÑADIDOS A MANO al final: la v1 no tenía
+/* Los 13  (generados) + los AÑADIDOS A MANO al final: antes no tenía
    estos músculos y el generador IA sí puede proponer ejercicios para ellos. Se
    añaden aquí (y no en `seed.ts`) porque son taxonomía del catálogo: el
    generador enumera estas claves, los gráficos y el planner las recorren, y
@@ -70,7 +70,7 @@ export const GROUPS: readonly MuscleGroup[] = [
   { key: 'antebrazo', label: 'Antebrazo', color: '#c084fc' },
   { key: 'cardio', label: 'Cardio', color: '#4ade80' },
   { key: 'movilidad', label: 'Movilidad', color: '#8b9dc3' },
-  /* --- añadidos a mano (no venían en la v1) --- */
+  /* --- añadidos a mano (no venían ) --- */
   { key: 'trapecio', label: 'Trapecio', color: '#fdba74' },
   { key: 'lumbares', label: 'Lumbares', color: '#a3a3a3' },
   { key: 'oblicuos', label: 'Oblicuos', color: '#5eead4' },
@@ -175,7 +175,7 @@ const equipment: EquipmentItem[] = [
   { key: 'trineo', label: 'Trineo / sled', hint: '', cat: 'Cardio' },
   { key: 'exterior', label: 'Espacio exterior', hint: 'correr, saltos, calles', cat: 'Cardio' },
 ];
-/* la v1 inserta esta pieza con splice (no está en la lista de arriba); se conserva
+/* antes inserta esta pieza con splice (no está en la lista de arriba); se conserva
    tal cual para que el orden del catálogo siga siendo el mismo */
 equipment.splice(12, 0, {
   key: 'paralelas',

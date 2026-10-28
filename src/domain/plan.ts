@@ -2,29 +2,22 @@
  * Planificador local del coach en dominio puro: plantillas, recetas, elección
  * de ejercicios y patrón de la semana.
  *
- * Port de `S.pickForGroup` / `S.itemsFromRecipe` / `S.routineFromTemplate`
- * (`legacy/js/store.js` ~655-709) y de `WEEK_LAYOUT` / `WEEK_ROTATION`
- * (`legacy/js/coach.js` ~360-365). La diferencia con la v1 es que aquí NO hay
- * estado: ajustes, biblioteca, material e historial entran en `PlanInput`, así
- * que lo mismo sirve para `features/coach/local.ts` que para un test con los
+ * No hay estado: ajustes, biblioteca, material e historial entran en `PlanInput`,
+ * así que lo mismo sirve para `features/coach/local.ts` que para un test con los
  * datos clavados a mano, sin navegador y sin reloj.
  *
- * ## Qué manda sobre la v1
+ * ## Reglas
  *
  * - **Plantillas**: `TEMPLATES` sale de `@/domain/seed` (la semilla de 7
  *   plantillas que ve un usuario nuevo) y `@/domain/catalog` sigue trayendo las
- *   9 de la v1. Manda la semilla, porque es la que se le pone al usuario; lo que
+ *   9. Manda la semilla, porque es la que se le pone al usuario; lo que
  *   NO se puede hacer es que una rotación apunte a un `id` que la semilla no
  *   traiga, y `plan.test.ts` fija tanto las recetas como ese cruce.
- * - **Material**: la v1 filtraba con `S.usable()` (permitidos Y disponibles)
- *   dentro del propio `pickForGroup`; aquí el mismo filtro se hace con
+ * - **Material**: el filtro de permitidos y disponibles se hace con
  *   `isAvailable(ex, equipment)` y el mapa de material llega por parámetro, como
  *   en `plates.ts` y `data.ts`.
- * - **Rotación**: `rotate` = cuántas sesiones recientes pesan (por defecto 3,
- *   como la v1) y `rotate: 0` la desactiva. En la v1, `pickForGroup` suelto
- *   interpretaba `0` como `3`, pero en la práctica siempre recibía el mapa ya
- *   calcado de `itemsFromRecipe`, así que el comportamiento observable es el
- *   mismo: aquí se respeta el `0`.
+ * - **Rotación**: `rotate` = cuántas sesiones recientes pesan (por defecto 3);
+ *   `rotate: 0` lo desactiva.
  *
  * Todo es síncrono y sin `fetch`: este módulo no sabe qué es la red.
  */
@@ -38,9 +31,7 @@ import type { Exercise, RoutineTemplate, Session, Settings, Unit } from './types
 /* ---------- entradas ---------- */
 
 /**
- * Todo lo que el planificador necesita, por parámetro. Es el equivalente puro a
- * lo que la v1 leía de `window.App.store` (`S.settings()`, `S.exercises()`,
- * `S.isAvailable()` y `state.sessions`).
+ * Todo lo que el planificador necesita, por parámetro.
  */
 export interface PlanInput {
   /** ajustes: unidad, incremento, objetivo y días/semana */
@@ -65,7 +56,7 @@ export interface PickOptions {
   exclude?: Record<string, boolean>;
 }
 
-/** Un ejercicio prescrito salido de una receta (la forma de la v1, sin pesos). */
+/** Un ejercicio prescrito salido de una receta (sin pesos). */
 export interface RecipeItem {
   exId: string;
   sets: number;
@@ -121,7 +112,7 @@ export interface RichOptions {
   suggest?: SuggestFn;
 }
 
-/** Borrador de rutina: lo que la v1 guardaba con `S.addRoutine`, sin guardarlo. */
+/** Borrador de rutina, sin persistirlo. */
 export interface RoutineDraft {
   name: string;
   focus: string;
@@ -147,9 +138,8 @@ function familiarity(sessions: readonly Session[], exId: string): number {
 }
 
 /**
- * Mapa `id → nº de sesiones` de las últimas `n` sesiones del historial: es lo
- * que la v1 llamaba `recentlyUsedSessions` y con lo que se evita repetir los
- * mismos movimientos semana tras semana.
+ * Mapa `id → nº de sesiones` de las últimas `n` sesiones del historial: con él
+ * se evita repetir los mismos movimientos semana tras semana.
  */
 export function recentlyUsedSessions(sessions: readonly Session[], n = 3): Record<string, number> {
   const out: Record<string, number> = {};
@@ -163,13 +153,13 @@ export function recentlyUsedSessions(sessions: readonly Session[], n = 3): Recor
 
 /**
  * Elige `count` ejercicios de un grupo respetando material, prohibiciones y lo
- * ya elegido. Orden (el de la v1, que es el que hace que la propuesta salga
+ * ya elegido. Orden (el que hace que la propuesta salga
  * «compuesto primero»): compuestos antes que aislados → ★ los marcados → los NO
  * usados en las últimas `rotate` sesiones → los MENOS familiares (novedad) →
  * alfabético.
  *
  * Ojo con DÓNDE va el ★: después de `type` y antes de `recent`, nunca antes de
- * `type` (rompería la regla «compuesto antes que aislado» de la v1 y los tests
+ * `type` (rompería la regla «compuesto antes que aislado» y los tests
  * de paridad de `plan.test.ts`). Con la biblioteca sin ★ el orden es idéntico
  * al de siempre, y la rotación sigue mandando DENTRO de los favoritos.
  */
@@ -245,7 +235,7 @@ export function itemsFromRecipe(
   return items;
 }
 
-/** Plantilla por id (null si no existe: la v1 devolvía `null` igual). */
+/** Plantilla por id (null si no existe). */
 export function findTemplate(templateId: string): RoutineTemplate | null {
   return TEMPLATES.find((tpl) => tpl.id === templateId) ?? null;
 }
@@ -300,10 +290,9 @@ function defaultSuggest(input: PlanInput): SuggestFn {
 
 /**
  * Completa items de receta con los valores de la biblioteca y el peso: es el
- * `richItems` de la v1 (`legacy/js/coach.js` ~290). Las reps por defecto son la
+ * `richItems`  ( ~290). Las reps por defecto son la
  * media del rango y el peso sale de `suggest` salvo que el item lo traiga fijo.
- * Los ids que ya no están en la biblioteca se OMITEN (igual que la v1, que
- * filtraba el `null`).
+ * Los ids que ya no están en la biblioteca se OMITEN (se filtra el `null`).
  */
 export function richItems(
   input: PlanInput,
@@ -349,7 +338,7 @@ export function richItems(
 
 /**
  * Días de la semana (índice 0 = lunes) en los que se entrena, por nº de días
- * semanales. Es la v1 literal: los huecos son días de descanso y, si sobra el
+ * semanales. Los huecos son días de descanso y, si sobra el
  * domingo (`i === 6 && n < 6`), ese hueco es recuperación activa en vez de
  * descanso.
  */
@@ -364,7 +353,7 @@ export const WEEK_LAYOUT: Record<number, readonly number[]> = {
 };
 
 /**
- * Plantillas que tocan en cada posición de `WEEK_LAYOUT`, también de la v1
+ * Plantillas que tocan en cada posición de `WEEK_LAYOUT`, también
  * (salvo el domingo de 7 días, que era `mobility` y la semilla ya no trae
  * plantillas de movilidad: se queda en el reparto de `full_b`).
  * `full_a`/`full_b` para 1-3 días (fuerza completa) y splits de 4-7 (push/pull/
@@ -392,7 +381,7 @@ export interface WeekSlot {
 
 /**
  * Patrón de 7 días para `daysPerWeek` (se recorta a 1-7 y lo que no esté en la
- * tabla cae en el reparto de 4, como la v1). Devuelve solo el PATRÓN: las
+ * tabla cae en el reparto de 4). Devuelve solo el PATRÓN: las
  * fechas y los pesos los pone `features/coach/local.ts`.
  */
 export function weekSlots(daysPerWeek: number): WeekSlot[] {

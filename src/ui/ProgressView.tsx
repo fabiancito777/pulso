@@ -1,13 +1,13 @@
 /**
  * Montaje único de la pestaña Progreso (spec S1 §3.1).
  *
- * Cabecera (`ProgressCard`, reconvertido en el sub de la v1) → gráficos
+ * Cabecera (`ProgressCard`, reconvertido en el sub ) → gráficos
  * (`ProgressCharts` con el último estímulo dentro del reparto por grupo y el
  * botón de la tabla completa bajo los récords) → historial de sesiones con su
  * detalle, su borrado y la repetición.
  *
  * Guard de estado vacío: sin sesiones NO se monta `ProgressCharts` (así no hay
- * dos empty-states seguidos) y se pintan SOLO los dos botones de la v1
+ * dos empty-states seguidos) y se pintan SOLO los dos botones
  * («Ir a entrenar» y «Cargar datos de ejemplo»). Al cargar el ejemplo cambia
  * `sessions` y todo lo demás se repinta solo (signals): no hay que refrescar
  * nada a mano.

@@ -111,7 +111,7 @@ export type ProposalDraftResult =
  * «gemelos» antes que «elevación», «press militar» antes que «press»).
  */
 const GROUP_KEYWORDS: readonly (readonly [RegExp, string])[] = [
-  /* Los 6 grupos que no venían en la v1 van PRIMERO: comparten palabras con los
+  /* Los 6 grupos que no venían  van PRIMERO: comparten palabras con los
      de siempre («encogimiento» no es hombros, «extensión de espalda» no es
      tríceps) y el catálogo los recorre en este orden. */
   [/cuello|cervical/, 'cuello'],

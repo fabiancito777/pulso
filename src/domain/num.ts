@@ -1,6 +1,5 @@
 /**
- * Helpers numéricos. Portado de la v1 (`legacy/js/core.js`, `U.num`, `U.int`,
- * `U.round`…) pero con nombres propios y tipos: en v2 no hay un cajón único.
+ * Helpers numéricos con nombres propios y tipos.
  */
 
 /** Convierte a número y cae a `def` si no es finito. */
@@ -14,7 +13,7 @@ export function int(v: unknown, def = 0): number {
   return Number.isFinite(n) ? n : def;
 }
 
-/** Redondeo con el epsilon de la v1: evita 2.4999999 → 2,4. */
+/** Redondeo con el epsilon: evita 2.4999999 → 2,4. */
 export function round(v: unknown, dec = 1): number {
   const f = 10 ** dec;
   return Math.round((num(v) + Number.EPSILON) * f) / f;

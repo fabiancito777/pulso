@@ -3,32 +3,32 @@
  * con detalle lateral y la propuesta semanal (`planFromJson`/`parsePlan` →
  * previsualizar → `applyWeek`).
  *
- * Decisiones que vienen de `legacy/js/views-calendar.js` y no se rompen:
+ * Decisiones que vienen de  y no se rompen:
  *
  * - **DOS motores de plan, el local SIEMPRE visible**: «Auto-planificar» usa
  *   `localWeek` en el dispositivo (sin red, sin key) y «Con IA» —la mejora
  *   opcional, solo con key— usa `runCoachTask('plan')`, que ya resuelve en
  *   local si no hay key o si la llamada se cae (auth/red/cuota). Es el par
- *   `cal:autoplan` con `data-ai="0"` y `"1"` de la v1; sin key la opción IA se
+ *   `cal:autoplan` con `data-ai="0"` y `"1"`; sin key la opción IA se
  *   oculta y deja el pie «sin API key: plan local» en vez de un bloqueo.
  * - **Nunca se aplica solo**: las dos rutas acaban en la MISMA tarjeta de
  *   propuesta (preview común) y el calendario solo se toca en «Aplicar». Tras
  *   aplicar, la tarjeta se queda con «Aplicada (N días)» + «Regenerar», como
- *   `plan.applied` de la v1: re-planificar propone ANTES de escribir.
+ *   `plan.applied`: re-planificar propone ANTES de escribir.
  * - **Local e IA se distinguen** en el `source` del plan: `localWeek` escribe
  *   `'local'` y el modelo, `'ia'` (o nada, que `normalizePlan` cuenta como
  *   IA). `applyWeek` lo copia tal cual al día —la rutina nacida del plan
  *   guarda `'generador'`—, así que Hoy pinta badge «plan» o «IA» igual que la
- *   v1 (`views-train.js:120`).
- * - **La semana son DOS capas**: la franja de 7 columnas de la v1
+ *   antes (`views-train.js:120`).
+ * - **La semana son DOS capas**: la franja de 7 columnas
  *   (`week-strip`, para ver de un vistazo) y una tarjeta por día con el
  *   selector de rutina y las acciones rápidas. Siete columnas con un `<select>`
  *   dentro no caben en los 720 px del shell.
  * - **Un día con sesión real se ve HECHO** aunque el plan diga otra cosa, y el
- *   resumen de la semana cuenta `completados/planificados` como la v1.
+ *   resumen de la semana cuenta `completados/planificados` como antes.
  * - **Solo se escribe con `setDay(iso, patch)`** (el setter del store, que hace
  *   merge). Por eso "limpiar" pasa `clearDayPatch()`: `undefined` en cada campo
- *   que `JSON.stringify` omite, que es el `delete` de la v1 hecho con merge.
+ *   que `JSON.stringify` omite, que es el `delete`  hecho con merge.
  * - **Fechas SIEMPRE ISO local** de `domain/dates` (`weekDates`, `monthDays`,
  *   `label`): nada de `toISOString().slice(0, 10)`, que desplaza el día según
  *   la zona horaria.
@@ -114,7 +114,7 @@ const BADGE_CLASS: Record<DayState, string> = {
   free: 'badge',
 };
 
-/** Clase de la barrita de la franja semanal (mismos nombres que la v1). */
+/** Clase de la barrita de la franja semanal (mismos nombres que antes). */
 const STRIP_CLASS: Record<DayState, string> = {
   done: 'st-done',
   rest: 'st-rest',
@@ -161,7 +161,7 @@ function clearDay(iso: string): void {
   setDay(iso, clearDayPatch());
 }
 
-/** Cambia el estado desde el detalle del día (el `cal:day-status` de la v1). */
+/** Cambia el estado desde el detalle del día (el `cal:day-status` ). */
 function setStatus(iso: string, status: DayStatus): void {
   if (status === 'rest') {
     markRest(iso);
@@ -283,7 +283,7 @@ function WeekDayCard({ iso, selected }: { iso: string; selected: boolean }) {
   );
 }
 
-/** Franja de 7 columnas (el `week-strip` de la v1): de un vistazo y para saltar a un día. */
+/** Franja de 7 columnas (el `week-strip` ): de un vistazo y para saltar a un día. */
 function WeekStrip({
   days,
   selected,
@@ -425,8 +425,8 @@ function MonthCell({
   const count = sessionsOn(iso).length;
   const state = dayState(day, count);
   const modifier = state === 'free' ? '' : ` cal-${state}`;
-  /* Intensidad mensual de la v1 (`views-calendar.js:217`): `lv3` = 2+ sesiones
-     (ver `monthLevel`: lv1 y lv2 los pinta ya `cal-planned`/`cal-done`). */
+  /* Intensidad mensual: `lvl3` = 2+ sesiones (el planificado y la sesión única
+     ya se pintan con `cal-planned`/`cal-done`). */
   const level = monthLevel(count);
   return (
     <button
@@ -590,7 +590,7 @@ function MonthView({
 
 /**
  * Propuesta de semana ya normalizada (la MISMA tarjeta para el plan local y el
- * de la IA) con sus tres salidas: aplicar, regenerar (v1 `cal:regen`, propone
+ * de la IA) con sus tres salidas: aplicar, regenerar (antes `cal:regen`, propone
  * otra vez sin tocar el calendario) y descartar.
  */
 function PlanCard({
@@ -686,7 +686,7 @@ export function CalendarView() {
   const controls = planControls(hasApiKey());
 
   /* «Plan automático» de Hoy: la petición viaja en la signal del helper y se
-     consume UNA vez (el `coach:quick` de la v1 llamaba a `autoPlan` de la vista
+     consume UNA vez (el `coach:quick`  llamaba a `autoPlan` de la vista
      del calendario). El efecto también corre al montar, que es como llega la
      petición cuando se cambia de pestaña. */
   const autoRequest = autoPlanRequest.value;
@@ -701,10 +701,10 @@ export function CalendarView() {
     mode === 'week'
       ? `${dateLabel(weekStart, 'medium')} – ${dateLabel(addDays(weekStart, 6), 'medium')}`
       : monthLabel;
-  /* Subtítulo `V.sub` de la v1 (`views-calendar.js:13-19`), pintado arriba de la
+  /* Subtítulo `V.sub`  (`views-calendar.js:13-19`), pintado arriba de la
      vista como el de Hoy y el de Progreso. Los estados salen de la MISMA lógica
      que las tarjetas (`dayState` + `sessionsOn`), así que nunca miente sobre lo
-     de abajo, y sigue siendo la semana del cursor en los dos modos (como la v1). */
+     de abajo, y sigue siendo la semana del cursor en los dos modos (como antes). */
   const subtitle = weekSubtitle(
     weekStart,
     weekDates(cursor).map((iso) => dayState(schedule.value[iso], sessionsOn(iso).length)),
@@ -728,7 +728,7 @@ export function CalendarView() {
 
   /**
    * Plan del dispositivo sobre la semana que se está MIRANDO, igual que
-   * `V.autoPlan` de la v1 (`startOfWeek(cursor)`): sin red, sin key y sin
+   * `V.autoPlan`  (`startOfWeek(cursor)`): sin red, sin key y sin
    * promesa. La IA no puede elegir semana (`runCoachTask('plan')` trabaja
    * siempre sobre la de hoy), por eso el salto de cursor es suyo y este no.
    */
@@ -751,7 +751,7 @@ export function CalendarView() {
   /**
    * Genera la propuesta y la deja en pantalla. NUNCA escribe el calendario:
    * eso solo lo hace «Aplicar», así que ni «Auto-planificar» ni «Regenerar»
-   * pisan lo que ya tenías planificado sin pasar por la tarjeta (v1:
+   * pisan lo que ya tenías planificado sin pasar por la tarjeta (antes:
    * `cal:autoplan`/`cal:regen` solo rellenaban `plan`).
    *
    * - `local` → `localWeek` en el dispositivo (cero llamadas).
@@ -809,7 +809,7 @@ export function CalendarView() {
     }
   }
 
-  /** `cal:apply-plan` de la v1: el ÚNICO sitio donde se escribe el calendario. */
+  /** `cal:apply-plan`: el ÚNICO sitio donde se escribe el calendario. */
   function applyPlan(): void {
     if (!plan) return;
     const result = applyWeek(plan.raw);
@@ -822,7 +822,7 @@ export function CalendarView() {
     });
   }
 
-  /** `cal:regen` de la v1: otra propuesta (MISMO motor) y vuelta a la tarjeta. */
+  /** `cal:regen`: otra propuesta (MISMO motor) y vuelta a la tarjeta. */
   function regenPlan(): void {
     if (!plan) return;
     void requestPlan(planEngine(plan.preview.source));
@@ -835,7 +835,7 @@ export function CalendarView() {
 
   return (
     <section class="cal-view">
-      {/* Subtítulo de la pestaña (el `#appbar-sub` de la v1): `weekSubtitle`.
+      {/* Subtítulo de la pestaña (subtítulo de la pestaña): `weekSubtitle`.
           En su fila con el ? de la pestaña, que el `.v2-sub` solo no admite. */}
       <div class="help-row">
         <div class="v2-sub">{subtitle}</div>

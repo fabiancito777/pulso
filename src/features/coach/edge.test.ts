@@ -62,7 +62,7 @@ const N_SUST = 'Dominadas';
 /** `5 km` / `cinco kilómetros`: como el modelo pueda escribirlo. */
 const KM = /(?:5\s*(?:km|kil)|cinco\s+kil)/i;
 
-/* ---------- API key: process.env o .env.local de la raíz (mismo loader que smoke) ---------- */
+/* ---------- API key: process.env o.env.local de la raíz (mismo loader que smoke) ---------- */
 
 function stripQuotes(raw: string): string {
   const value = raw.trim();

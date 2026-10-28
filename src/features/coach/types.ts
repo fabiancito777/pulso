@@ -188,7 +188,7 @@ export interface BuildContextParams {
 
 /* ---------- peticiones al modelo ---------- */
 
-/** Un mensaje del chat, con el mismo rol que usaba la v1 (`user` / `model`). */
+/** Un mensaje del chat, con el mismo rol que usaba antes (`user` / `model`). */
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;

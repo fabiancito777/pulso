@@ -1,6 +1,6 @@
 /**
- * `app/App.tsx`: los **subtítulos de pestaña** (el `V.sub` de la v1, que
- * `updateAppbar` pintaba en `#appbar-sub`, `legacy/js/app.js:60-63`).
+ * `app/App.tsx`: los **subtítulos de pestaña** (el `V.sub`, que
+ * `updateAppbar` pintaba en `#appbar-sub`, ).
  *
  * En la v2 ese texto se reparte entre el shell y la propia vista, así que lo que
  * hay que vigilar es el REPARTO: el shell pinta Rutinas y Ajustes, las demás
@@ -28,8 +28,8 @@ afterEach(() => {
   routines.value = original;
 });
 
-describe('tabSub (el V.sub de la v1)', () => {
-  it('rutinas vacías: el llamado a la acción literal de la v1', () => {
+describe('tabSub (el subtítulo de pestaña)', () => {
+  it('rutinas vacías: el llamado a la acción literal', () => {
     routines.value = [];
     expect(tabSub('rutinas')).toBe('Crea tu primera rutina o usa una plantilla');
   });
@@ -42,7 +42,7 @@ describe('tabSub (el V.sub de la v1)', () => {
     expect(tabSub('rutinas')).toBe(`2 rutinas guardadas · ${TEMPLATES.length} plantillas`);
   });
 
-  it('ajustes: subtítulo fijo de la v1', () => {
+  it('ajustes: subtítulo fijo', () => {
     expect(tabSub('ajustes')).toBe('Personaliza Pulso a tu medida');
   });
 

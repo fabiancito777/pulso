@@ -1,8 +1,8 @@
 /**
  * `platform/audio.ts`: el esqueleto de los avisos sonoros.
  *
- * Port de la única comprobación del auto-test de la v1 que no pinta nada
- * (`audio: el pitido de fin de descanso dura ~3,5 s`, `legacy/js/app.js`), aquí
+ * Port de la única comprobación del auto-test  que no pinta nada
+ * (`audio: el pitido de fin de descanso dura ~3,5 s`, ), aquí
  * contra un `AudioContext` de mentira que solo registra cuándo suena cada
  * oscilador: lo que hay que fijar es la CADENCIA (5 pitidos que acaban a los
  * ~3,5 s, con el volumen pedido y acotado), no el sonido — eso solo se oye en el
@@ -121,7 +121,7 @@ afterEach(() => {
 });
 
 describe('beep', () => {
-  it('el fin de descanso son 5 pitidos que acaban entre 3 y 4,2 s (v1: ~3,5 s)', () => {
+  it('el fin de descanso son 5 pitidos que acaban entre 3 y 4,2 s (~3,5 s)', () => {
     beep('end', { sound: true, volume: 0.6 });
 
     expect(ctx.tones).toHaveLength(5);

@@ -2,7 +2,7 @@
  * `features/coach/local.ts`: el planificador local del coach (sin red, sin key).
  *
  * Datos clavados a mano y fecha fija (`2026-09-28`, lunes), así que aquí se
- * fija lo que en la v1 solo se veía usando la app: el reparto de la semana, las
+ * fija lo que  solo se veía usando la app: el reparto de la semana, las
  * recetas de cada plantilla, qué pasa cuando falta material, el camino del
  * PRIMER DÍA (sin historial) y que los pesos salen en la unidad del usuario.
  *
@@ -265,7 +265,7 @@ describe('localSuggest', () => {
   it('primer día (0 sesiones) → receta genérica de cuerpo completo, nunca vacío', () => {
     const out = localSuggest(params());
 
-    /* la receta de la v1: cuádriceps 1 + pecho 1 + espalda 1, y el bloque de core */
+    /* la receta: cuádriceps 1 + pecho 1 + espalda 1, y el bloque de core */
     expect(out.exercises.map((item) => item.exId)).toEqual([
       'sentadilla',
       'flex',
@@ -430,7 +430,7 @@ describe('localWeek', () => {
       'full_b',
     ]);
     expect(siete.some((d) => d.type === 'descanso')).toBe(false);
-    /* la v1 cerraba la semana con `mobility`; la semilla ya no trae plantillas
+    /* antes cerraba la semana con `mobility`; la semilla ya no trae plantillas
        de movilidad, así que el domingo es un entrenamiento más */
     expect(siete[6]).toMatchObject({ type: 'entreno', title: 'Full body B' });
   });

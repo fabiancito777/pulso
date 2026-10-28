@@ -1,5 +1,5 @@
 /**
- * System prompt y peticiones: la semántica de la v1 (JSON en suggest/plan,
+ * System prompt y peticiones: la semántica  (JSON en suggest/plan,
  * markdown corto en analyze, 12 mensajes en chat) y la inyección del contexto.
  */
 import { describe, expect, it } from 'vitest';
@@ -21,7 +21,7 @@ import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from './schema';
 import type { ChatMessage } from './types';
 
 describe('DEFAULT_SYSTEM', () => {
-  it('recoge las reglas de la v1', () => {
+  it('recoge las reglas del prompt', () => {
     expect(DEFAULT_SYSTEM).toContain('español');
     expect(DEFAULT_SYSTEM).toContain('nombre exacto');
     expect(DEFAULT_SYSTEM).toContain('equipamiento e inventario');
@@ -147,7 +147,7 @@ describe('buildRequest', () => {
     expect(req.json).toBe(true);
     expect(req.responseSchema).toBe(SUGGEST_RESPONSE_SCHEMA);
     expect(req.prompt).toContain('la forma exacta la fija el esquema de la respuesta');
-    /* el ejemplo JSON de la v1 ya no viaja: la forma vive en `schema.ts` */
+    /* el ejemplo JSON  ya no viaja: la forma vive en `schema.ts` */
     expect(req.prompt).not.toContain('{"title":"titulo corto"');
     expect(req.prompt).toContain('weight en lb');
     expect(req.prompt).toContain('1 bloque de core');
@@ -234,7 +234,7 @@ describe('buildRequest', () => {
       role: i % 2 ? 'model' : 'user',
       text: `mensaje ${i}`,
     }));
-    /* mensajes de otros roles (p. ej. system) no viajan: se filtran como en la v1 */
+    /* mensajes de otros roles (p. ej. system) no viajan: se filtran como  */
     (history as { role: string; text: string }[]).push({ role: 'system', text: 'esto no cuenta' });
 
     const req = buildRequest('chat', { question: '¿cómo voy?', history });

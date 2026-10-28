@@ -4,8 +4,8 @@
  * rutina que salen de ellos.
  *
  * `catalog.ts` sigue trayendo el catálogo COMPLETO (136 ejercicios y 9
- * plantillas, generado desde la v1): sirve para buscar nombres que ya están en
- * el historial y para `data.test.ts`, pero **no es la semilla**. La semilla es
+ * plantillas): sirve para buscar nombres que ya están en el historial y para
+ * `data.test.ts`, pero **no es la semilla**. La semilla es
  * esto de aquí, que es lo que `state/store.ts` fusiona con lo guardado y lo que
  * por tanto ve alguien que abre la app por primera vez.
  *
@@ -28,7 +28,7 @@ import type { Exercise, ExerciseOpts, ExerciseType, RoutineTemplate } from './ty
 /**
  * Mismo patrón que el `E()` de `catalog.ts` (no exportado: ese fichero es generado).
  * El id sale del nombre, igual que hace
- * `S.addExercise` de la v1, así que no hay que mantener dos listas de ids.
+ * `S.addExercise`, así que no hay que mantener dos listas de ids.
  */
 function E(
   name: string,
@@ -217,7 +217,7 @@ export function seedExercises(): Exercise[] {
 }
 
 /**
- * Plantillas de rutina de la semilla: las 7 de la v1 que siguen teniendo
+ * Plantillas de rutina de la semilla: las 7  que siguen teniendo
  * ejercicios detrás. Se quedan fuera `hiit` (cardio) y `mobility` (movilidad),
  * porque esta biblioteca no trae ni un ejercicio de esos grupos: la receta pedía
  * `[cardio, 2]`/`[movilidad, 5]` y el día saldría SIEMPRE vacío.

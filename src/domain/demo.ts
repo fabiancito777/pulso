@@ -2,16 +2,14 @@
  * Datos de ejemplo: 8 semanas de sesiones ficticias para ver gráficos,
  * rachas y récords con contenido antes de haber entrenado nada.
  *
- * Port puro de `S.demoData` (`legacy/js/store.js` 711-755): aquí NO hay estado
- * (ni `localStorage`, ni signals) — ajustes, biblioteca, material e historial
- * entran por parámetro y el store es quien los persiste con
+ * No hay estado (ni `localStorage`, ni signals): ajustes, biblioteca, material e
+ * historial entran por parámetro y el store es quien los persiste con
  * lectura-modificación-escritura.
  *
- * Datos CLAVADOS de la v1, que es lo que hace que las gráficas de ejemplo
- * salgan iguales en las dos ramas:
+ * Datos CLAVADOS para que las gráficas de ejemplo sean deterministas:
  * - patrón `dowPlan = [0, 2, 4, 5]` (lun/mié/vie/sáb) desde `startOfWeek(hoy)`,
  *   con 3 o 4 sesiones por semana (`3 + hashNum('d'+w) % 2`);
- * - plantilla `RECIPES[(w * 3 + k) % 7]` de las 7 recetas de la v1;
+ * - plantilla `RECIPES[(w * 3 + k) % 7]` de las 7 recetas;
  * - SIN fechas futuras: los días de la semana en curso que aún no llegaron se
  *   saltan (`iso > hoy`);
  * - peso base 40/16 kg + `hashNum(id) % 24`, con progresión
@@ -19,9 +17,9 @@
  * - reps dentro de `repMin..repMax` (también a peso corporal, no un 10-17 fijo);
  * - sesión con `source: 'demo'`, `demo: true`, `rpe: 7`, 18:00Z y 48-72 min.
  *
- * Ojo, dos cosas que la v1 hacía a propósito y aquí se conservan: NO deduplica
- * (dos clics = sesiones dobles) y las sesiones de ejemplo van al MISMO array
- * que las reales, así que la analítica no las filtra.
+ * Dos detalles intencionados: NO deduplica (dos clics = sesiones dobles) y las
+ * sesiones de ejemplo van al MISMO array que las reales, así que la analítica no
+ * las filtra.
  */
 import { addDays, startOfWeek } from './dates';
 import { DEFAULT_SETTINGS } from './defaults';
@@ -33,7 +31,7 @@ import type { EquipmentMap } from './data';
 import type { Exercise, RoutineTemplate, Session, SessionEntry, SetLog, Unit } from './types';
 
 export interface DemoOptions {
-  /** semanas hacia atrás (8 en la v1) */
+  /** semanas hacia atrás (8) */
   weeks: number;
   /** unidad en la que se guardan los pesos de las sesiones */
   unit: Unit;
@@ -43,17 +41,17 @@ export interface DemoOptions {
   equipment: EquipmentMap;
   /**
    * historial previo. Va además de `exercises`/`equipment` porque
-   * `pickForGroup` rota y desempata por familiaridad con él (la v1 leía
+   * `pickForGroup` rota y desempata por familiaridad con él (antes leía
    * `state.sessions` creciente: aquí se le van añadiendo las creadas).
    */
   sessions: readonly Session[];
   /** último día permitido (`YYYY-MM-DD`): los ejemplos nunca son futuros */
   todayIso: string;
-  /** recetas del catálogo (`TEMPLATES`): la v1 usaba 7 de las suyas */
+  /** recetas del catálogo (`TEMPLATES`): antes usaba 7 de las suyas */
   templates: readonly RoutineTemplate[];
 }
 
-/** Recetas de la v1, en el mismo orden: de ahí sale `RECIPES[(w * 3 + k) % 7]`. */
+/** Recetas, en el mismo orden: de ahí sale `RECIPES[(w * 3 + k) % 7]`. */
 const RECIPES = ['full_a', 'full_b', 'push', 'pull', 'legs', 'upper', 'lower'] as const;
 
 /** lun / mié / vie / sáb, medidos desde el lunes de `startOfWeek`. */
@@ -66,7 +64,7 @@ function byRecent(a: Session, b: Session): number {
   return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 }
 
-/** Hash determinista de la v1 (`U` no lo traía, vivía dentro de `S.demoData`). */
+/** Hash determinista  (`U` no lo traía, vivía dentro de `S.demoData`). */
 function hashNum(str: string): number {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 100000;
@@ -75,7 +73,7 @@ function hashNum(str: string): number {
 
 /**
  * Series de un ejercicio de ejemplo: 4 si es compuesto y 3 si no, con el peso
- * progresivo y reps dentro del rango de la biblioteca (misma fórmula que la v1,
+ * progresivo y reps dentro del rango de la biblioteca (misma fórmula que antes,
  * redondeada a 0,5 en la unidad pedida).
  */
 function demoSets(ex: Exercise, w: number, weeks: number, date: string, unit: Unit): SetLog[] {
@@ -88,7 +86,7 @@ function demoSets(ex: Exercise, w: number, weeks: number, date: string, unit: Un
   const out: SetLog[] = [];
   for (let i = 0; i < total; i++) {
     /* A peso corporal también se respeta el rango real de la biblioteca: el
-       «10 + hash % 8» de la v1 podía salirse de `repMin..repMax`. */
+       «10 + hash % 8»  podía salirse de `repMin..repMax`. */
     const reps = ex.bw
       ? ex.repMin + (hashNum(`${ex.id}${i}${w}`) % range)
       : ex.repMin + ((hashNum(`${ex.id}${i}`) + w) % range);
@@ -103,7 +101,7 @@ function demoSets(ex: Exercise, w: number, weeks: number, date: string, unit: Un
  * apila con las existentes y reordena también por `startedAt` descendente.
  *
  * Cada día se salta si la plantilla no trae ni un ejercicio disponible con el
- * material activo (la v1 hacía `if (!entries.length) continue`), así que con
+ * material activo (antes hacía `if (!entries.length) continue`), así que con
  * «Solo peso corporal» sigue saliendo algo: los ejercicios de PC del catálogo.
  */
 export function demoSessions(o: DemoOptions): Session[] {
@@ -114,7 +112,7 @@ export function demoSessions(o: DemoOptions): Session[] {
   const out: Session[] = [];
 
   /* El historial CRECE con cada sesión creada, igual que `state.sessions` en la
-     v1, pero SIEMPRE de más reciente a más antiguo: `recentlyUsedSessions` corta
+     antes, pero SIEMPRE de más reciente a más antiguo: `recentlyUsedSessions` corta
      por delante y, si empujáramos al final, la rotación solo vería el historial
      viejo y nunca lo recién generado. */
   const history: Session[] = [...o.sessions].sort(byRecent);

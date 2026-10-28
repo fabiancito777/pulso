@@ -1,5 +1,5 @@
 /**
- * Helpers puros de la pestaña Progreso (spec S1 §3.4): todo lo que la v1
+ * Helpers puros de la pestaña Progreso (spec S1 §3.4): todo lo que antes
  * calculaba dentro de `views-stats.js` y de `app.js` con el estado global a mano.
  *
  * Nada de DOM, nada de signals: sesiones y ejercicios entran por parámetro, así
@@ -12,7 +12,7 @@
  * - los pesos salen en **kg** (`volumeOf`/`setKg` ya convierten desde la unidad
  *   de la sesión);
  * - «récord nuevo» compara contra las sesiones con fecha **estrictamente**
- *   anterior (`prsBefore`, v1 `app.js:908`) con margen 0,01 kg: un empate no es
+ *   anterior (`prsBefore`, antes `app.js:908`) con margen 0,01 kg: un empate no es
  *   un récord.
  */
 import {
@@ -50,9 +50,9 @@ export interface SessionSummary {
 }
 
 /**
- * Lo que pinta cada fila del historial (v1 `views-stats.js:161-165`): fecha,
+ * Lo que pinta cada fila del historial (antes `views-stats.js:161-165`): fecha,
  * nombre, volumen, series, duración y grupos. El grupo sale del catálogo si el
- * ejercicio está en la biblioteca y, si no, del respaldo `entry.group` que la v1
+ * ejercicio está en la biblioteca y, si no, del respaldo `entry.group` que antes
  * guardaba en cada entrada.
  */
 export function sessionSummary(session: Session, exercises: readonly Exercise[]): SessionSummary {
@@ -79,7 +79,7 @@ export function sessionSummary(session: Session, exercises: readonly Exercise[])
 
 /**
  * Mejor 1RM estimado de cada ejercicio en las sesiones ANTERIORES a `iso`
- * (v1 `prsBefore`, `app.js:908-930`). Las del propio día no cuentan: si haces
+ * (antes `prsBefore`, `app.js:908-930`). Las del propio día no cuentan: si haces
  * dos sesiones iguales seguidas, la segunda no «mejora» nada.
  */
 export function prsBefore(sessions: readonly Session[], iso: string): Record<string, number> {
@@ -148,10 +148,10 @@ export interface StimulusRow {
 }
 
 /**
- * «Último estímulo» de cada grupo (v1 `lastTrainedList`, `views-stats.js:76-89`):
+ * «Último estímulo» de cada grupo (antes `lastTrainedList`, `views-stats.js:76-89`):
  * sin cardio ni movilidad (se miden en minutos, no en días) y ordenado por
  * días SIN entrenar: lo más descuidado arriba y los que nunca se tocaron
- * primeros (la v1 les daba 999, así que encabezan la lista).
+ * primeros (antes les daba 999, así que encabezan la lista).
  */
 export function lastStimulusRows(
   sessions: readonly Session[],
@@ -186,7 +186,7 @@ export interface TopExercise {
 }
 
 /**
- * Los ejercicios más repetidos (chips de «Progresión», v1 `exercisePickerRow`).
+ * Los ejercicios más repetidos (chips de «Progresión», antes `exercisePickerRow`).
  * El orden es frecuencia → ★ → id: los favoritos solo DESATAMPAN un empate (la
  * frecuencia manda, que es lo que mide el chip) y el id sigue ahí para que dos
  * ejercicios con el mismo número de sesiones no cambien de orden entre repintados.
@@ -219,7 +219,7 @@ export function topExercises(
 
 /**
  * Los ids con al menos una entrada en el historial: los que deja elegir el
- * picker de «Progresión» (v1 `onlyDone` → `S.familiarity`, que contaba
+ * picker de «Progresión» (antes `onlyDone` → `S.familiarity`, que contaba
  * entradas, no series marcadas).
  */
 export function historyExerciseIds(sessions: readonly Session[]): string[] {

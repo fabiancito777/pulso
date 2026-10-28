@@ -42,7 +42,7 @@ export const QUERY_DEFAULT_LIMIT = 30;
 /**
  * Similitud mínima para resolver una consulta por un nombre parecido.
  *
- * 0,85 y no 0,5 como en la v1: quien redacta la consulta es el MODELO y se
+ * 0,85 y no 0,5 como: quien redacta la consulta es el MODELO y se
  * inventa nombres («Curl con oso polar»), y con 0,5 se parecían lo bastante a
  * «Curl con barra» como para devolver los datos de OTRO ejercicio. Ver
  * `resolveExercise`.

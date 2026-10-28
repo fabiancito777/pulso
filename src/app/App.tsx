@@ -18,7 +18,6 @@ import { HoyView } from '@/ui/HoyView';
 import { openHelp } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { Onboarding } from '@/ui/Onboarding';
-import { PlatesCard } from '@/ui/PlatesCard';
 import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
@@ -149,7 +148,10 @@ function CurrentView({ tab }: { tab: Tab }) {
          historial) en su propio componente */
       return <ProgressView />;
     case 'entrenar':
-      return <PlatesCard />;
+      /* La calculadora de discos ya no vive fija aquí: es el botón «discos» de
+         cada ejercicio dentro de la sesión, así solo aparece entrenando y abre
+         con el peso que tiene ese ejercicio. */
+      return null;
     case 'rutinas':
       return <RoutinesView />;
     case 'calendario':

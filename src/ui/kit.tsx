@@ -1,7 +1,7 @@
 /**
  * Piezas de UI reutilizables (filas de ajustes, KPIs, avisos).
  *
- * En la v1 esto eran funciones que devolvían HTML con `data-act` y un manejador
+ *  esto eran funciones que devolvían HTML con `data-act` y un manejador
  * global que volvía a leer el DOM. Aquí cada fila es un componente con su
  * `onChange`, así que el valor que se guarda es el que el usuario acaba de tocar
  * (no hay `getAttribute` de por medio, que era la fuente de la mitad de los bugs).
@@ -62,7 +62,7 @@ export function SwitchRow({
   );
 }
 
-/** Fila con número (`step`, `min` y `max` como en la v1). */
+/** Fila con número (`step`, `min` y `max` como ). */
 export function NumRow({
   label,
   hint,
@@ -144,7 +144,7 @@ export interface Option {
   label: string;
 }
 
-/** Desplegable. Los valores siempre viajan como texto (igual que en la v1). */
+/** Desplegable. Los valores siempre viajan como texto (igual que ). */
 export function SelectRow({
   label,
   hint,

@@ -1,17 +1,14 @@
 /**
- * Sesión en curso. Portado de `T.*` de la v1 (`legacy/js/trainer.js`) sin el timer
- * de descanso, la UI ni el audio: aquí solo están las REGLAS.
+ * Sesión en curso, sin el timer de descanso, la UI ni el audio: aquí solo están
+ * las REGLAS.
  *
- * Dos cambios de forma respecto a la v1, a propósito:
+ * Dos decisiones de forma:
  *
- * 1. **Nada se muta.** `T.update(mutator)` mutaba la sesión activa por dentro; aquí
- *    cada función devuelve una sesión nueva. Con Preact y signals eso es lo que
- *    hace que la pantalla se repinte sola (y en la v1 era justo lo contrario:
- *    había que refrescar los inputs a mano para no cerrar el teclado).
- * 2. **Las decisiones se devuelven, no se ejecutan.** Al marcar una serie la v1
- *    arrancaba el descanso por dentro (leyendo `settings.autoRest` y hablando con
- *    el service worker); aquí `toggleSet` devuelve una `RestDecision` y quien
- *    llama decide. Eso es lo que permite probar \"cuándo hay descanso\" sin navegador.
+ * 1. **Nada se muta.** Cada función devuelve una sesión nueva. Con Preact y
+ *    signals eso es lo que hace que la pantalla se repinte sola.
+ * 2. **Las decisiones se devuelven, no se ejecutan.** `toggleSet` devuelve una
+ *    `RestDecision` y quien llama decide. Eso permite probar «cuándo hay
+ *    descanso» sin navegador.
  *
  * Reglas delicadas que NO hay que \"arreglar\" sin querer (fijadas en `session.test.ts`):
  *
@@ -85,7 +82,7 @@ export interface StartOptions {
   /**
    * Sugerencia de progresión por ejercicio (`analytics.suggestWeight`). Las `reps`
    * son las de la prescripción (media del rango, o las concretas del plan): con
-   * ellas se pide el peso, igual que hacía `T.prefill` de la v1
+   * ellas se pide el peso, igual que hacía `T.prefill`
    * (`trainer.js:30`), que nunca preguntaba por un peso «a secas».
    */
   suggest: (exId: string, reps?: number) => Suggestion;
@@ -175,7 +172,7 @@ export function prefill(entry: ActiveEntry, suggestion: Suggestion): ActiveEntry
 
 /**
  * Lo que un item del plan puede traer ADEMÁS de `PlanItem`: el `basis` («repetición
- * de 24 sep») y las `reps` concretas que la v1 metía dentro de `day.plan` y de la
+ * de 24 sep») y las `reps` concretas que antes metía dentro de `day.plan` y de la
  * repetición (`views-train.js:299`), más las `notes`. `PlanItem` todavía no los
  * nombra, así que se leen con este tipo local en vez de ampliar el contrato
  * compartido: el snapshot y la entrada los conservan tal cual.
@@ -193,7 +190,7 @@ type ResolvedPlanItem = RoutineItem & PlanExtras;
  * Resuelve un item del plan del coach contra la biblioteca y lo deja como
  * `RoutineItem` (con `exId`, que es con lo que se compara en la sesión). Los planes
  * del coach a veces traen solo el `name`, y lo que no esté en la biblioteca NO pasa
- * a la sesión: mismo criterio que usaba la v1 al montar los ejercicios.
+ * a la sesión: mismo criterio que usaba antes al montar los ejercicios.
  *
  * **No se puede descartar el `basis`/`reps`**: son con lo que la tarjeta de cada
  * ejercicio explica de dónde sale el peso («repetición de …») y con lo que se
@@ -243,7 +240,7 @@ function resolvePlan(
 
 /**
  * Lo que el plan manda sobre lo que sugiere el historial, en la entrada ya
- * construida (es el `startFromItems` de la v1, `views-train.js:299`):
+ * construida (es el `startFromItems`, `views-train.js:299`):
  *
  * - **reps concretas**: las del plan si las trae, si no la media del rango;
  * - **`basis`**: «repetición de …» si el plan lo trae (si no, se queda el de la
@@ -270,7 +267,7 @@ function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem): ActiveEntry {
  */
 export function startSession(opts: StartOptions): ActiveSession {
   /* `reps` = reps de la prescripción con las que se pide el peso: si no las trae
-     el plan, la media del rango (v1 `T.prefill`, `trainer.js:30`). */
+     el plan, la media del rango (antes `T.prefill`, `trainer.js:30`). */
   const make = (o: NewEntryOptions, reps?: number): ActiveEntry => {
     const entry = newEntry(o);
     const target = int(reps, Math.round((entry.repMin + entry.repMax) / 2));
@@ -342,7 +339,7 @@ export function startSession(opts: StartOptions): ActiveSession {
     notes: '',
     dayIso: opts.dayIso ?? today(),
     source: opts.source ?? 'manual',
-    /* sin plan no se añade la clave: el JSON de la v1 no la conoce y no aporta nada */
+    /* sin plan no se añade la clave: el JSON  no la conoce y no aporta nada */
     ...(plan ? { plan } : {}),
   };
 }
@@ -402,7 +399,7 @@ export function toggleSet(
 /**
  * Al marcar una serie, la SIGUIENTE se rellena con su peso y sus reps si están
  * vacías: así la serie que viene ya sale lista y no hay que repetir el dato cada
- * vez. La v1 lo hacía en el propio handler del click (no dentro de `T.toggleSet`),
+ * vez. antes lo hacía en el propio handler del click (no dentro de `T.toggleSet`),
  * y es el complemento del arrastre hacia abajo: uno copia al editar, el otro al
  * marcar.
  *
@@ -475,7 +472,7 @@ export function propagateSet(
  * Lo que pasa al editar el peso o las reps de una serie: se escribe el valor en esa
  * serie **y** se arrastra hacia abajo.
  *
- * Son dos pasos a propósito (la v1 los llamaba seguidos desde el mismo handler, y su
+ * Son dos pasos a propósito (antes los llamaba seguidos desde el mismo handler, y su
  * auto-test lo comprueba con `75/75/60/75`), pero aquí van juntos para que nadie se
  * deje el arrastre: ⚠️ `propagateSet` por sí solo NO escribe la serie editada.
  */
@@ -596,7 +593,7 @@ export function setEntryNotes(
 
 /**
  * Los ejercicios que mete una rutina en una sesión YA ARRANCADA (`train:start-routine`
- * de la v1 con `T.active()`). Es el mismo relleno que `startFromItems`:
+ *  con `T.active()`). Es el mismo relleno que `startFromItems`:
  *
  * - `restSec` del item, y si no, el del ejercicio (`newEntry`);
  * - reps = media de `repMin`/`repMax` (la sugerencia se llama con esas reps, pero
@@ -647,7 +644,7 @@ export function entriesFromRoutine(
 /**
  * Peso con el que se abre el modal de discos de un ejercicio: el ÚLTIMO peso
  * distinto de cero de la entrada y, si no hay ninguno, el de la primera serie
- * (v1 `views-train.js:477`). `0` = la entrada todavía no tiene peso.
+ * (antes `views-train.js:477`). `0` = la entrada todavía no tiene peso.
  */
 export function plateInitialWeight(entry: ActiveEntry): number {
   let last = 0;

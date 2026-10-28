@@ -2,7 +2,7 @@
  * `platform/keepAlive.ts`: el `<audio>` de silencio que mantiene viva la página
  * con el móvil bloqueado.
  *
- * Lo que hay que fijar aquí es lo que rompía Spotify en la v1 (fixes `ff21864`
+ * Lo que hay que fijar aquí es lo que rompía Spotify  (fixes `ff21864`
  * y `6361477`):
  *
  * - `keepAliveNeeded()`: la guarda de "en Android con SW no hace falta" — ahí el

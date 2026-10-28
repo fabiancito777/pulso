@@ -1,6 +1,6 @@
 /**
- * Vista Rutinas: port de `legacy/js/views-routines.js` y del `App.ui.routineEditor`
- * de `legacy/js/app.js` (la v1 los abría en modales; aquí cada pantalla es un
+ * Vista Rutinas: port de  y del `App.ui.routineEditor`
+ * de  (antes los abría en modales; aquí cada pantalla es un
  * componente).
  *
  * Dos vistas en una, conmutadas por `editId`: el listado (tarjetas con Empezar,
@@ -11,7 +11,7 @@
  * - **Todo lo que se guarda pasa por los setters del store** (`addRoutine`,
  *   `updateRoutine`, `removeRoutine`), que hacen lectura-modificación-escritura
  *   sobre `localStorage`: aquí NO se muta `routines.value` ni un clon suyo, porque
- *   la v1 puede estar escribiendo el mismo estado en otra pestaña.
+ *   antes puede estar escribiendo el mismo estado en otra pestaña.
  * - **Los datos salen de las signals** (`routines`, `exercises`, `sessions`,
  *   `settings`, `active`), no por props: el componente se repinta solo.
  * - Lo que es lógica con casos borde (la propuesta del coach llega como texto,
@@ -266,7 +266,7 @@ function AutoCard({
 
 /**
  * Modal «Generar auto»: plantilla del catálogo + rotación. Todo local: no pide
- * clave ni toca la red, que es lo que en la v1 hacía `routines:generate`
+ * clave ni toca la red, que es lo que  hacía `routines:generate`
  * (`views-routines.js:115`).
  */
 function GenerateModal({
@@ -350,7 +350,7 @@ function GenerateModal({
 
 /**
  * Modal «Agendar»: input de fecha con el próximo día libre del calendario ya
- * puesto (v1 `App.ui.dayPicker`, que arrancaba en hoy y ofrecía 14 jornadas).
+ * puesto (antes `App.ui.dayPicker`, que arrancaba en hoy y ofrecía 14 jornadas).
  * El día se escribe con `setDay`, el mismo setter del Calendario.
  */
 function ScheduleModal({
@@ -429,7 +429,7 @@ function ScheduleModal({
 }
 
 /**
- * Modal «Ver»: detalle de solo lectura de una rutina (v1 `App.ui.routineDetail`,
+ * Modal «Ver»: detalle de solo lectura de una rutina (antes `App.ui.routineDetail`,
  * `app.js:583`). Muestra nombre, enfoque, notas y cada ejercicio con sus números;
  * para cambiar nada se pasa por el editor (botón «Editar» del pie).
  */
@@ -519,7 +519,7 @@ function DetailModal({
 /**
  * Editor de una rutina (crear si `routineId` es `null`). Los campos viven en el
  * estado local y se persisten AL GUARDAR, con `addRoutine`/`updateRoutine` — lo
- * mismo que hacía el modal de la v1 en su botón «Guardar rutina».
+ * mismo que hacía el modal  en su botón «Guardar rutina».
  */
 function RoutineEditor({
   routineId,
@@ -611,7 +611,7 @@ function RoutineEditor({
   function renderItem(item: RoutineItem, index: number) {
     const inLib = byId.get(item.exId) ?? null;
     /* el nombre se resuelve también contra el catálogo: una rutina puede traer
-       ejercicios que ya no están en la biblioteca (import de la v1, semilla). */
+       ejercicios que ya no están en la biblioteca (import, semilla). */
     const ex = inLib ?? resolveExercise(library, item.exId);
     const missing = inLib ? !isAvailable(inLib, equipment.value) : false;
     return (
@@ -1015,7 +1015,7 @@ export function RoutinesView() {
 
   /**
    * Genera la propuesta local a partir de una plantilla. Nada de red ni de clave:
-   * esto es lo que en la v1 hacía el modal `routines:generate` y en v2 era LA vía
+   * esto es lo que  hacía el modal `routines:generate` y en v2 era LA vía
    * de generación que había quedado sin llamador.
    */
   function runGenerate(templateId: string, rotate: number): void {

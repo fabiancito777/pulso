@@ -1,9 +1,9 @@
 /**
  * Un icono del catálogo generado (`icons.ts`), con la misma envoltura que el `ico()`
- * de la v1: `viewBox` 24, trazo con `currentColor` y esquinas redondeadas.
+ *: `viewBox` 24, trazo con `currentColor` y esquinas redondeadas.
  *
  * Los trazos se inyectan tal cual porque son constantes nuestras (generadas desde
- * `legacy/js/core.js`), no texto del usuario: Preact sigue escapando todo lo demás.
+ * ), no texto del usuario: Preact sigue escapando todo lo demás.
  */
 import { ICONS, type IconSpec } from './icons';
 
