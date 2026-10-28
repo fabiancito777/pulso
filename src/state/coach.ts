@@ -408,7 +408,7 @@ export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
     system: req.system,
     prompt: req.prompt,
     json: req.json,
-    temperature: num(ai.temperature, 0.7),
+    temperature: num(ai.temperature, 1),
     maxOutputTokens: int(ai.maxTokens, 4096),
   };
   if (THINKING_LEVELS.includes(ai.thinkingLevel)) {

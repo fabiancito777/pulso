@@ -951,3 +951,35 @@ describe('inventario en unidades', () => {
     expect(importado.settings.plates).toEqual([{ w: 3, unit: 'kg', discs: 8, on: true }]);
   });
 });
+
+/* ---------- migración de la temperatura por defecto (v3) ---------- */
+
+describe('migración de ai.temperature', () => {
+  const rawState = (version: number, temperature: number): void => {
+    const state = store.defaultState();
+    state.version = version;
+    state.settings.ai.temperature = temperature;
+    mem.set(store.STATE_KEY, JSON.stringify(state));
+  };
+
+  it('el 0,7 del default viejo pasa a 1', () => {
+    rawState(2, 0.7);
+
+    const out = store.readState();
+
+    expect(out.settings.ai.temperature).toBe(1);
+    expect(out.version).toBe(store.STATE_VERSION);
+  });
+
+  it('respeta un valor elegido a mano', () => {
+    rawState(2, 0.4);
+
+    expect(store.readState().settings.ai.temperature).toBe(0.4);
+  });
+
+  it('en v3 ya no reescribe el 0,7', () => {
+    rawState(3, 0.7);
+
+    expect(store.readState().settings.ai.temperature).toBe(0.7);
+  });
+});

@@ -741,12 +741,8 @@ function SecDiscos() {
   /* El peso de cada barra solo tiene sentido si ese material está activo: una
      barra EZ desmarcada en Equipo no debe seguir pidiendo su peso aquí. */
   const eq = equipment.value;
-  const active = plates.filter((p) => p.on !== false);
   const bar = maxLoadable({ plates, bars, mode: 'bar' });
   const dbs = maxLoadable({ plates, bars, mode: 'db2' });
-  /* discos por lado = lo que reparte la barra de verdad (floor(discos/2) por
-     medida), así que con un inventario impar nunca se anuncia un peso inflado */
-  const discs = active.reduce((sum, p) => sum + (p.discs || 0), 0);
   const barHint = (kg: number) =>
     `Peso sin discos · 0 kg si es de plástico · ${fmtN(fromKg(kg, 'lb'), 1)} lb`;
   return (
@@ -764,11 +760,6 @@ function SecDiscos() {
           value={fmtN(dbs.totalKg, 1)}
           unit="kg"
           delta="cargando 2 mancuernas a la vez"
-        />
-        <Kpi
-          label="Medidas activas"
-          value={active.length}
-          delta={`${discs} discos · ${fmtN(bar.sideKg, 1)} kg por lado`}
         />
       </div>
       <InfoCard>

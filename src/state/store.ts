@@ -58,8 +58,11 @@ export const STATE_KEY = 'pulso.state';
  * Versión documental del formato. La migración de placas NO depende de aquí
  * (antes y v2 inicial exportan `1`): el marcador es por fila, un `discs` presente
  * significa «ya en unidades» (`normalizePlates`).
+ *
+ * v3: `ai.temperature` pasa de 0,7 (default viejo) a 1 (el default de Gemini).
+ * Solo migra el 0,7 que era el default; un valor elegido a mano se respeta.
  */
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 /**
  * Claves sueltas de `localStorage` (fuera del estado), con el mismo nombre que les
@@ -151,18 +154,26 @@ export function readProfileState(profileId: string): AppState {
       return defaultState();
     }
     const storedSettings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
+    const version = typeof parsed.version === 'number' ? parsed.version : 0;
+    /* v3: el default viejo de temperatura era 0,7 y Gemini recomienda 1. Solo se
+       reescribe ESE valor: si alguien eligió otra cosa a mano, se respeta. */
+    const migratedSettings =
+      version < 3 && storedSettings.ai.temperature === 0.7
+        ? { ...storedSettings, ai: { ...storedSettings.ai, temperature: 1 } }
+        : storedSettings;
     /* la key del coach es compartida: si existe, manda sobre la copia del perfil */
     const sharedKey = readSharedApiKey();
     const settings = sharedKey
-      ? { ...storedSettings, ai: { ...storedSettings.ai, apiKey: sharedKey } }
-      : storedSettings;
+      ? { ...migratedSettings, ai: { ...migratedSettings.ai, apiKey: sharedKey } }
+      : migratedSettings;
     return {
       ...(parsed as AppState),
-      version: typeof parsed.version === 'number' ? parsed.version : STATE_VERSION,
+      version: Math.max(version, STATE_VERSION),
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
-      /* migración de placas EN MEMORIA (pares → unidades): aquí NO se escribe, así
-         que un arranque no reescribe localStorage; el formato nuevo persiste en la
-         primera escritura (lectura-modificación-escritura) o en un export */
+      /* migraciones EN MEMORIA (placas pares → unidades, temperatura): aquí NO se
+         escribe, así que un arranque no reescribe localStorage; el formato nuevo
+         persiste en la primera escritura (lectura-modificación-escritura) o en un
+         export */
       settings: { ...settings, plates: normalizePlates(settings.plates) },
       equipment: isPlainObject(parsed.equipment) ? { ...parsed.equipment } : defaultEquipment(),
     };

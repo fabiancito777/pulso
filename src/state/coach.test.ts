@@ -152,7 +152,7 @@ describe('runCoachTask', () => {
     expect(arg?.system).toContain('Eres Pulso Coach');
     expect(arg?.system).toContain('CONTEXTO DEL USUARIO');
     expect(arg?.system).toContain('MEMORIA DEL COACH');
-    expect(arg?.temperature).toBe(0.7);
+    expect(arg?.temperature).toBe(1);
     expect(arg?.maxOutputTokens).toBe(4096);
     expect(arg?.thinkingLevel).toBe('low');
     expect(arg?.includeThoughts).toBe(true);
@@ -964,7 +964,7 @@ describe('ajustes anidados ', () => {
   it('una ruta vacía no rompe ni borra nada', () => {
     store.setSettingsPath('', 1);
     store.setSettingsPath('.temperature', 1);
-    expect(store.settings.value.ai.temperature).toBe(0.7);
+    expect(store.settings.value.ai.temperature).toBe(1);
   });
 });
 
