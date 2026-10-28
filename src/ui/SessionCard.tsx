@@ -64,14 +64,14 @@ function Clock() {
 }
 
 /**
- * ¿Toca bajar la tarjeta de descanso? Se «acopla» al pie en cuanto scrolleas y
+ * ¿Toca bajar la tarjeta de arriba? Se «acopla» al pie en cuanto scrolleas y
  * vuelve arriba al llegar al principio. Los umbrales son distintos (64/24) para
  * que no parpadee justo en el borde.
  */
-function useRestDock(resting: boolean): boolean {
+function useDock(enabled: boolean): boolean {
   const [docked, setDocked] = useState(false);
   useEffect(() => {
-    if (!resting) {
+    if (!enabled) {
       setDocked(false);
       return;
     }
@@ -86,7 +86,7 @@ function useRestDock(resting: boolean): boolean {
       window.removeEventListener('scroll', read);
       window.removeEventListener('resize', read);
     };
-  }, [resting]);
+  }, [enabled]);
   return docked;
 }
 
@@ -183,6 +183,44 @@ function RestDock({ show }: { show: boolean }) {
         <button class="btn sm ghost" tabIndex={tab} onClick={stopRestTimer}>
           {info.over ? 'Continuar' : 'Saltar'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Versión reducida de la tarjeta «en curso» para cuando se baja: nombre,
+ * series, tiempo y volumen. Sin renombrar ni ayuda, que eso vive arriba.
+ */
+function SessionDock({
+  show,
+  name,
+  done,
+  total,
+  volume,
+  pct,
+}: {
+  show: boolean;
+  name: string;
+  done: number;
+  total: number;
+  volume: number;
+  pct: number;
+}) {
+  return (
+    <div class={`rest-dock session-dock${show ? ' in' : ''}`} aria-hidden={!show}>
+      <div class="rest-dock-inner">
+        <Ring frac={pct} size={34} width={3.5} />
+        <div class="session-dock-main">
+          <div class="session-dock-name">{name || 'Sesión'}</div>
+          <div class="tiny muted">
+            {fmtN(done)} de {fmtN(total)} series
+          </div>
+        </div>
+        <div class="session-dock-nums">
+          <span class="rest-dock-time">{fmtClock(sessionSeconds.value)}</span>
+          <span class="tiny muted">{fmtVol(volume)} kg</span>
+        </div>
       </div>
     </div>
   );
@@ -450,7 +488,7 @@ export function SessionCard() {
   /* índice del último ejercicio añadido (señal compartida: RoutinesView también la usa) */
   const highlight = justAdded.value;
   const resting = rest.value.running;
-  const docked = useRestDock(resting);
+  const docked = useDock(Boolean(session) || resting);
   const sessionId = session?.id ?? null;
   const previousId = useRef(sessionId);
 
@@ -465,10 +503,10 @@ export function SessionCard() {
   /* La barra acoplada tapa el final del documento: le damos su hueco mientras
      está visible para que el último botón no quede debajo. */
   useEffect(() => {
-    const on = resting && docked;
-    document.body.classList.toggle('has-rest-dock', on);
-    return () => document.body.classList.remove('has-rest-dock');
-  }, [resting, docked]);
+    const on = docked;
+    document.body.classList.toggle('has-dock', on);
+    return () => document.body.classList.remove('has-dock');
+  }, [docked]);
 
   if (!session) {
     /* Descanso/temporizador libre SIN sesión: el gate de `App.tsx` monta esta
@@ -478,7 +516,7 @@ export function SessionCard() {
     if (resting) {
       return (
         <>
-          <div class={`card accent rest-card${docked ? ' is-docked' : ''}`}>
+          <div class={`card accent rest-card dockable${docked ? ' is-docked' : ''}`}>
             <RestBox free />
           </div>
           <RestDock show={docked} />
@@ -555,7 +593,9 @@ export function SessionCard() {
 
   return (
     <>
-      <div class={`card accent${resting ? ` rest-card${docked ? ' is-docked' : ''}` : ''}`}>
+      <div
+        class={`card accent dockable${resting ? ' rest-card' : ''}${docked ? ' is-docked' : ''}`}
+      >
         {resting && view === 'rest' ? (
           <RestBox />
         ) : (
@@ -757,7 +797,18 @@ export function SessionCard() {
           }}
         />
       ) : null}
-      <RestDock show={resting && docked} />
+      {resting ? (
+        <RestDock show={docked} />
+      ) : (
+        <SessionDock
+          show={docked}
+          name={session.name}
+          done={prog.done}
+          total={prog.total}
+          volume={prog.volume}
+          pct={prog.pct}
+        />
+      )}
     </>
   );
 }

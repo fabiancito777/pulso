@@ -419,17 +419,22 @@ body.has-rest .composer{bottom:calc(var(--nav-h) + 96px)}
    superior (el alto real lo publica app.js en --appbar-h), así el tiempo sigue
    a la vista aunque estés en el último ejercicio de la lista. */
 :root{--appbar-h:64px}
-.rest-card{position:sticky;top:var(--appbar-h);z-index:35;box-shadow:var(--shadow-sm);transition:opacity .2s ease,transform .2s ease,visibility 0s linear 0s}
-.rest-card.is-docked{opacity:0;transform:translateY(-8px);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s}
-/* Barra compacta del descanso cuando la tarjeta de arriba ya no se ve: va justo
-   encima de la nav y solo lleva tiempo, ±15 s y saltar. */
+.rest-card{position:sticky;top:var(--appbar-h);z-index:35;box-shadow:var(--shadow-sm)}
+.dockable{transition:opacity .2s ease,transform .2s ease,visibility 0s linear 0s}
+.dockable.is-docked{opacity:0;transform:translateY(-8px);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s}
+/* Barra compacta que sustituye a la tarjeta de arriba (descanso o «en curso»)
+   cuando ya no se ve: va justo encima de la nav. */
 .rest-dock{position:fixed;left:0;right:0;bottom:calc(var(--v2-tabs-h,57px) + env(safe-area-inset-bottom) + 8px);z-index:29;max-width:720px;margin:0 auto;padding:0 16px;box-sizing:border-box;pointer-events:none;opacity:0;transform:translateY(calc(100% + 16px));transition:transform .26s cubic-bezier(.22,.8,.24,1),opacity .18s ease}
 .rest-dock.in{opacity:1;transform:none}
 .rest-dock-inner{display:flex;align-items:center;gap:8px;padding:7px 9px 7px 11px;border-radius:var(--radius-lg);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--surface-3) 94%,transparent);box-shadow:var(--shadow);backdrop-filter:blur(10px);pointer-events:auto}
 .rest-dock-time{font-family:var(--mono);font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;min-width:58px}
 .rest-dock-time.over{color:var(--ok-text)}
 .rest-dock .btn{flex:none}
-body.has-rest-dock .v2-main{padding-bottom:calc(26px + 70px)}
+.session-dock-main{min-width:0;flex:1}
+.session-dock-name{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.session-dock-nums{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex:none}
+.session-dock .rest-dock-time{font-size:18px;min-width:0}
+body.has-dock .v2-main{padding-bottom:calc(26px + 70px)}
 .sr-strip{display:flex;align-items:center;gap:9px;padding-top:9px;border-top:1px solid var(--border-soft)}
 .sr-strip .num{font-size:19px;font-weight:650;min-width:58px}
 .sr-strip .num.over{color:var(--ok-text)}
