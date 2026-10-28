@@ -64,6 +64,33 @@ function Clock() {
 }
 
 /**
+ * ¿Toca bajar la tarjeta de descanso? Se «acopla» al pie en cuanto scrolleas y
+ * vuelve arriba al llegar al principio. Los umbrales son distintos (64/24) para
+ * que no parpadee justo en el borde.
+ */
+function useRestDock(resting: boolean): boolean {
+  const [docked, setDocked] = useState(false);
+  useEffect(() => {
+    if (!resting) {
+      setDocked(false);
+      return;
+    }
+    const read = (): void => {
+      const y = window.scrollY;
+      setDocked((prev) => (prev ? y > 24 : y > 64));
+    };
+    read();
+    window.addEventListener('scroll', read, { passive: true });
+    window.addEventListener('resize', read);
+    return () => {
+      window.removeEventListener('scroll', read);
+      window.removeEventListener('resize', read);
+    };
+  }, [resting]);
+  return docked;
+}
+
+/**
  * Cuenta atrás del descanso, aislada para no repintar los inputs de las series.
  *
  * Es el ÚNICO recuadro de descanso de la app (antes `#session-rest`, `trainer.js:380`):
@@ -129,6 +156,34 @@ function RestStrip() {
         {info.over ? 'descanso terminado' : `siguiente: ${info.label || 'descanso'}`}
       </span>
       <Ring frac={info.frac} size={46} width={4.5} over={info.over} />
+    </div>
+  );
+}
+
+/**
+ * Descanso acoplado al pie: la versión reducida de `RestBox` para cuando la
+ * tarjeta grande ya no está a la vista. Solo lo esencial: tiempo, ±15 s y
+ * saltar; el resto (ejercicio, resumen) sigue en la tarjeta de arriba.
+ */
+function RestDock({ show }: { show: boolean }) {
+  const left = restSeconds.value;
+  const info = restView(rest.value, Date.now());
+  const tab = show ? undefined : -1;
+  return (
+    <div class={`rest-dock${show ? ' in' : ''}`} aria-hidden={!show}>
+      <div class="rest-dock-inner">
+        <Ring frac={info.frac} size={34} width={3.5} over={info.over} />
+        <span class={`rest-dock-time${info.over ? ' over' : ''}`}>{fmtMmss(left)}</span>
+        <button class="btn sm" tabIndex={tab} onClick={() => subRestSeconds(15)}>
+          -15 s
+        </button>
+        <button class="btn sm" tabIndex={tab} onClick={() => addRestSeconds(15)}>
+          +15 s
+        </button>
+        <button class="btn sm ghost" tabIndex={tab} onClick={stopRestTimer}>
+          {info.over ? 'Continuar' : 'Saltar'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -395,6 +450,7 @@ export function SessionCard() {
   /* índice del último ejercicio añadido (señal compartida: RoutinesView también la usa) */
   const highlight = justAdded.value;
   const resting = rest.value.running;
+  const docked = useRestDock(resting);
   const sessionId = session?.id ?? null;
   const previousId = useRef(sessionId);
 
@@ -406,6 +462,14 @@ export function SessionCard() {
     if (sessionId !== null) setMessage(null);
   }, [sessionId]);
 
+  /* La barra acoplada tapa el final del documento: le damos su hueco mientras
+     está visible para que el último botón no quede debajo. */
+  useEffect(() => {
+    const on = resting && docked;
+    document.body.classList.toggle('has-rest-dock', on);
+    return () => document.body.classList.remove('has-rest-dock');
+  }, [resting, docked]);
+
   if (!session) {
     /* Descanso/temporizador libre SIN sesión: el gate de `App.tsx` monta esta
        tarjeta también con `rest.running`, y aquí manda el recuadro ÚNICO de
@@ -413,9 +477,12 @@ export function SessionCard() {
        como el placeholder de "empezar" con un contador suelto al lado. */
     if (resting) {
       return (
-        <div class="card accent rest-card">
-          <RestBox free />
-        </div>
+        <>
+          <div class={`card accent rest-card${docked ? ' is-docked' : ''}`}>
+            <RestBox free />
+          </div>
+          <RestDock show={docked} />
+        </>
       );
     }
     return (
@@ -488,7 +555,7 @@ export function SessionCard() {
 
   return (
     <>
-      <div class={`card accent${resting ? ' rest-card' : ''}`}>
+      <div class={`card accent${resting ? ` rest-card${docked ? ' is-docked' : ''}` : ''}`}>
         {resting && view === 'rest' ? (
           <RestBox />
         ) : (
@@ -690,6 +757,7 @@ export function SessionCard() {
           }}
         />
       ) : null}
+      <RestDock show={resting && docked} />
     </>
   );
 }
