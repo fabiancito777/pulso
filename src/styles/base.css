@@ -194,8 +194,8 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 .list-item:last-child{border-bottom:0}
 .list-item.tappable:active{background:var(--surface-2)}
 .list-item .li-main{min-width:0;flex:1}
-.list-item .li-title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.list-item .li-sub{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-item .li-title{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-item .li-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kv{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-soft);font-size:13.5px}
 .kv:last-child{border-bottom:0}
 .kv .k{color:var(--muted)}
