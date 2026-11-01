@@ -612,13 +612,23 @@ export function startSyncAuto(): () => void {
   const onWritten = (): void => schedulePush();
   onStateWritten(onWritten);
 
-  const onVisible = (): void => {
-    if (document.visibilityState === 'visible') void syncNow();
+  const onVisibility = (): void => {
+    if (document.visibilityState === 'visible') {
+      void syncNow();
+      return;
+    }
+    /* al salir de la app se manda YA lo que estaba en el rebote de 8 s: si no,
+       cerrar justo después de guardar dejaba el cambio esperando a la próxima apertura */
+    if (autoTimer) {
+      clearTimeout(autoTimer);
+      autoTimer = null;
+      void syncNow();
+    }
   };
   const onOnline = (): void => {
     void syncNow();
   };
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
   if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
 
   const boot = setTimeout(() => {
@@ -628,7 +638,7 @@ export function startSyncAuto(): () => void {
   return () => {
     clearTimeout(boot);
     if (autoTimer) clearTimeout(autoTimer);
-    document.removeEventListener('visibilitychange', onVisible);
+    document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('online', onOnline);
     /* no hay forma pública de desuscribir `onStateWritten`; el guardia `running`
        y `syncConfig` bastan para que un aviso tardío no haga nada */
