@@ -1,0 +1,15 @@
+# Pulso · servidor de sincronización
+#
+#   npx wrangler kv namespace create SYNC
+#   → pega el id que imprime en `id` de abajo
+#   npx wrangler deploy
+#
+# El plan gratuito sobra para un usuario (1.000 escrituras y 100.000 lecturas al
+# día). La URL que imprime el deploy es la que se pega en Ajustes → Datos.
+name = "pulso-sync"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "SYNC"
+id = "PEGA_AQUI_EL_ID_DE_TU_KV"

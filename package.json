@@ -16,7 +16,8 @@
     "test:net": "vitest run",
     "test:quality": "vitest run src/features/coach/quality.test.ts",
     "test:watch": "vitest",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "sync:dev": "node tools/sync-dev.mjs"
   },
   "dependencies": {
     "@preact/signals": "^2.11.2",

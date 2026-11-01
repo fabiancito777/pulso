@@ -87,6 +87,7 @@ import {
 import { MAX_PROFILES, activeProfileId, profileInitial, profiles } from '@/state/profiles';
 import { TEST_NOTICE_SEC, testRestNotice, active as activeSession } from '@/state/session';
 import { ExerciseGenModal } from '@/ui/ExerciseGenModal';
+import { SyncCard } from '@/ui/SyncCard';
 import { Icon } from '@/ui/Icon';
 import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
 import { Modal } from '@/ui/Modal';
@@ -1933,6 +1934,7 @@ function SecDatos() {
         </div>
       ) : null}
       <div class="card flush mt">
+        <SyncCard />
         <ListButton
           icon="download"
           title={instalada ? 'Instalada como aplicación' : 'Instalar como aplicación'}

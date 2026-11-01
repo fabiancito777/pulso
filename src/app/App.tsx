@@ -11,6 +11,7 @@ import { fmtClock } from '@/domain/format';
 import { progress as sessionProgress } from '@/domain/session';
 import { applyTheme } from '@/platform/theme';
 import { active, rest, sessionSeconds, startLoop } from '@/state/session';
+import { startSyncAuto } from '@/state/sync';
 import { activeProfile, profileInitial } from '@/state/profiles';
 import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
@@ -225,6 +226,10 @@ export function App() {
 
   /* El bucle de 500 ms: cuenta atrás, tics y aviso de fin de descanso. */
   useEffect(() => startLoop(), []);
+
+  /* Sincronización automática (si hay un código vinculado): al arrancar, al
+     volver a la pestaña, al recuperar la red y 8 s después de cada cambio. */
+  useEffect(() => startSyncAuto(), []);
 
   /* El recuadro de descanso es pegajoso bajo la barra superior, así que la barra
      publica su altura en `--appbar-h`. */

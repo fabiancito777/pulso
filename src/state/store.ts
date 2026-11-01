@@ -19,6 +19,7 @@ import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
 import { normalizePlates } from '@/domain/plates';
+import { stampChanges, syncMetaOf, withTombstone } from '@/domain/sync';
 import type {
   ActiveSession,
   AppState,
@@ -210,12 +211,65 @@ function forStorage(state: AppState): AppState {
   return { ...state, settings: { ...settings, plates: normalizePlates(settings.plates) } };
 }
 
-/** Persiste el estado de un perfil concreto y sincroniza la key compartida. */
-export function writeProfileState(profileId: string, state: AppState): boolean {
-  if (!storageAvailable) return false;
+/**
+ * Último estado escrito por perfil, con el texto EXACTO que quedó en disco. Se
+ * guarda así (y no solo el objeto) porque la comparación con lo que hay en
+ * `localStorage` es una igualdad de strings barata: si alguien escribió por
+ * fuera (un test que limpia, otra pestaña), el cache se descarta solo.
+ */
+const lastWritten = new Map<string, { raw: string; state: AppState }>();
+
+/** Callbacks al terminar de escribir el estado (la sincronización se engancha aquí). */
+const stateWrittenHooks: ((profileId: string) => void)[] = [];
+
+/** Registra un aviso de «se acaba de guardar el estado del perfil». */
+export function onStateWritten(fn: (profileId: string) => void): void {
+  stateWrittenHooks.push(fn);
+}
+
+function previousState(key: string, raw: string | null): AppState | null {
+  const cached = lastWritten.get(key);
+  if (cached && cached.raw === raw) return cached.state;
+  if (!raw) return null;
   try {
-    localStorage.setItem(stateKeyFor(profileId), JSON.stringify(forStorage(state)));
-    writeSharedApiKey(state.settings?.ai?.apiKey ?? '');
+    const parsed: unknown = JSON.parse(raw);
+    return isPlainObject(parsed) ? (parsed as AppState) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persiste el estado de un perfil concreto y sincroniza la key compartida.
+ *
+ * Aquí se sellan las marcas de tiempo de la sincronización (`stampChanges`): en
+ * el único sitio por el que pasan TODAS las escrituras, así que ningún setter
+ * nuevo puede olvidarse. `opts.stamp = false` es para aplicar un estado que ya
+ * viene fusionado: sus marcas son las del otro dispositivo y no deben pasar a
+ * ser «cambio de ahora» (eso haría que este lado ganara siempre el siguiente
+ * conflicto).
+ */
+export function writeProfileState(
+  profileId: string,
+  state: AppState,
+  opts: { stamp?: boolean } = {},
+): boolean {
+  if (!storageAvailable) return false;
+  const key = stateKeyFor(profileId);
+  try {
+    const previousRaw = localStorage.getItem(key);
+    const next = opts.stamp === false ? state : stampChanges(previousState(key, previousRaw), state);
+    const raw = JSON.stringify(forStorage(next));
+    localStorage.setItem(key, raw);
+    lastWritten.set(key, { raw, state: next });
+    writeSharedApiKey(next.settings?.ai?.apiKey ?? '');
+    for (const fn of stateWrittenHooks) {
+      try {
+        fn(profileId);
+      } catch (err) {
+        console.warn('[pulso] fallo en un aviso de escritura', err);
+      }
+    }
     return true;
   } catch (err) {
     console.warn('[pulso] no se pudo guardar el estado', err);
@@ -743,6 +797,9 @@ export function addRoutine(r: Omit<Routine, 'id'> & { id?: string }): Routine {
     source: typeof r.source === 'string' && r.source ? r.source : 'manual',
     createdAt:
       typeof r.createdAt === 'string' && r.createdAt ? r.createdAt : new Date().toISOString(),
+    /* `updatedAt` es lo que decide quién gana al fusionar dos copias de la misma
+       rutina: sin él, editar en el móvil y en el PC siempre empataría */
+    updatedAt: new Date().toISOString(),
     items: normalizeRoutineItems(r.items),
   } as Routine;
   const state = readState();
@@ -761,7 +818,7 @@ export function updateRoutine(id: string, patch: Partial<Routine>): Routine | nu
   const state = readState();
   const current = asRoutines(state.routines).find((r) => r.id === id);
   if (!current) return null;
-  const updated: Routine = { ...current, ...patch, id };
+  const updated: Routine = { ...current, ...patch, id, updatedAt: new Date().toISOString() };
   const next = asRoutines(state.routines).map((r) => (r.id === id ? updated : r));
   state.routines = next;
   writeState(state);
@@ -788,7 +845,9 @@ export function removeRoutine(id: string): void {
   }
   state.routines = next;
   state.schedule = plan;
-  writeState(state);
+  /* el tombstone evita que la rutina borrada vuelva en la siguiente sincronización
+     con el otro dispositivo (donde todavía existe) */
+  writeState(withTombstone(state, 'routines', id));
   routines.value = next;
   schedule.value = plan;
 }
@@ -811,6 +870,7 @@ export function duplicateRoutine(id: string): Routine | null {
     id: uid('rt'),
     name: `${current.name} (copia)`,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     items: normalizeRoutineItems(current.items),
   };
   const next = [...asRoutines(state.routines), copy];
@@ -1309,6 +1369,29 @@ export function refresh(): void {
   active.value = asActive(next.active);
 }
 
+/**
+ * Aplica al perfil activo un estado YA fusionado por la sincronización.
+ *
+ * `stamp: false` es deliberado: el estado trae las marcas de los dos
+ * dispositivos y re-sellarlas aquí lo convertiría en «lo más reciente» y ganaría
+ * todos los conflictos siguientes sin que el usuario haya tocado nada.
+ */
+export function applySyncedState(state: AppState): void {
+  writeProfileState(activeProfileId.value, state, { stamp: false });
+  refresh();
+  runStateReplacedHooks();
+}
+
+/**
+ * ¿Ha tocado el usuario algo desde `since` (ms)? Es lo que distingue «este lado
+ * cambió» de «esto simplemente es distinto» al decidir si hay conflicto que
+ * consultar. Una sesión nueva no cuenta: las sesiones se suman siempre.
+ */
+export function changedSince(since: number): boolean {
+  const state = readState();
+  return syncMetaOf(state).at > since;
+}
+
 /* ---------- sesiones ---------- */
 
 /**
@@ -1427,7 +1510,7 @@ export function removeSession(id: string): void {
   const state = readState();
   const next = asSessions(state.sessions).filter((s) => s.id !== id);
   state.sessions = next;
-  writeState(state);
+  writeState(withTombstone(state, 'sessions', id));
   sessions.value = next;
 }
 

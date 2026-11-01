@@ -247,6 +247,21 @@ export function startFromPlan(
 }
 
 /**
+ * Retoma una sesión que llega de OTRO dispositivo (traspaso de la sincronización).
+ *
+ * No la crea ni la reinicia: entra tal cual, con las series ya marcadas y el
+ * cronómetro corriendo desde su `startedAt`, y enciende las mismas capas que un
+ * arranque normal (keep-alive, wake lock y permiso de avisos). Si ya hay una
+ * sesión en curso aquí no pisa nada: el traspaso nunca gana a lo local.
+ */
+export function resumeSession(session: ActiveSession): void {
+  if (active.value) return;
+  ensureAudio();
+  setActive(session);
+  startSessionEffects();
+}
+
+/**
  * Índice del ejercicio recién añadido: `SessionCard` lo usa para hacer scroll y
  * marcar la tarjeta con `.new` (1,5 s), igual que `focusEntry`
  * (`views-train.js:274`). Vive aquí y no dentro del componente para que "Añadir

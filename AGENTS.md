@@ -86,8 +86,10 @@ src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado glob
     library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
     defaults.ts                                ajustes e inventario por defecto
     types.ts                                   contrato del dominio y del estado
+    sync.ts                                    fusión de estados entre dispositivos (puro: marcas por área, tombstones, informe)
 src/state/          → estado y persistencia (store.ts) + signals
     store.ts                                   ajustes, material, biblioteca, sesiones, apilar sesión
+    sync.ts                                    cliente de sync: empaquetar, cifrar, subir/bajar, conflictos, traspaso
     profiles.ts                                índice de perfiles, claves por perfil y key compartida
     session.ts                                 sesión activa y descanso (signals + efectos: audio, loop)
     coach.ts                                   runner del coach: bucle de consultas y fallback local
@@ -101,9 +103,11 @@ src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx, ProgressCa
     *View.tsx                                  vistas de pestaña: Hoy, Settings, Progress, Routines,
                                                Calendar y Coach (+ Onboarding.tsx: primera visita)
     icons.ts                                   catálogo de iconos base congelado (no se edita)
-src/platform/       → lo que toca el navegador (audio.ts: pitidos y vibración)
+src/platform/       → lo que toca el navegador (audio.ts: pitidos y vibración; sync-crypto.ts: código de pareja y AES-GCM)
 src/styles/         → base.css (hoja base) + v2.css (shell) y estilos por vista
 _specs/             → specs de trabajo (gitignored)
+sync-worker/        → Worker de Cloudflare + KV que guarda los blobs cifrados (no entra en el build)
+tools/sync-dev.mjs  → el mismo API en local para probar sin desplegar (blobs en .sync-dev.json)
 .env.local          → API key del coach para los tests de red (gitignored, NUNCA commitear)
 ```
 
@@ -217,6 +221,29 @@ localStorage['pulso.state'] / pulso.state.<id>  (placas en unidades, `discs`)
   el service worker. Son tres capas a propósito; no basta con una.
 - **PWA**: manifest instalable, service worker network-first (para no congelar versiones sin
   hashes) y notificaciones de fin de descanso.
+- **Sincronización** (móvil ↔ PC): no hay cuentas. Un **código de pareja** (`PULSO-XXXX-…`, 80 bits)
+  deriva con PBKDF2 (210k, SHA-256) una clave AES-GCM; el servidor solo guarda un blob cifrado bajo
+  el SHA-256 del código (`sync-worker/`, KV). Consecuencias que hay que respetar al tocar esto:
+  - **Las marcas por área se sellan en `writeProfileState`** (`stampChanges`), el único punto por el
+    que pasan todas las escrituras. Si alguien escribe el estado por otro camino, la fusión se queda
+    ciega y gana el lado equivocado. Al aplicar un estado ya fusionado se usa `stamp: false`:
+    re-sellarlo lo convertiría en «lo más reciente» y ganaría todos los conflictos siguientes.
+  - **Sesiones y rutinas se unen por id**, nunca se reemplazan (perder un entreno no es una opción).
+    Los borrados van con **tombstone** (`meta.sync.deleted`) para que no resuciten desde el otro
+    dispositivo. Los ajustes, el material y el calendario son «último cambio gana» por bloque; la
+    biblioteca se une por id. La API key del coach **no** viaja (`stripForSync`) y los modos de carga
+    son del dispositivo.
+  - **La sesión en curso SÍ viaja, pero no se aplica sola**: se ofrece como traspaso
+    (`pendingHandoff` + `adoptHandoff()` → `resumeSession`), porque dos dispositivos entrenando a la
+    vez se pisarían. Sin esa oferta, empezar en el móvil y seguir en el PC no funcionaba.
+  - **No se sube si no cambió nada** (`contentOf` compara el contenido sin `exportedAt`). Sin esa
+    salida, dos dispositivos vinculados se quedan rebotando PUT → 409 → PUT para siempre.
+  - **Conflictos**: si un área cambió en los DOS lados desde `lastSyncAt`, `syncNow` no decide:
+    devuelve `conflict` con el informe y la tarjeta pregunta (combinar / este / el otro).
+  - **CSP**: `connect-src` lleva `https:` a propósito, porque la URL del servidor la configura el
+    usuario. Si algún día se fija un dominio, conviene cerrarlo a ese dominio (y a `localhost` en dev).
+  - Desplegar el Worker: `cd sync-worker && npx wrangler kv namespace create SYNC && npx wrangler deploy`,
+    y pegar la URL en Ajustes → Datos. Para probar sin cuenta: `node tools/sync-dev.mjs`.
 
 ---
 

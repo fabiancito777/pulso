@@ -25,3 +25,6 @@ eslintcache
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Servidor de sincronización local (blobs de prueba)
+.sync-dev.json

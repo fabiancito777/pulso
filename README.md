@@ -43,6 +43,13 @@ pantalla completa y funciona offline).
   `pulso.state`; los demás, `pulso.state.<id>`, así que los datos existentes no se migran.
 - **Backups**: por perfil (formato de siempre) o un archivo con **todos los perfiles**. La key se
   incluye solo si marcas la opción.
+- **Sincronización móvil ↔ PC sin cuentas** (*Ajustes → Datos*): un **código de pareja** vincula los
+  dispositivos y los datos viajan **cifrados con AES-GCM** (el servidor solo ve un hash y un texto
+  cifrado). Las sesiones y rutinas se **suman** (nunca se pisan), los ajustes van por «último cambio
+  gana» y, si los dos cambiaron lo mismo, la app **pregunta** antes de decidir. La sesión en curso se
+  puede **retomar en el otro dispositivo**. La API key del coach nunca sale del navegador.
+  El servidor es un Worker de Cloudflare + KV (`sync-worker/`); para probar sin cuenta,
+  `node tools/sync-dev.mjs`.
 
 ### Hoy / Entrenar
 - Sesión activa con **marcado de series** (peso × reps × check), añadir/quitar series y ejercicios,
