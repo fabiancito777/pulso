@@ -776,6 +776,11 @@ function normalizeRoutineItems(value: unknown): RoutineItem[] {
       rest: int(raw.rest, 90),
       weight: weight === undefined || weight === null || weight === '' ? null : num(weight),
       notes: typeof raw.notes === 'string' ? raw.notes : '',
+      /* la superserie es parte del item: sin esto, crear una rutina (editor o
+         coach) tiraba el par aunque el item lo trajera */
+      ...(typeof raw.superset === 'string' && raw.superset.trim()
+        ? { superset: raw.superset.trim() }
+        : {}),
     });
   }
   return out;

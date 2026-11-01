@@ -231,6 +231,7 @@ function planPrompt(opts: BuildRequestOpts): string {
     'Reglas: respeta exactamente las fechas; usa ejercicios permitidos y, solo si alguno no encaja con el material, inventa uno con "isNew":true + "group"/"equip"/"type" en su objeto; deja al menos 48 h antes de repetir el mismo grupo muscular;',
     ...supersetLine(opts),
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
+    'Es preferible que los títulos de los días no reutilicen los nombres de las rutinas guardadas del usuario: describe el foco con tus propias palabras.',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];
   lines.push(...questionTail(opts));

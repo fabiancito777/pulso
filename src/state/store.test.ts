@@ -70,6 +70,19 @@ describe('rutinas', () => {
     expect(persistedRoutines().map((r) => r.id)).toContain(creada.id);
   });
 
+  it('conserva el par de superserie al crear la rutina', () => {
+    const creada = store.addRoutine({
+      name: 'Par',
+      items: [
+        { exId: 'press-banca', superset: 'A' },
+        { exId: 'sentadilla', superset: 'A' },
+        { exId: 'remo-barra' },
+      ],
+    });
+    expect(creada.items.map((item) => item.superset)).toEqual(['A', 'A', undefined]);
+    expect(persistedRoutines().find((r) => r.id === creada.id)?.items[0]?.superset).toBe('A');
+  });
+
   it('normaliza sets a >= 1 (no se puede prescribir un número negativo de series)', () => {
     const negativa = store.addRoutine({ name: 'x', items: [{ exId: 'press-banca', sets: -3 }] });
     expect(negativa.items[0]?.sets).toBe(1);

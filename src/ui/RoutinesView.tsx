@@ -157,9 +157,15 @@ function ProposalCard({
         </div>
         {proposal.exercises.map((ex, i) => {
           const reason = ex.matched ? null : reasonFor(ex.name);
+          const pair = supersetPosition(proposal.exercises, i);
           return (
             <div class="rt-trow" key={`${ex.name}-${i}`}>
               <span class="rt-tname">
+                {pair ? (
+                  <span class="ss-badge">
+                    SS {pair.letter} · {pair.position}/{pair.size}
+                  </span>
+                ) : null}
                 <span class="ellipsis">{ex.name}</span>
                 {reason ? (
                   <span class="badge danger" title={reason.reason}>

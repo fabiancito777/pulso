@@ -42,10 +42,11 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { go } from '@/app/router';
 import { proposalToDraft } from '@/domain/ai-exercise';
 import type { AIExerciseProposal, ProposalDraftResult } from '@/domain/ai-exercise';
-import { nowTs } from '@/domain/dates';
+import { label as dateLabel, nowTs } from '@/domain/dates';
 import { equipLabel, groupLabel } from '@/domain/data';
 import { unresolvedNames } from '@/domain/match';
 import { int } from '@/domain/num';
+import { supersetGroups } from '@/domain/supersets';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
 import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
@@ -444,8 +445,13 @@ function cardLine(item: unknown, isPlan: boolean): ComponentChildren {
   const title = asText(item.title) || asText(item.name) || asText(item.exercise);
   if (isPlan) {
     const type = asText(item.type);
+    /* la fecha es lo que deja comprobar a qué día va cada entreno antes de
+       aplicar: sin ella la tarjeta era una lista de títulos sueltos */
+    const iso = (asText(item.date) || asText(item.iso)).slice(0, 10);
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? dateLabel(iso, 'short') : '';
     return (
       <>
+        {day ? <span class="tiny muted num">{day}</span> : null}
         <span>{title || 'Día'}</span>
         {type ? <span class="tiny muted">{type}</span> : null}
       </>
@@ -491,6 +497,16 @@ function PayloadCard({
   const focus = asText(payload.focus);
   const done = payload.done === true;
   const list = isPlan ? days : exercises;
+  /* los pares que propuso el coach se ven ANTES de aplicar: si no, la rutina se
+     guardaba con superseries que el usuario nunca tuvo delante */
+  const pairs = isPlan ? [] : supersetGroups(exercises as { superset?: string | null }[]);
+  const pairOf = (i: number): { letter: string; position: number; size: number } | null => {
+    for (const group of pairs) {
+      const at = group.indices.indexOf(i);
+      if (at >= 0) return { letter: group.letter, position: at + 1, size: group.indices.length };
+    }
+    return null;
+  };
 
   return (
     <div class="coach-card">
@@ -502,9 +518,19 @@ function PayloadCard({
       </div>
       {focus ? <div class="tiny muted mt-s">{focus}</div> : null}
       <ul class="coach-list">
-        {list.slice(0, 8).map((item, i) => (
-          <li key={i}>{cardLine(item, isPlan)}</li>
-        ))}
+        {list.slice(0, 8).map((item, i) => {
+          const pair = isPlan ? null : pairOf(i);
+          return (
+            <li key={i}>
+              {pair ? (
+                <span class="ss-badge">
+                  SS {pair.letter} · {pair.position}/{pair.size}
+                </span>
+              ) : null}
+              {cardLine(item, isPlan)}
+            </li>
+          );
+        })}
       </ul>
       {!isPlan && exercises.length > 8 ? (
         <div class="tiny muted">+{exercises.length - 8} ejercicios más</div>

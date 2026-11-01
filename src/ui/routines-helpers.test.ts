@@ -193,8 +193,8 @@ describe('toSuggestion', () => {
     focus: 'Pecho · tríceps',
     rationale: ['Toca pecho tras 48 h', ''],
     exercises: [
-      { name: 'Press de Piso con Mancuernas', sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 60 },
-      { name: 'Press de Piso con Mancuernas EXTRA', sets: 3, weight: '' },
+      { name: 'Press de Piso con Mancuernas', sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 60, superset: 'A' },
+      { name: 'Press de Piso con Mancuernas EXTRA', sets: 3, weight: '', superset: 'A' },
       { name: 'Remo con polea para gemelos', sets: 3 },
     ],
   };
@@ -211,6 +211,8 @@ describe('toSuggestion', () => {
     expect(exacto?.matched).toBe(true);
     expect(exacto?.sets).toBe(4);
     expect(exacto?.weight).toBe(60);
+    /* el par del coach no se pierde al normalizar la propuesta */
+    expect(sug?.exercises.map((ex) => ex.superset)).toEqual(['A', 'A', null]);
 
     /* el modelo se inventó un sufijo: se rescata por similitud */
     expect(difuso?.matched).toBe(true);

@@ -140,6 +140,8 @@ export interface SuggestionExercise {
   rest: number;
   weight: number | null;
   notes: string;
+  /** id del par de superserie, tal cual lo mandó el coach (`A`, `B`…) o `null` */
+  superset?: string | null;
 }
 
 /** Propuesta de rutina del coach, lista para pintar y para aplicar. */
@@ -230,6 +232,9 @@ export function toSuggestion(raw: unknown, library: readonly Exercise[]): Routin
       rest: int(entry.rest, 90),
       weight: toWeight(entry.weight),
       notes: firstString(entry, ['notes', 'note']),
+      /* el par viaja hasta la tarjeta y hasta «Aplicar»: sin esto se guardaba a
+         ciegas una rutina con superseries que el usuario nunca vio */
+      superset: firstString(entry, ['superset']).slice(0, 8) || null,
     });
   }
   if (!exercises.length) return null;
