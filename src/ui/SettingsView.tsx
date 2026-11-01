@@ -561,6 +561,12 @@ function SecEntreno() {
           value={st.autoRest}
           onChange={(v) => setSettingsPath('autoRest', v)}
         />
+        <SwitchRow
+          label="Superseries"
+          hint="El coach y el editor pueden emparejar dos ejercicios: series seguidas y descanso al cerrar el par"
+          value={st.supersets}
+          onChange={(v) => setSettingsPath('supersets', v)}
+        />
         <NumRow
           label="Incremento de progresión"
           hint="Cuánto subir cuando puedes con el rango alto"

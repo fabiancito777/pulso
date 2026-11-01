@@ -224,6 +224,8 @@ export interface BuildRequestOpts {
   /** objetivo, para los prompts de JSON */
   goal?: string;
   daysPerWeek?: number;
+  /** permitir superseries en la propuesta (`settings.supersets`) */
+  supersets?: boolean;
   /** semanas del análisis (analyze) */
   weeks?: number;
   /** breve de volumen semanal ya montado (analyze) */

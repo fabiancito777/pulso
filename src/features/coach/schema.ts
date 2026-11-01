@@ -45,6 +45,11 @@ const EXERCISE: ResponseSchema = {
       description: 'Peso en la unidad del usuario (0 si es peso corporal)',
     },
     rest: { type: 'INTEGER', description: 'Descanso en segundos' },
+    superset: {
+      type: 'STRING',
+      description:
+        'Solo en superseries: la MISMA letra en dos ejercicios consecutivos ("A"); vacío si va suelto',
+    },
     notes: { type: 'STRING', description: 'Tip breve; vacío si no hay' },
     isNew: { type: 'BOOLEAN', description: 'true solo si el ejercicio no estaba en la lista' },
     group: { type: 'STRING', description: 'Grupo muscular; solo para ejercicios nuevos' },

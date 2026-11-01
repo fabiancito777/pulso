@@ -142,6 +142,8 @@ export interface Settings {
   units: Unit;
   restDefault: number;
   autoRest: boolean;
+  /** el coach puede proponer superseries (el editor manual siempre puede) */
+  supersets: boolean;
   sound: boolean;
   volume: number;
   vibrate: boolean;
@@ -183,6 +185,8 @@ export interface SessionEntry {
   group?: string;
   restSec?: number;
   notes?: string;
+  /** id del par de superserie (ver `domain/supersets`); ausente = ejercicio suelto */
+  superset?: string | null;
   sets: SetLog[];
   [key: string]: unknown;
 }
@@ -249,6 +253,12 @@ export interface ActiveEntry {
   notes: string;
   /** de dónde sale el peso propuesto: "última vez 60 kg × 8 · hace 3 días" */
   basis?: string;
+  /**
+   * id del par de superserie (`domain/supersets`): dos entradas CONSECUTIVAS con
+   * el mismo id se alternan y el descanso llega al cerrar el par. `null`/ausente =
+   * ejercicio suelto, con su descanso de siempre.
+   */
+  superset?: string | null;
 }
 
 /**
@@ -307,6 +317,8 @@ export interface RoutineItem {
   rest?: number;
   weight?: number | null;
   notes?: string;
+  /** id del par de superserie; dos items consecutivos con el mismo id */
+  superset?: string | null;
 }
 
 /**
@@ -322,6 +334,8 @@ export interface PlanItem {
   repMax?: number;
   rest?: number;
   weight?: number | null;
+  /** id del par de superserie que propone el coach (dos seguidos, mismo id) */
+  superset?: string | null;
 }
 
 /**

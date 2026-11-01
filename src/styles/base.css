@@ -225,6 +225,10 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 /* ---------- sesión / sets ---------- */
 .ex-card{border:1px solid var(--border);background:var(--surface);border-radius:var(--radius);overflow:hidden}
 .ex-card.done{border-color:color-mix(in srgb,var(--ok) 35%,var(--border))}
+/* superserie: el par se ve como un bloque y la insignia dice la letra y el turno */
+.ss-group{border:1px dashed color-mix(in srgb,var(--accent) 45%,var(--border));border-radius:var(--radius);padding:8px;display:flex;flex-direction:column;gap:8px}
+.ss-head{font-size:10.5px;font-weight:750;letter-spacing:.5px;text-transform:uppercase;color:color-mix(in srgb,var(--accent) 80%,var(--text))}
+.ss-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;border-radius:99px;background:var(--accent-soft);color:var(--accent);margin-bottom:3px}
 .ex-head{display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--surface-2)}
 .ex-name{font-size:14.5px;font-weight:650;letter-spacing:-.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ex-meta{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

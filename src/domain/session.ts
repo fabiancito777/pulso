@@ -28,6 +28,7 @@ import { today } from './dates';
 import { matchExercise, unresolvedName } from './match';
 import type { UnresolvedName } from './match';
 import { avg, clamp, int, num, round, uid } from './num';
+import { partnerAfter } from './supersets';
 import { toKg } from './units';
 import type {
   ActiveEntry,
@@ -129,6 +130,8 @@ export interface NewEntryOptions {
   repMin?: number;
   repMax?: number;
   rest?: number;
+  /** id del par de superserie (dos entradas consecutivas con el mismo id) */
+  superset?: string | null;
   library: readonly Exercise[];
 }
 
@@ -143,6 +146,7 @@ export function newEntry(opts: NewEntryOptions): ActiveEntry {
     /* `int(0, …)` devuelve 0: un `rest: 0` explícito (cardio/movilidad) se
        respeta y significa «sin descanso»; solo el valor ausente cae a la biblioteca. */
     restSec: int(opts.rest, ex ? ex.rest : 90),
+    ...(opts.superset ? { superset: opts.superset } : {}),
     repMin: int(opts.repMin, ex ? ex.repMin : 8),
     repMax: int(opts.repMax, ex ? ex.repMax : 12),
     sets: Array.from({ length: count }, () => blankSet()),
@@ -181,6 +185,7 @@ interface PlanExtras {
   basis?: string;
   reps?: number;
   notes?: string;
+  superset?: string | null;
 }
 
 /** Item del plan ya resuelto contra la biblioteca: `RoutineItem` + sus extras. */
@@ -233,6 +238,7 @@ function resolvePlan(
       ...(extra.notes ? { notes: extra.notes } : {}),
       ...(extra.basis ? { basis: extra.basis } : {}),
       ...(extra.reps ? { reps: extra.reps } : {}),
+      ...(extra.superset ? { superset: extra.superset } : {}),
     });
   }
   return { items, unresolved };
@@ -293,6 +299,7 @@ export function startSession(opts: StartOptions): ActiveSession {
           repMin: item.repMin,
           repMax: item.repMax,
           rest: item.rest,
+          superset: item.superset,
           library: opts.exercises,
         }),
         item.weight,
@@ -318,6 +325,7 @@ export function startSession(opts: StartOptions): ActiveSession {
               repMin: item.repMin,
               repMax: item.repMax,
               rest: item.rest,
+              superset: item.superset,
               library: opts.exercises,
             },
             item.reps,
@@ -381,12 +389,18 @@ export function toggleSet(
 
   let rest: RestDecision = { action: 'none' };
   if (done) {
-    /* `nextLabel` da '' cuando no queda ninguna serie pendiente en la sesión */
-    const label = nextLabel(next, entryIndex);
-    /* `0` es «sin descanso» (cardio/movilidad); solo un valor ausente (null o
-       undefined, p. ej. una sesión antigua) cae al descanso por defecto. */
-    const sec = entry.restSec ?? opts.restDefault;
-    if (label && opts.autoRest && sec > 0) rest = { action: 'start', sec, label };
+    /* Superserie: mientras el compañero tenga series pendientes se cambia de
+       ejercicio SIN descansar (el par se hace seguido); el descanso llega al
+       cerrar el par y ya nombra al siguiente ejercicio. */
+    const partner = partnerAfter(next.entries, entryIndex);
+    if (partner === null) {
+      /* `nextLabel` da '' cuando no queda ninguna serie pendiente en la sesión */
+      const label = nextLabel(next, entryIndex);
+      /* `0` es «sin descanso» (cardio/movilidad); solo un valor ausente (null o
+         undefined, p. ej. una sesión antigua) cae al descanso por defecto. */
+      const sec = entry.restSec ?? opts.restDefault;
+      if (label && opts.autoRest && sec > 0) rest = { action: 'start', sec, label };
+    }
   } else if (opts.restRunning) {
     /* desmarcar una serie cancela el descanso en curso: no está hecha */
     rest = { action: 'cancel' };
@@ -623,7 +637,15 @@ export function entriesFromRoutine(
       ? { weight, reps, kg: weight, basis: '' }
       : suggest(ex.id, reps);
     const entry = prefill(
-      newEntry({ exId: ex.id, sets: item.sets, repMin, repMax, rest: item.rest, library }),
+      newEntry({
+        exId: ex.id,
+        sets: item.sets,
+        repMin,
+        repMax,
+        rest: item.rest,
+        superset: item.superset,
+        library,
+      }),
       suggestion,
     );
     out.push({
@@ -746,6 +768,7 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
       ...(entry.group ? { group: entry.group } : {}),
       restSec: entry.restSec ?? undefined,
       notes: entry.notes || '',
+      ...(entry.superset ? { superset: entry.superset } : {}),
       sets,
     });
   }

@@ -177,6 +177,18 @@ function questionTail(opts: BuildRequestOpts): string[] {
 }
 
 /**
+ * La regla de superseries solo viaja si el usuario las tiene activadas (Ajustes →
+ * Entreno): el modelo empareja ejercicios que luego hay que hacer seguidos, y eso
+ * no se decide por el prompt. El editor manual no depende de esto.
+ */
+function supersetLine(opts: BuildRequestOpts): string[] {
+  if (!opts.supersets) return [];
+  return [
+    'Superseries activadas: puedes emparejar como MÁXIMO 2 ejercicios CONSECUTIVOS dándoles la MISMA letra en "superset" (A, B…); en el resto déjalo vacío. El primero del par lleva un descanso de transición corto (15-30 s) y el segundo el descanso real del bloque.',
+  ];
+}
+
+/**
  * Bloque `local` (propuesta del dispositivo) como DATOS de apertura del prompt:
  * el modelo lo recibe primero, como contexto que puede mejorar, y después vienen
  * las instrucciones y la petición. Cada tarea rotula el bloque a su manera
@@ -200,6 +212,7 @@ function suggestPrompt(opts: BuildRequestOpts): string {
     'si NINGUNO encaja con su material, puedes inventar uno: márcalo con "isNew":true en ese mismo objeto y llévale "group", "equip", "type" (y opcionalmente "unilateral"/"desc"); el resto de nombres siguen teniendo que ser de la lista;',
     `weight en ${unit} (0 si es peso corporal) y debe ser cargable con su inventario;`,
     'ordena de compuesto a aislado; incluye 1 bloque de core;',
+    ...supersetLine(opts),
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s).',
   ];
   lines.push(...questionTail(opts));
@@ -216,6 +229,7 @@ function planPrompt(opts: BuildRequestOpts): string {
     `Objetivo del usuario: ${goalLabel(opts.goal ?? 'hipertrofia')} | días de entreno deseados: ${int(opts.daysPerWeek, 4)}.`,
     'Devuelve SOLO un JSON: la forma exacta la fija el esquema de la respuesta (rationale y days[] con date, type, title, focus y exercises[]).',
     'Reglas: respeta exactamente las fechas; usa ejercicios permitidos y, solo si alguno no encaja con el material, inventa uno con "isNew":true + "group"/"equip"/"type" en su objeto; deja al menos 48 h antes de repetir el mismo grupo muscular;',
+    ...supersetLine(opts),
     'asigna en rest el descanso óptimo de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s);',
     'los días de descanso van con exercises vacío; ajusta los pesos al historial y al inventario disponible.',
   ];

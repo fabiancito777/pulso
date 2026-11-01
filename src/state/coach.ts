@@ -301,6 +301,10 @@ function resolveItems(list: unknown): {
       rest: int(raw.rest, ex.rest),
       weight: toWeight(raw.weight),
       notes: typeof raw.notes === 'string' ? raw.notes : '',
+      /* el coach marca el par con una letra compartida en dos ejercicios seguidos */
+      ...(typeof raw.superset === 'string' && raw.superset.trim()
+        ? { superset: raw.superset.trim().slice(0, 8) }
+        : {}),
     });
   }
   return { items, unresolved };
@@ -575,6 +579,8 @@ export async function runCoachTask(
     unit: st.units,
     goal: st.goal,
     daysPerWeek: st.daysPerWeek,
+    /* solo se le pide al modelo emparejar si el usuario quiere superseries */
+    supersets: st.supersets,
   };
   /* La pregunta viaja en TODAS las tareas (antes solo en chat/analyze, y así el
      `ask` de los chips de acción rápida se perdía en suggest/plan): en chat es

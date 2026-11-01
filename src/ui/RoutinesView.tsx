@@ -34,6 +34,7 @@ import { fmtN, inputNum } from '@/domain/format';
 import { matchExercise, unresolvedNames } from '@/domain/match';
 import { clamp, int } from '@/domain/num';
 import { findTemplate } from '@/domain/plan';
+import { linkAt, newSupersetId, supersetPosition, unlinkAt } from '@/domain/supersets';
 import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
@@ -564,6 +565,26 @@ function RoutineEditor({
     setItems(next);
   }
 
+  /**
+   * Emparejar/separar el ejercicio con el de al lado. El par es solo el id
+   * compartido (`domain/supersets`): separar lo limpia en los dos y emparejar
+   * exige que ninguno esté ya en otro par (no se anidan).
+   */
+  function togglePair(index: number): void {
+    if (supersetPosition(items, index)) {
+      setItems(unlinkAt(items, index));
+      setError('');
+      return;
+    }
+    const linked = linkAt(items, index, newSupersetId());
+    if (!linked) {
+      setError('Para emparejar, separa antes la superserie del ejercicio de al lado.');
+      return;
+    }
+    setError('');
+    setItems(linked);
+  }
+
   function addItem(ex: Exercise): void {
     const goal = settings.value.goal;
     const reps = GOAL_REPS[goal] ?? [8, 12];
@@ -614,6 +635,7 @@ function RoutineEditor({
        ejercicios que ya no están en la biblioteca (import, semilla). */
     const ex = inLib ?? resolveExercise(library, item.exId);
     const missing = inLib ? !isAvailable(inLib, equipment.value) : false;
+    const pair = supersetPosition(items, index);
     return (
       <div class="card tight rt-item" key={`${item.exId}:${index}`}>
         <div class="rt-item-head">
@@ -621,8 +643,22 @@ function RoutineEditor({
             <div class="h3 ellipsis">{ex ? ex.name : item.exId}</div>
             <div class="tiny muted">
               {ex ? `${groupLabel(ex.group)} · ${ex.type}` : 'fuera de la biblioteca'}
+              {pair ? ` · SS ${pair.letter} (${pair.position}/${pair.size})` : ''}
             </div>
           </div>
+          <button
+            type="button"
+            class={`btn sm ${pair ? 'quiet' : 'ghost'}`}
+            title={
+              pair
+                ? 'Separar la superserie'
+                : 'Emparejar con el siguiente ejercicio (series seguidas, descanso al cerrar el par)'
+            }
+            disabled={!pair && index >= items.length - 1}
+            onClick={() => togglePair(index)}
+          >
+            {pair ? `SS ${pair.letter}` : 'Superserie'}
+          </button>
           <div class="row" style="gap:3px">
             <button
               type="button"

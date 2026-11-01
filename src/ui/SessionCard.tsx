@@ -21,7 +21,9 @@ import { fmtClock, fmtMmss, fmtN, fmtVol, inputNum } from '@/domain/format';
 import { num } from '@/domain/num';
 import { restView } from '@/domain/rest';
 import { entryVolume, progress as sessionProgress } from '@/domain/session';
-import type { ActiveEntry, Unit } from '@/domain/types';
+import { supersetGroups } from '@/domain/supersets';
+import type { SupersetGroup } from '@/domain/supersets';
+import type { ActiveEntry, ActiveSession, Unit } from '@/domain/types';
 import {
   active,
   addExercises,
@@ -322,6 +324,8 @@ function EntryCard(props: {
   unit: Unit;
   /** recién añadido: scroll hasta aquí y la clase `.new` durante 1,5 s */
   highlight?: boolean;
+  /** posición en su par de superserie (insignia «SS A · 1/2») */
+  superset?: { letter: string; position: number; size: number };
   onPlates?: (index: number) => void;
 }) {
   const { entry: en, index: i, total, unit, onPlates } = props;
@@ -365,6 +369,11 @@ function EntryCard(props: {
     <div class={`ex-card${doneSets === en.sets.length ? ' done' : ''}`} ref={box}>
       <div class="ex-head">
         <div class="grow" style="min-width:0">
+          {props.superset ? (
+            <div class="ss-badge">
+              SS {props.superset.letter} · {props.superset.position}/{props.superset.size}
+            </div>
+          ) : null}
           <div class="ex-name">{en.name}</div>
           <div class="ex-meta">
             {ex ? `${groupLabel(ex.group)} · ${ex.type} · ` : ''}
@@ -481,6 +490,69 @@ function EntryCard(props: {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * La lista de ejercicios, con los pares de superserie dentro de un bloque propio.
+ *
+ * El agrupado es presentación derivada de `superset` (`domain/supersets`): no hay
+ * estado de grupo que sincronizar, y si un par se rompe al mover o quitar algo
+ * simplemente deja de pintarse como tal.
+ */
+function EntryList(props: {
+  session: ActiveSession;
+  highlight: number | null;
+  onPlates: (index: number) => void;
+}) {
+  const entries = props.session.entries;
+  const groups = supersetGroups(entries);
+  const byIndex = new Map<number, SupersetGroup>();
+  for (const group of groups) for (const idx of group.indices) byIndex.set(idx, group);
+
+  const chunks: { indices: number[]; group: SupersetGroup | null }[] = [];
+  const seen = new Set<number>();
+  entries.forEach((_entry, i) => {
+    if (seen.has(i)) return;
+    const group = byIndex.get(i) ?? null;
+    const indices = group ? group.indices : [i];
+    for (const idx of indices) seen.add(idx);
+    chunks.push({ indices, group });
+  });
+
+  const card = (i: number) => {
+    const group = byIndex.get(i);
+    return (
+      <EntryCard
+        key={`${entries[i]?.exId ?? 'ex'}-${i}`}
+        entry={entries[i]}
+        index={i}
+        total={entries.length}
+        unit={props.session.unit}
+        highlight={props.highlight === i}
+        superset={
+          group ? { letter: group.letter, position: group.indices.indexOf(i) + 1, size: group.indices.length } : undefined
+        }
+        onPlates={props.onPlates}
+      />
+    );
+  };
+
+  return (
+    <>
+      {chunks.map((chunk) =>
+        chunk.group ? (
+          <div class="ss-group" key={`ss-${chunk.group.id}`}>
+            <div class="ss-head">
+              Superserie {chunk.group.letter} · {chunk.indices.length} ejercicios · descanso al cerrar el par
+            </div>
+            {chunk.indices.map(card)}
+          </div>
+        ) : (
+          card(chunk.indices[0] ?? 0)
+        ),
+      )}
+    </>
   );
 }
 
@@ -671,17 +743,7 @@ export function SessionCard() {
       <section class="card tight">
         <div class="col" style="gap:10px">
           {session.entries.length ? (
-            session.entries.map((en, i) => (
-              <EntryCard
-                key={`${en.exId}-${i}`}
-                entry={en}
-                index={i}
-                total={session.entries.length}
-                unit={session.unit}
-                highlight={highlight === i}
-                onPlates={setPlatesFor}
-              />
-            ))
+            <EntryList session={session} highlight={highlight} onPlates={setPlatesFor} />
           ) : (
             <div class="empty">
               <Icon name="dumbbell" />

@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   units: 'kg',
   restDefault: 90,
   autoRest: true,
+  supersets: true,
   sound: true,
   volume: 0.6,
   vibrate: true,
