@@ -625,6 +625,19 @@ describe('runCoachTask', () => {
 });
 
 describe('applySuggestionAsRoutine', () => {
+  it('conserva el par de superserie que propone el coach', () => {
+    const { routine } = coach.applySuggestionAsRoutine({
+      title: 'Par',
+      source: 'ia',
+      exercises: [
+        { name: NOMBRE, sets: 3, superset: 'A' },
+        { name: 'Remo con Barra', sets: 3, superset: 'A' },
+      ],
+    });
+    /* el par tiene que sobrevivir al guardado: era lo que se perdía */
+    expect(routine?.items.map((item) => item.superset)).toEqual(['A', 'A']);
+  });
+
   it('crea la rutina con source ia, reporta lo que no resuelve y persiste', () => {
     const { routine: creada, unresolved } = coach.applySuggestionAsRoutine({
       title: 'Empuje del coach',
