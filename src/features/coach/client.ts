@@ -61,6 +61,14 @@ export interface GenOpts {
    * expone para los tests y para que un caller pueda acortarlo.
    */
   timeoutMs?: number;
+  /**
+   * Aviso de «va lento»: se llama UNA vez por intento cuando la petición pasa
+   * de `slowMs` (`SLOW_NOTIFY_MS`) sin contestar. Informa, no aborta: la UI lo
+   * usa para enseñar «tardando más de lo normal» y un botón de cancelar.
+   */
+  onSlow?: () => void;
+  /** Umbral de `onSlow` en ms (`SLOW_NOTIFY_MS` por defecto; lo usan los tests). */
+  slowMs?: number;
 }
 
 /** Resultado de una llamada correcta. */
@@ -110,6 +118,37 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
  */
 export const REQUEST_TIMEOUT_MS = 180_000;
 
+/**
+ * Espera por intento según el nivel de pensamiento (`thinkingLevel`).
+ *
+ * Las tareas JSON del coach (historial + inventario + esquema) tardan 30-90 s
+ * con thinking alto con toda normalidad: un tope único de 60 s las cortaba en
+ * seco y mandaba al usuario al plan local con el modelo aún trabajando.
+ */
+const THINKING_TIMEOUT_MS: Record<string, number> = {
+  minimal: 60_000,
+  low: 60_000,
+  medium: 120_000,
+  high: 240_000,
+};
+
+/**
+ * Espera recomendada para un nivel de pensamiento. `'auto'` (o un nivel
+ * desconocido) deja `REQUEST_TIMEOUT_MS`; el usuario puede pisarla con
+ * `ai.timeoutSec` (Ajustes → Coach IA).
+ */
+export function thinkingTimeoutMs(level?: string | null): number {
+  const key = (level ?? '').trim().toLowerCase();
+  return THINKING_TIMEOUT_MS[key] ?? REQUEST_TIMEOUT_MS;
+}
+
+/**
+ * A partir de aquí la UI avisa de que la llamada va lenta (con botón para
+ * cancelar) en vez de parecer colgada. Se emite SIN cortar la petición: el
+ * corte sigue siendo el tope duro (`timeoutMs`).
+ */
+export const SLOW_NOTIFY_MS = 60_000;
+
 /** Tope de páginas de `GET /models`: un `nextPageToken` repetido no hace un bucle. */
 export const MAX_MODEL_PAGES = 10;
 
@@ -124,7 +163,12 @@ interface Deadline {
   dispose: () => void;
 }
 
-function deadline(external: AbortSignal | undefined, timeoutMs: number): Deadline {
+function deadline(
+  external: AbortSignal | undefined,
+  timeoutMs: number,
+  onSlow?: () => void,
+  slowMs = SLOW_NOTIFY_MS,
+): Deadline {
   const timerController = new AbortController();
   let expired = false;
   const timer = setTimeout(
@@ -134,6 +178,10 @@ function deadline(external: AbortSignal | undefined, timeoutMs: number): Deadlin
     },
     Math.max(1, timeoutMs),
   );
+  /* El aviso de lentitud es un temporizador APARTE del vencimiento: solo avisa.
+     No se programa si el tope es tan corto que llegaría a la vez o después. */
+  const slowTimer =
+    onSlow && slowMs > 0 && slowMs < timeoutMs ? setTimeout(onSlow, slowMs) : null;
 
   const signals: AbortSignal[] = [];
   if (external) signals.push(external);
@@ -160,6 +208,7 @@ function deadline(external: AbortSignal | undefined, timeoutMs: number): Deadlin
     timedOut: () => expired,
     dispose: () => {
       clearTimeout(timer);
+      if (slowTimer !== null) clearTimeout(slowTimer);
       detach();
     },
   };
@@ -641,8 +690,17 @@ export async function generate(o: GenOpts, fetchFn?: typeof fetch): Promise<GenR
 
   const timeoutMs = o.timeoutMs ?? REQUEST_TIMEOUT_MS;
   let dropThinking = false;
+  /* El aviso de lentitud es de la LLAMADA (una vez, en el primer intento que
+     pase del umbral); los reintentos no lo repiten. */
+  let slowNotified = false;
+  const notifySlow = (): void => {
+    if (slowNotified) return;
+    slowNotified = true;
+    o.onSlow?.();
+  };
   for (let attempt = 0; ; attempt++) {
-    const gate = deadline(o.signal, timeoutMs);
+    slowNotified = attempt > 0;
+    const gate = deadline(o.signal, timeoutMs, o.onSlow ? notifySlow : undefined, o.slowMs);
     try {
       return await requestOnce(o, url, key, model, call, dropThinking, t0, gate.signal);
     } catch (err) {

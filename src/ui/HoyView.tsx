@@ -76,6 +76,8 @@ import {
   weekKpis,
 } from './hoy-helpers';
 import type { TodayPlan } from './hoy-helpers';
+import { useCoachWait, WaitMeta } from './coach-wait';
+import type { CoachWait } from './coach-wait';
 import { Icon } from './Icon';
 import { Kpi, SectionHead } from './kit';
 import { PlatesCard } from './PlatesCard';
@@ -275,6 +277,7 @@ function SuggestCard({
   suggestion,
   source,
   loading,
+  wait,
   notice,
   onRefresh,
   onAi,
@@ -284,6 +287,7 @@ function SuggestCard({
   suggestion: RoutineSuggestion | null;
   source: 'ia' | 'local';
   loading: boolean;
+  wait: CoachWait;
   notice: Notice | null;
   onRefresh: () => void;
   onAi: () => void;
@@ -375,6 +379,11 @@ function SuggestCard({
             aria-live={notice.kind === 'err' ? 'assertive' : 'polite'}
           >
             {notice.text}
+          </div>
+        ) : null}
+        {loading ? (
+          <div class="mt-s">
+            <WaitMeta wait={wait} />
           </div>
         ) : null}
         <div class="col mt-s" style="gap:8px">
@@ -706,7 +715,7 @@ export function HoyView() {
     sug: RoutineSuggestion;
     source: 'ia' | 'local';
   } | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
+  const wait = useCoachWait();
   const [notice, setNotice] = useState<Notice | null>(null);
 
   /* La sugerencia local se recalcula cuando cambia el historial (o cuando
@@ -823,7 +832,7 @@ export function HoyView() {
 
   /** `Mejorar con IA`: sin key ni se intenta (nunca un throw silencioso). */
   async function improveWithAi(): Promise<void> {
-    if (aiLoading) return;
+    if (wait.running) return;
     if (!hasApiKey()) {
       setNotice({
         kind: 'warn',
@@ -832,12 +841,16 @@ export function HoyView() {
       go('ajustes', 'coach');
       return;
     }
-    setAiLoading(true);
+    const signal = wait.start();
     try {
       /* El transcript del chat viaja como `contents`: «mejorar con IA» parte de
          lo que el usuario pidió y pegó en turnos anteriores (P1), igual que los
          chips de la vista del coach. */
-      const outcome = await runCoachTask('suggest', { history: promptHistory() });
+      const outcome = await runCoachTask('suggest', {
+        history: promptHistory(),
+        signal,
+        onSlow: wait.markSlow,
+      });
       /* `payload` viene ya parseado del coach; el texto es la red de seguridad
          (si el modelo devolvió el JSON embebido en ```consulta`). */
       let payload: unknown = outcome.payload;
@@ -864,12 +877,16 @@ export function HoyView() {
         toast('Sugerencia regenerada con el plan local (sin IA)', { kind: 'warn' });
       }
     } catch (err) {
-      setNotice({
-        kind: 'err',
-        text: err instanceof Error ? err.message : 'No se pudo contactar con el coach.',
-      });
+      setNotice(
+        wait.cancelled()
+          ? { kind: 'warn', text: 'Cancelado: dejé de esperar la respuesta de la IA.' }
+          : {
+              kind: 'err',
+              text: err instanceof Error ? err.message : 'No se pudo contactar con el coach.',
+            },
+      );
     } finally {
-      setAiLoading(false);
+      wait.end();
     }
   }
 
@@ -895,7 +912,8 @@ export function HoyView() {
       <SuggestCard
         suggestion={suggestion}
         source={source}
-        loading={aiLoading}
+        loading={wait.running}
+        wait={wait}
         notice={notice}
         onRefresh={() => {
           setAi(null);

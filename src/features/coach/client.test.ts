@@ -14,7 +14,9 @@ import {
   generate,
   listModels,
   MODELS_LIMIT,
+  REQUEST_TIMEOUT_MS,
   testConnection,
+  thinkingTimeoutMs,
 } from './client';
 import type { ResponseSchema } from './types';
 
@@ -759,6 +761,37 @@ describe('generate — timeout y cancelación', () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
+  it('avisa de lentitud UNA vez y sigue esperando hasta el tope', async () => {
+    const f = hangingFetch();
+    let slow = 0;
+    const onSlow = (): void => {
+      slow += 1;
+    };
+    await expect(
+      generate(opts({ timeoutMs: 80, slowMs: 10, onSlow }), f as unknown as typeof fetch),
+    ).rejects.toMatchObject({ kind: 'network' });
+    expect(slow).toBe(1);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('no avisa de lentitud si el tope no da margen (slowMs >= timeoutMs)', async () => {
+    const f = hangingFetch();
+    let slow = 0;
+    await expect(
+      generate(
+        opts({
+          timeoutMs: 20,
+          slowMs: 50,
+          onSlow: () => {
+            slow += 1;
+          },
+        }),
+        f as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ kind: 'network' });
+    expect(slow).toBe(0);
+  });
+
   it('el aborto de la UI llega a fetch y se devuelve como network', async () => {
     const controller = new AbortController();
     const f = hangingFetch();
@@ -773,6 +806,18 @@ describe('generate — timeout y cancelación', () => {
     await expect(generate(opts({ prompt: '   ' }), f)).rejects.toMatchObject({ kind: 'parse' });
     expect(f).not.toHaveBeenCalled();
     expect(() => buildBody(opts({ prompt: '\n\t ' }))).toThrowError('prompt está vacío');
+  });
+});
+
+describe('thinkingTimeoutMs', () => {
+  it('más pensamiento = más espera; auto/sin nivel → el tope por defecto', () => {
+    expect(thinkingTimeoutMs('minimal')).toBe(60_000);
+    expect(thinkingTimeoutMs('low')).toBe(60_000);
+    expect(thinkingTimeoutMs('medium')).toBe(120_000);
+    expect(thinkingTimeoutMs('high')).toBe(240_000);
+    expect(thinkingTimeoutMs(' HIGH ')).toBe(240_000);
+    expect(thinkingTimeoutMs('auto')).toBe(REQUEST_TIMEOUT_MS);
+    expect(thinkingTimeoutMs(undefined)).toBe(REQUEST_TIMEOUT_MS);
   });
 });
 

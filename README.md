@@ -124,6 +124,8 @@ pantalla completa y funciona offline).
 - Configurable desde la app: **API key**, **modelo** (lista curada + carga de modelos reales de tu cuenta),
   **thinking level** (`minimal|low|medium|high` o auto), **thinking budget** (modelos 2.5), mostrar u
   ocultar el resumen de razonamiento (`includeThoughts`), temperature, máximo de tokens y system prompt.
+- **Espera máxima de respuesta**, automática según el thinking (60/120/240 s) o fijada a mano en
+  segundos; mientras se espera la app dice cuánto lleva y deja cancelar sin cortar la app.
 - Botón de prueba de conexión con diagnóstico de errores.
 - **Todo funciona sin IA**: el planificador local cubre sugerencias y plan semanal sin key.
 

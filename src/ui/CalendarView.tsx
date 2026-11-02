@@ -95,6 +95,7 @@ import {
 } from './calendar-helpers';
 import type { DayState, DayStatus, DayType, PlanEngine, PlanResult } from './calendar-helpers';
 import { HelpBtn } from './HelpModal';
+import { useCoachWait, WaitMeta } from './coach-wait';
 import { Icon } from './Icon';
 import { Kpi } from './kit';
 
@@ -679,6 +680,8 @@ export function CalendarView() {
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
   const [loading, setLoading] = useState<PlanEngine | null>(null);
+  /* espera de la IA: segundos, aviso de lentitud y Cancelar */
+  const wait = useCoachWait();
   const [notice, setNotice] = useState<Notice | null>(null);
 
   /* Botón «Con IA» y pie: la key se lee aquí para que el repintado la note
@@ -763,11 +766,17 @@ export function CalendarView() {
     if (loading) return;
     setLoading(engine);
     setNotice(null);
+    /* el plan local es síncrono: solo la IA necesita espera (y cancelación) */
+    const signal = engine === 'ia' ? wait.start() : undefined;
     try {
       let parsed: PlanResult | null;
       if (engine === 'ia') {
         /* transcript del chat como `contents`: «Con IA» parte de lo pedido antes */
-        const outcome = await runCoachTask('plan', { history: promptHistory() });
+        const outcome = await runCoachTask('plan', {
+          history: promptHistory(),
+          signal,
+          ...(signal ? { onSlow: wait.markSlow } : {}),
+        });
         /* `payload` es el camino directo (en local ya viene del planificador);
            el texto es la red de seguridad por si el JSON viene en una cercilla */
         parsed = planFromJson(outcome.payload) ?? parsePlan(outcome.text);
@@ -800,12 +809,17 @@ export function CalendarView() {
         }
       }
     } catch (err) {
-      setNotice({
-        kind: 'err',
-        text: err instanceof Error ? err.message : 'No se pudo generar el plan.',
-      });
+      setNotice(
+        wait.cancelled()
+          ? { kind: 'warn', text: 'Cancelado: dejé de esperar el plan de la IA.' }
+          : {
+              kind: 'err',
+              text: err instanceof Error ? err.message : 'No se pudo generar el plan.',
+            },
+      );
     } finally {
       setLoading(null);
+      wait.end();
     }
   }
 
@@ -860,6 +874,7 @@ export function CalendarView() {
         <div class="cal-loading">
           <span class="dot-live accent" />
           {loading === 'ia' ? 'El coach IA planifica tu semana…' : 'Preparando tu semana…'}
+          {loading === 'ia' ? <WaitMeta wait={wait} /> : null}
         </div>
       ) : null}
 

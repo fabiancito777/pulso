@@ -195,6 +195,44 @@ describe('runCoachTask', () => {
     expect(gen.mock.calls[3]?.[0].maxOutputTokens).toBe(32768);
   });
 
+  it('espera por intento: automática según el thinking, y `ai.timeoutSec` la pisa', async () => {
+    const gen = makeGen([res('ok'), res('ok'), res('ok')]);
+
+    store.patchSettings({
+      ai: { ...store.settings.value.ai, apiKey: 'test-key', thinkingLevel: 'high', timeoutSec: 0 },
+    });
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(gen.mock.calls[0]?.[0].timeoutMs).toBe(240_000);
+
+    store.patchSettings({
+      ai: { ...store.settings.value.ai, apiKey: 'test-key', thinkingLevel: 'high', timeoutSec: 45 },
+    });
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(gen.mock.calls[1]?.[0].timeoutMs).toBe(45_000);
+
+    store.patchSettings({
+      ai: { ...store.settings.value.ai, apiKey: 'test-key', thinkingLevel: 'low', timeoutSec: 0 },
+    });
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+    expect(gen.mock.calls[2]?.[0].timeoutMs).toBe(60_000);
+  });
+
+  it('onSlow viaja a la llamada y cancelar NO se disfraza de plan local', async () => {
+    const onSlow = (): void => undefined;
+    const gen = makeGen([res('ok')]);
+    await coach.runCoachTask('chat', { userText: 'hola', onSlow }, { generateFn: gen });
+    expect(gen.mock.calls[0]?.[0].onSlow).toBe(onSlow);
+
+    /* cancelado por el usuario: suggest PROPAGA el aborto en vez de resolver
+       con el plan local (no es un fallo, es que ya no se quiere esperar) */
+    const abortado = new AbortController();
+    abortado.abort();
+    const cancelado = makeFailing(new GeminiError('network', 'Llamada a Gemini cancelada'));
+    await expect(
+      coach.runCoachTask('suggest', { signal: abortado.signal }, { generateFn: cancelado }),
+    ).rejects.toBeInstanceOf(GeminiError);
+  });
+
   it('la petición del usuario llega al prompt en suggest y plan (chips con contexto)', async () => {
     const gen = makeGen([
       res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),

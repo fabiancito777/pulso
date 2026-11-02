@@ -57,6 +57,7 @@ import {
 } from '@/state/store';
 import type { Routine } from '@/state/store';
 import { HelpBtn } from './HelpModal';
+import { useCoachWait, WaitMeta } from './coach-wait';
 import { Icon } from './Icon';
 import { InfoCard, SectionHead, TextRow } from './kit';
 import { Modal } from './Modal';
@@ -910,7 +911,8 @@ export function RoutinesView() {
   const [editId, setEditId] = useState<string | null | undefined>(undefined);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
+  /* espera del coach: segundos, aviso de lentitud y Cancelar */
+  const wait = useCoachWait();
   const [proposal, setProposal] = useState<RoutineSuggestion | null>(null);
   /* generación local (sin API key): modal de plantillas + propuesta sin guardar */
   const [genOpen, setGenOpen] = useState(false);
@@ -937,7 +939,7 @@ export function RoutinesView() {
 
   /** Pide una rutina al coach. Sin API key ni se intenta: se va a Ajustes. */
   async function suggest(): Promise<void> {
-    if (aiLoading) return;
+    if (wait.running) return;
     if (!hasApiKey()) {
       setNotice({
         kind: 'warn',
@@ -947,12 +949,16 @@ export function RoutinesView() {
       go('ajustes', 'coach');
       return;
     }
-    setAiLoading(true);
+    const signal = wait.start();
     setProposal(null);
     try {
       /* transcript del chat como `contents`: la propuesta se apoya en lo que el
          usuario pidió y pegó antes (P1), igual que en Hoy y en el coach */
-      const outcome = await runCoachTask('suggest', { history: promptHistory() });
+      const outcome = await runCoachTask('suggest', {
+        history: promptHistory(),
+        signal,
+        onSlow: wait.markSlow,
+      });
       const parsed = toSuggestion(parseJSON<unknown>(outcome.text), library);
       if (!parsed) {
         setNotice({
@@ -976,12 +982,16 @@ export function RoutinesView() {
           : null,
       );
     } catch (err) {
-      setNotice({
-        kind: 'err',
-        text: err instanceof Error ? err.message : 'No se pudo contactar con el coach.',
-      });
+      setNotice(
+        wait.cancelled()
+          ? { kind: 'warn', text: 'Cancelado: dejé de esperar la propuesta de la IA.' }
+          : {
+              kind: 'err',
+              text: err instanceof Error ? err.message : 'No se pudo contactar con el coach.',
+            },
+      );
     } finally {
-      setAiLoading(false);
+      wait.end();
     }
   }
 
@@ -1231,11 +1241,11 @@ export function RoutinesView() {
           <button
             type="button"
             class="btn lg grow rt-btn"
-            disabled={aiLoading}
+            disabled={wait.running}
             onClick={() => void suggest()}
           >
             <Icon name="sparkles" />
-            {aiLoading ? 'El coach está pensando…' : 'Sugerir rutina con IA'}
+            {wait.running ? 'El coach está pensando…' : 'Sugerir rutina con IA'}
           </button>
           <HelpBtn id="rutinas.autoVsIa" title="Generar auto y sugerir con IA" />
         </div>
@@ -1243,13 +1253,14 @@ export function RoutinesView() {
 
       {notice ? <NoticeBox notice={notice} onClose={() => setNotice(null)} /> : null}
 
-      {aiLoading ? (
+      {wait.running ? (
         <div class="card tight mt-s">
           <div class="row">
             <Icon name="sparkles" class="muted" />
             <div class="tiny muted grow">
               El coach está mirando tu historial y tu material para proponerte el entreno de hoy…
             </div>
+            <WaitMeta wait={wait} />
           </div>
         </div>
       ) : null}

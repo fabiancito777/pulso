@@ -134,6 +134,7 @@ export const HELP_IDS = [
   'opt.model',
   'opt.thinkingLevel',
   'opt.thinkingBudget',
+  'opt.timeoutSec',
   'opt.temperature',
   'opt.maxTokens',
   'opt.includeThoughts',
@@ -826,6 +827,16 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Los tokens que como mucho puede usar el modelo para pensar. Déjalo vacío y lo decide él. Solo toca esto con modelos 2.5, si quieres forzar más o menos razonamiento.',
       'Si arriba has elegido un nivel de pensamiento, este campo no hace nada.',
+    ],
+    see: ['opt.thinkingLevel', 'opt.maxTokens'],
+  },
+  'opt.timeoutSec': {
+    id: 'opt.timeoutSec',
+    section: 'ajustes',
+    title: 'Espera máxima de respuesta',
+    paras: [
+      'Cuántos segundos espera la app a que Gemini conteste antes de darse por vencida y usar el plan local. En 0 se ajusta sola al nivel de pensamiento: 60 s con bajo, 120 con medio y 240 con alto.',
+      'Súbela si usas un modelo lento o pensamiento alto y acabas siempre en el plan local. Durante la espera el aviso dice cuánto lleva y te deja cancelar sin cortar la app.',
     ],
     see: ['opt.thinkingLevel', 'opt.maxTokens'],
   },

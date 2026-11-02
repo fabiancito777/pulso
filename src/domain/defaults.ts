@@ -51,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
       includeThoughts: true,
       temperature: 1,
     maxTokens: 4096,
+    timeoutSec: 0,
     autoApply: false,
     systemPrompt: '',
     memory: '',

@@ -51,7 +51,7 @@ import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
 import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
-import { GeminiError, generate } from '@/features/coach/client';
+import { GeminiError, generate, thinkingTimeoutMs } from '@/features/coach/client';
 import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
 import { buildContext } from '@/features/coach/context';
 import { queryHistory } from '@/features/coach/history';
@@ -116,6 +116,12 @@ export interface CoachTaskOpts {
   consultRounds?: number;
   /** cancelación opcional de la tarea (se reenvía a `generate`) */
   signal?: AbortSignal;
+  /**
+   * Aviso de «va lento» (`generate.onSlow`): la vista lo usa para decir
+   * «tardando más de lo normal» con un botón de cancelar SIN cortar la
+   * llamada. Se reenvía a cada llamada de la tarea.
+   */
+  onSlow?: () => void;
 }
 
 /** Lo que devuelve `runCoachTask`, listo para pintar en la vista del coach. */
@@ -405,6 +411,17 @@ function weeklyBrief(list: readonly Session[], weeks: number, todayIso: string):
  * sus `GenOpts` con la MISMA key, modelo, temperatura y thinking que el coach
  * sin duplicar estas líneas ni tocar `features/coach/client.ts`.
  */
+/**
+ * Tope de espera por intento: `ai.timeoutSec` manda (0 o vacío = automático)
+ * y, si no lo ha fijado el usuario, el del nivel de pensamiento. Se acota a
+ * 600 s para que un valor absurdo no deje la app esperando para siempre.
+ */
+function timeoutFor(ai: Settings['ai']): number {
+  const manual = num(ai.timeoutSec, 0);
+  if (manual > 0) return Math.round(Math.min(600, Math.max(1, manual)) * 1000);
+  return thinkingTimeoutMs(ai.thinkingLevel);
+}
+
 export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
   const opts: GenOpts = {
     apiKey: String(ai.apiKey ?? ''),
@@ -414,6 +431,7 @@ export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
     json: req.json,
     temperature: num(ai.temperature, 1),
     maxOutputTokens: int(ai.maxTokens, 4096),
+    timeoutMs: timeoutFor(ai),
   };
   if (THINKING_LEVELS.includes(ai.thinkingLevel)) {
     opts.thinkingLevel = ai.thinkingLevel as GenOpts['thinkingLevel'];
@@ -632,8 +650,13 @@ export async function runCoachTask(
       ...base,
       ...(history.length ? { history } : {}),
       ...(signal ? { signal } : {}),
+      ...(opts.onSlow ? { onSlow: opts.onSlow } : {}),
     });
   } catch (err) {
+    /* Cancelado por el usuario: NO se rescata con el plan local. El usuario ya
+       dijo que no quiere seguir esperando, así que la vista avisa del corte en
+       vez de enseñarle un plan que no pidió. */
+    if (signal?.aborted) throw err;
     if (isLocalTask(task) && isFallbackError(err)) {
       return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0, err);
     }
@@ -681,7 +704,13 @@ export async function runCoachTask(
     kept = boundedHistory(kept, Math.max(0, limit - extra.length));
     history = [...kept, ...extra];
     prompt = message;
-    res = await genFn({ ...base, prompt, history, ...(signal ? { signal } : {}) });
+    res = await genFn({
+      ...base,
+      prompt,
+      history,
+      ...(signal ? { signal } : {}),
+      ...(opts.onSlow ? { onSlow: opts.onSlow } : {}),
+    });
   }
 
   /* 5 · memoria: se vuelca y se quita del texto final */

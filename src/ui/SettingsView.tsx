@@ -1751,6 +1751,17 @@ function SecCoach() {
           max={65536}
           onChange={(v) => setSettingsPath('ai.maxTokens', v)}
         />
+        <NumRow
+          label="Espera máxima de respuesta"
+          hint="0 = automática según el pensamiento (60/120/240 s). Súbela con modelos lentos"
+          help="opt.timeoutSec"
+          value={Number(ai.timeoutSec) || 0}
+          step={30}
+          min={0}
+          max={600}
+          suffix="s"
+          onChange={(v) => setSettingsPath('ai.timeoutSec', v)}
+        />
       </div>
       <div class="card mt">
         <div class="help-field">

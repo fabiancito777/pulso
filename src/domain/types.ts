@@ -125,6 +125,11 @@ export interface AiSettings {
   includeThoughts: boolean;
   temperature: number;
   maxTokens: number;
+  /**
+   * Espera máxima por respuesta en segundos (0 o vacío = automática, según el
+   * nivel de pensamiento: 60/120/240 s). Un modelo lento necesita más.
+   */
+  timeoutSec?: number;
   autoApply: boolean;
   systemPrompt: string;
   /** Memoria editable del coach IA (markdown). La lógica vive en `features/coach`. */

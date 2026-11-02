@@ -148,9 +148,9 @@ describe('secciones de la guía', () => {
     }
   });
 
-  it('contados por prefijo: 7 pestañas, 26 ajustes y el glosario completo', () => {
+  it('contados por prefijo: 7 pestañas, 27 ajustes y el glosario completo', () => {
     expect(HELP_IDS.filter((id) => id.startsWith('tab.'))).toHaveLength(7);
-    expect(HELP_IDS.filter((id) => id.startsWith('opt.'))).toHaveLength(26);
+    expect(HELP_IDS.filter((id) => id.startsWith('opt.'))).toHaveLength(27);
     /* los 13 términos de la tabla de glosario de `help-content.md` §3 */
     expect(HELP_IDS.filter((id) => id.startsWith('glossary.'))).toHaveLength(13);
   });

@@ -49,6 +49,7 @@ import { int } from '@/domain/num';
 import { supersetGroups } from '@/domain/supersets';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
+import { useCoachWait, WaitMeta } from './coach-wait';
 import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
 import { creationsFromPayload, parseJSON } from '@/features/coach/parse';
 import type { CoachTask } from '@/features/coach/types';
@@ -921,7 +922,9 @@ export function turnOpts(text: string, history: ChatMsg[]): CoachTaskOpts {
 export function CoachView() {
   const msgs = chat.value;
   const hasKey = hasApiKey();
-  const [busy, setBusy] = useState(false);
+  /* La espera vive en un hook: segundos transcurridos, aviso de lentitud y
+     Cancelar (antes era un `busy` binario que parecía colgado a los 60 s). */
+  const wait = useCoachWait();
   const [draft, setDraft] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -954,7 +957,7 @@ export function CoachView() {
   useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [msgs.length, busy]);
+  }, [msgs.length, wait.running]);
 
   /* «Limpiar» pide confirmación en el propio botón (no hay modal en la v2). */
   useEffect(() => {
@@ -965,7 +968,7 @@ export function CoachView() {
 
   async function run(task: CoachTask, userText: string, jump?: QuickAction['jump']): Promise<void> {
     const text = userText.trim();
-    if (busy || !text) return;
+    if (wait.running || !text) return;
     if (!hasKey) {
       addChat({
         role: 'sys',
@@ -981,17 +984,27 @@ export function CoachView() {
        las cuatro tareas como `contents` de Gemini: si no, «los récords que te
        pasé antes» se perdía al pedir un entreno con el chip (P1). */
     const history = promptHistory();
-    setBusy(true);
+    const signal = wait.start();
     addChat({ role: 'user', text, ts: nowTs() });
     let ok = false;
     try {
-      const out = await runCoachTask(task, turnOpts(text, history));
+      const out = await runCoachTask(task, {
+        ...turnOpts(text, history),
+        signal,
+        onSlow: wait.markSlow,
+      });
       addChat(resultLine(task, out, String(settings.value.ai.model ?? '')));
       ok = true;
     } catch (err) {
-      addChat(errorLine(err));
+      /* Cancelar no es un fallo de la API: se dice tal cual, sin mandar a
+         Ajustes ni disfrazarlo de «no hay conexión». */
+      addChat(
+        wait.cancelled()
+          ? { role: 'sys', text: 'Cancelado: dejé de esperar la respuesta.', ts: nowTs() }
+          : errorLine(err),
+      );
     } finally {
-      setBusy(false);
+      wait.end();
     }
     /* solo al terminar (y sin error): el salto es lo último, así la vista
        desmontada no vuelve a tocar su estado */
@@ -1148,7 +1161,7 @@ export function CoachView() {
               key={action.label}
               type="button"
               class="chip"
-              disabled={busy}
+              disabled={wait.running}
               /* micro-pista sin CSS: si la caja tiene texto, el chip lo manda
                  junto a su pregunta en vez de ignorarlo */
               title={draft.trim() ? 'Tu texto se enviará como contexto' : undefined}
@@ -1212,7 +1225,7 @@ export function CoachView() {
             </div>
           </div>
         )}
-        {busy ? (
+        {wait.running ? (
           <div class="msg ai">
             <span class="coach-typing">
               <span class="typing">
@@ -1221,6 +1234,7 @@ export function CoachView() {
                 <i />
               </span>
               <span class="tiny muted">Pensando…</span>
+              <WaitMeta wait={wait} />
             </span>
           </div>
         ) : null}
@@ -1231,7 +1245,7 @@ export function CoachView() {
           <textarea
             rows={1}
             value={draft}
-            disabled={!hasKey || busy}
+            disabled={!hasKey || wait.running}
             aria-label="Mensaje"
             placeholder={hasKey ? 'Escribe tu pregunta…' : 'Configura la API key para chatear'}
             onInput={(e) => setDraft(e.currentTarget.value)}
@@ -1245,7 +1259,7 @@ export function CoachView() {
           <button
             type="button"
             class="btn primary icon"
-            disabled={busy || !hasKey || !draft.trim()}
+            disabled={wait.running || !hasKey || !draft.trim()}
             title="Enviar"
             onClick={send}
           >
