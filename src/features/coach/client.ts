@@ -103,8 +103,12 @@ const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
-/** Tiempo máximo de cada petición HTTP (una llamada colgada no bloquea la app). */
-export const REQUEST_TIMEOUT_MS = 60_000;
+/**
+ * Tiempo máximo de cada petición HTTP (una llamada colgada no bloquea la app).
+ * 180 s: los modelos con thinking alto (p. ej. 3.5/3.8 flash con thinking
+ * high) superan con frecuencia los 60 s en tareas JSON largas.
+ */
+export const REQUEST_TIMEOUT_MS = 180_000;
 
 /** Tope de páginas de `GET /models`: un `nextPageToken` repetido no hace un bucle. */
 export const MAX_MODEL_PAGES = 10;
