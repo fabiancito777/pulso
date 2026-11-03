@@ -5,8 +5,16 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { finishSession, toggleSet } from './session';
-import { linkAt, partnerAfter, supersetGroups, supersetPosition, unlinkAt } from './supersets';
+import { finishSession, moveEntry, removeEntry, toggleSet } from './session';
+import {
+  freshSupersetIds,
+  linkAt,
+  partnerAfter,
+  pruneSupersets,
+  supersetGroups,
+  supersetPosition,
+  unlinkAt,
+} from './supersets';
 import type { ActiveEntry, ActiveSession, RoutineItem } from './types';
 
 const TS = '2026-01-01T10:00:00.000Z';
@@ -154,5 +162,63 @@ describe('linkAt / unlinkAt (editor de rutinas)', () => {
 
   it('separar un item sin par no toca nada', () => {
     expect(unlinkAt(items, 1)).toEqual(items);
+  });
+});
+
+describe('freshSupersetIds (pegar dos listas)', () => {
+  it('renombra el run entero cuando su id ya está en la sesión', () => {
+    const next = freshSupersetIds([entry('c', 'ss1'), entry('d', 'ss1')], ['ss1']);
+    const [a, b] = next.map((item) => item.superset);
+    expect(a).toBe(b);
+    expect(a).not.toBe('ss1');
+  });
+
+  it('no toca un run libre y respeta el id suelto', () => {
+    const list = [entry('a', 'ss1'), entry('b', 'ss1'), entry('c', null)];
+    expect(freshSupersetIds(list)).toEqual(list);
+  });
+
+  it('duplicar una rutina deja de ser un bloque de cuatro', () => {
+    const una = [entry('a', 'ss1'), entry('b', 'ss1')];
+    const copia = freshSupersetIds([entry('c', 'ss1'), entry('d', 'ss1')], ['ss1']);
+    expect(supersetGroups([...una, ...copia]).map((group) => group.indices)).toEqual([
+      [0, 1],
+      [2, 3],
+    ]);
+  });
+
+  it('dos runs con la misma letra reciben ids distintos', () => {
+    const list = [entry('a', 'A'), entry('b', 'A'), entry('x', null), entry('c', 'A'), entry('d', 'A')];
+    const ids = freshSupersetIds(list).map((item) => item.superset);
+    expect(ids[0]).toBe(ids[1]);
+    expect(ids[3]).toBe(ids[4]);
+    expect(ids[0]).not.toBe(ids[3]);
+  });
+});
+
+describe('pruneSupersets (ids huérfanos)', () => {
+  it('limpia el id que se quedó solo y respeta el par', () => {
+    expect(pruneSupersets([entry('a', 'ss1'), entry('b', null)]).map((e) => e.superset)).toEqual([
+      null,
+      undefined,
+    ]);
+    expect(pruneSupersets([entry('a', 'ss1'), entry('b', 'ss1')]).map((e) => e.superset)).toEqual([
+      'ss1',
+      'ss1',
+    ]);
+  });
+
+  it('quitar un miembro del par deja al otro suelto y sin id', () => {
+    const out = removeEntry(session([entry('a', 'ss1'), entry('b', 'ss1')]), 1);
+    expect(out.entries[0]?.superset).toBeNull();
+  });
+
+  it('mover un ejercicio entre los dos miembros deshace el par', () => {
+    const out = moveEntry(session([entry('a', 'ss1'), entry('b', 'ss1'), entry('x', null)]), 2, -1);
+    expect(out.entries.map((item) => `${item.exId}:${item.superset ?? '-'}`)).toEqual([
+      'a:-',
+      'x:-',
+      'b:-',
+    ]);
   });
 });

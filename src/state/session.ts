@@ -66,6 +66,7 @@ import {
   startSession,
   toggleSet,
 } from '@/domain/session';
+import { freshSupersetIds } from '@/domain/supersets';
 import type { ActiveEntry, ActiveSession, PlanItem, RestState, Session } from '@/domain/types';
 import { beep, ensureAudio, vibrate } from '@/platform/audio';
 import {
@@ -286,9 +287,13 @@ export function addEntries(entries: readonly ActiveEntry[]): number | null {
   const current = active.value;
   if (!current || !entries.length) return null;
   const first = current.entries.length;
+  /* los ids de par que ya usa la sesión: el run que choque se renombra en bloque,
+     para que la rutina añadida no se fusione con la que ya estaba (duplicar una
+     rutina, añadirla dos veces, dos rutinas del coach con la misma letra) */
+  const taken = current.entries.map((entry) => entry.superset ?? '').filter(Boolean);
   update((session) => {
     let next = session;
-    for (const entry of entries) next = addEntry(next, entry);
+    for (const entry of freshSupersetIds(entries, taken)) next = addEntry(next, entry);
     return next;
   });
   justAdded.value = first;
@@ -313,6 +318,7 @@ export function addRoutineToSession(routineId: string): number | null {
   if (!routine || !active.value) return null;
   return addEntries(entriesFromRoutine(routine, suggestFor, exercises.value));
 }
+
 
 /**
  * "Usar X kg" del modal de discos: escribe la serie que eligió `plateTarget`

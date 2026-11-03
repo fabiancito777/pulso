@@ -126,6 +126,59 @@ describe('startFromPlan', () => {
   });
 });
 
+describe('series: valores y tope', () => {
+  it('las reps se acotan al escribir y no se arrastra un valor imposible', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }]);
+
+    session.editSet(0, 0, 'reps', -3);
+    expect(session.active.value?.entries[0]?.sets.map((set) => set.reps)).toEqual([0, 0]);
+
+    session.editSet(0, 0, 'reps', 500);
+    expect(session.active.value?.entries[0]?.sets.map((set) => set.reps)).toEqual([99, 99]);
+  });
+
+  it('el peso negativo se acota a 0 y el vacío se respeta', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }]);
+
+    session.editSet(0, 0, 'weight', -20);
+    expect(session.active.value?.entries[0]?.sets[0]?.weight).toBe(0);
+
+    session.editSet(0, 0, 'weight', '');
+    expect(session.active.value?.entries[0]?.sets[0]?.weight).toBe('');
+  });
+
+  it('«+ serie» se para en el tope de la rutina (12)', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 1 }]);
+    for (let i = 0; i < 20; i += 1) session.addSet(0);
+    expect(session.active.value?.entries[0]?.sets).toHaveLength(12);
+  });
+});
+
+describe('addRoutineToSession', () => {
+  it('añadir la misma rutina dos veces no fusiona sus pares', () => {
+    const [a, b] = store.exercises.value;
+    const rutina = store.addRoutine({
+      name: 'Par',
+      source: 'manual',
+      items: [
+        { exId: a?.id ?? '', sets: 2, superset: 'ss1' },
+        { exId: b?.id ?? '', sets: 2, superset: 'ss1' },
+      ],
+    });
+    session.startFromPlan([{ exId: a?.id ?? '', sets: 1 }]);
+
+    session.addRoutineToSession(rutina.id);
+    session.addRoutineToSession(rutina.id);
+
+    const ids = session.active.value?.entries.map((entry) => entry.superset) ?? [];
+    expect(ids).toHaveLength(5);
+    expect(ids[0]).toBeUndefined();
+    expect(ids[1]).toBe(ids[2]);
+    expect(ids[3]).toBe(ids[4]);
+    expect(ids[1]).not.toBe(ids[3]);
+  });
+});
+
 /* ---------- cerrar la sesión: las dos comprobaciones del auto-test
    («sesión: se guarda en el historial» y «sesión: día marcado como hecho») ---------- */
 

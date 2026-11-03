@@ -17,6 +17,7 @@ import {
 } from '@/domain/plates';
 import type { BarWeights, PlateModeKey, PlateStock, Unit } from '@/domain/types';
 import { fromKg, unitIncrement, unitLabel } from '@/domain/units';
+import { Icon } from '@/ui/Icon';
 import { LoadView, dual } from '@/ui/LoadView';
 
 export interface PlatesProps {
@@ -103,17 +104,18 @@ export function Plates({
         <div class="label" style="margin-bottom:6px">
           Cómo se carga
         </div>
-        <div class="hr-scroll">
+        <div class="mode-grid">
           {PLATE_MODE_KEYS.map((key) => (
             <button
               key={key}
               type="button"
-              class={`chip ${key === mode ? 'accent' : ''}`}
+              class={`mode-tile ${key === mode ? 'on' : ''}`}
               title={PLATE_MODES[key].hint}
               aria-pressed={key === mode}
               onClick={() => pickMode(key)}
             >
-              {PLATE_MODES[key].label}
+              <Icon name={PLATE_MODES[key].icon} />
+              <span>{PLATE_MODES[key].label}</span>
             </button>
           ))}
         </div>

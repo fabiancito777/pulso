@@ -49,6 +49,7 @@ import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
+import { freshSupersetIds } from '@/domain/supersets';
 import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
 import { GeminiError, generate, thinkingTimeoutMs } from '@/features/coach/client';
@@ -313,7 +314,19 @@ function resolveItems(list: unknown): {
         : {}),
     });
   }
-  return { items, unresolved };
+  return { items: uniqueSupersetIds(items), unresolved };
+}
+
+/**
+ * Las letras del modelo (`A`, `B`…) no pueden ser el id del par: dos rutinas suyas
+ * con la misma letra se fusionaban al juntarse en una sesión, y `unlinkAt` borra por
+ * id, así que separar un par limpiaba también los otros runs con esa letra. Se
+ * reescriben a ids propios (`ss-…`), uno por run consecutivo. La letra que se pinta
+ * («SS A») sale del orden del grupo, no del id, así que no se pierde nada.
+ */
+function uniqueSupersetIds(items: RoutineItem[]): RoutineItem[] {
+  const used = items.map((item) => item.superset ?? '').filter(Boolean);
+  return freshSupersetIds(items, used);
 }
 
 /**

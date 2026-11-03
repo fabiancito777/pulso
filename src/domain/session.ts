@@ -28,7 +28,7 @@ import { today } from './dates';
 import { matchExercise, unresolvedName } from './match';
 import type { UnresolvedName } from './match';
 import { avg, clamp, int, num, round, uid } from './num';
-import { partnerAfter } from './supersets';
+import { partnerAfter, pruneSupersets } from './supersets';
 import { toKg } from './units';
 import type {
   ActiveEntry,
@@ -490,6 +490,25 @@ export function propagateSet(
  * auto-test lo comprueba con `75/75/60/75`), pero aquí van juntos para que nadie se
  * deje el arrastre: ⚠️ `propagateSet` por sí solo NO escribe la serie editada.
  */
+/** Reps y peso a los que se acota lo que se escribe en una serie. */
+const REPS_MAX = 99;
+const WEIGHT_MAX = 999;
+
+/**
+ * Acota lo que llega de un `<input type="number">`. El `min`/`max` del HTML **no se
+ * aplica al teclear** (solo a las flechas y a la validación del formulario), así que
+ * un `-3` en reps o un `-20` en peso se guardaba tal cual y envenenaba volumen, PRs
+ * y análisis. `''` se respeta: significa «sin peso», no `0`.
+ */
+function boundSetValue(field: 'weight' | 'reps', value: number | ''): number | '' {
+  if (value === '') return '';
+  const parsed = num(value, 0);
+  if (!Number.isFinite(parsed)) return '';
+  return field === 'weight'
+    ? round(clamp(parsed, 0, WEIGHT_MAX), 2)
+    : Math.round(clamp(parsed, 0, REPS_MAX));
+}
+
 export function editSetField(
   session: ActiveSession,
   entryIndex: number,
@@ -497,9 +516,10 @@ export function editSetField(
   field: 'weight' | 'reps',
   value: number | '',
 ): ActiveSession {
-  const patch = field === 'weight' ? { weight: value } : { reps: value };
+  const safe = boundSetValue(field, value);
+  const patch = field === 'weight' ? { weight: safe } : { reps: safe };
   const written = setSet(session, entryIndex, setIndex, patch);
-  return propagateSet(written, entryIndex, setIndex, field, value);
+  return propagateSet(written, entryIndex, setIndex, field, safe);
 }
 
 export function setSet(
@@ -518,10 +538,17 @@ export function setSet(
   };
 }
 
+/**
+ * Tope de series por ejercicio, el mismo que el editor de rutinas. Sin tope, catorce
+ * pulsaciones dejaban «0/18 series» en la cabecera: la tarjeta se vuelve inservible.
+ */
+export const MAX_SETS = 12;
+
 /** Añade una serie copiando peso y reps de la última (si hay). */
+
 export function addSet(session: ActiveSession, entryIndex: number): ActiveSession {
   const entry = session.entries[entryIndex];
-  if (!entry) return session;
+  if (!entry || entry.sets.length >= MAX_SETS) return session;
   const last = entry.sets[entry.sets.length - 1];
   const created = blankSet(last?.weight, last?.reps, last?.target);
   return {
@@ -573,7 +600,12 @@ export function addEntry(session: ActiveSession, entry: ActiveEntry): ActiveSess
 }
 
 export function removeEntry(session: ActiveSession, entryIndex: number): ActiveSession {
-  return { ...session, entries: session.entries.filter((_, i) => i !== entryIndex) };
+  return {
+    ...session,
+    /* quitar un miembro deja un id suelto: se limpia para que no viaje al historial
+       ni bloquee el emparejado en el editor (`pruneSupersets`) */
+    entries: pruneSupersets(session.entries.filter((_, i) => i !== entryIndex)),
+  };
 }
 
 /** Intercambia un ejercicio con el de al lado; fuera de la lista no hace nada. */
@@ -589,7 +621,8 @@ export function moveEntry(
   const entries = [...session.entries];
   entries[entryIndex] = b;
   entries[target] = a;
-  return { ...session, entries };
+  /* mover uno fuera del par rompe la vecindad: el id que se queda solo no es par */
+  return { ...session, entries: pruneSupersets(entries) };
 }
 
 export function setEntryNotes(

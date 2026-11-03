@@ -673,7 +673,10 @@ describe('applySuggestionAsRoutine', () => {
       ],
     });
     /* el par tiene que sobrevivir al guardado: era lo que se perdía */
-    expect(routine?.items.map((item) => item.superset)).toEqual(['A', 'A']);
+    const ids = routine?.items.map((item) => item.superset) ?? [];
+    expect(ids[0]).toBe(ids[1]);
+    /* la letra del modelo NO puede ser el id: dos rutinas con «A» se fusionaban */
+    expect(ids[0]).not.toBe('A');
   });
 
   it('crea la rutina con source ia, reporta lo que no resuelve y persiste', () => {

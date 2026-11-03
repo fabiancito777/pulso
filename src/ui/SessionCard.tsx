@@ -20,7 +20,7 @@ import { groupLabel } from '@/domain/data';
 import { fmtClock, fmtMmss, fmtN, fmtVol, inputNum } from '@/domain/format';
 import { num } from '@/domain/num';
 import { restView } from '@/domain/rest';
-import { entryVolume, progress as sessionProgress } from '@/domain/session';
+import { entryVolume, MAX_SETS, progress as sessionProgress } from '@/domain/session';
 import { supersetGroups } from '@/domain/supersets';
 import type { SupersetGroup } from '@/domain/supersets';
 import type { ActiveEntry, ActiveSession, Unit } from '@/domain/types';
@@ -439,7 +439,16 @@ function EntryCard(props: {
           <i style={`width:${((doneSets / (en.sets.length || 1)) * 100).toFixed(0)}%`} />
         </div>
         <div class="row wrap" style="gap:6px;margin-top:9px">
-          <button class="btn sm ghost" onClick={() => addSet(i)}>
+          <button
+            class="btn sm ghost"
+            disabled={en.sets.length >= MAX_SETS}
+            title={
+              en.sets.length >= MAX_SETS
+                ? `Máximo ${MAX_SETS} series por ejercicio: borra una para añadir otra`
+                : 'Añadir una serie a este ejercicio'
+            }
+            onClick={() => addSet(i)}
+          >
             <Icon name="plus" />
             serie
           </button>

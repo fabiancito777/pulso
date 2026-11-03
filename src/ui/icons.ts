@@ -52,6 +52,25 @@ export const ICONS: Record<string, IconSpec> = {
     paths:
       '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
   },
+  /* Los cuatro modos de carga de la calculadora de discos (`PLATE_MODES.icon`).
+     Mismo lenguaje que el resto: barra en horizontal, mancuernas compactas y el
+     disco tachado para «no lleva discos». */
+  'load-bar': {
+    paths: '<path d="M4 12h16"/><path d="M6.5 6.5v11M17.5 6.5v11"/><path d="M9.5 9v6M14.5 9v6"/>',
+  },
+  'load-db1': {
+    paths:
+      '<path d="M7 17 17 7"/><path d="M5 15 9 19M15 5 19 9"/><path d="M7.5 13.5 10.5 16.5M13.5 7.5 16.5 10.5"/>',
+  },
+  'load-db2': {
+    paths:
+      '<path d="M5 12 11 6"/><path d="M3.4 10.4 6.6 13.6M9.4 4.4 12.6 7.6"/>' +
+      '<path d="M13 20 19 14"/><path d="M11.4 18.4 14.6 21.6M17.4 12.4 20.6 15.6"/>',
+  },
+  'load-none': {
+    paths:
+      '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M6.2 6.2 17.8 17.8"/>',
+  },
   search: { paths: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4.3-4.3"/>' },
   'chev-l': { paths: '<path d="M15 5 8 12l7 7"/>' },
   'chev-r': { paths: '<path d="m9 5 7 7-7 7"/>' },

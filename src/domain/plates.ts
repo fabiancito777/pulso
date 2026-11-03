@@ -115,6 +115,8 @@ export interface PlateModeSpec {
   per: string;
   /** contra qué peso base se mide: barra o mango de mancuerna */
   handle: 'olimpica' | 'mancuerna' | null;
+  /** icono del catálogo (`ui/icons.ts`) con el que se pinta el modo */
+  icon: string;
 }
 
 export const PLATE_MODES: Record<PlateModeKey, PlateModeSpec> = {
@@ -125,6 +127,7 @@ export const PLATE_MODES: Record<PlateModeKey, PlateModeSpec> = {
     places: 2,
     per: 'lado',
     handle: 'olimpica',
+    icon: 'load-bar',
   },
   db1: {
     key: 'db1',
@@ -133,6 +136,7 @@ export const PLATE_MODES: Record<PlateModeKey, PlateModeSpec> = {
     places: 2,
     per: 'extremo',
     handle: 'mancuerna',
+    icon: 'load-db1',
   },
   db2: {
     key: 'db2',
@@ -141,6 +145,7 @@ export const PLATE_MODES: Record<PlateModeKey, PlateModeSpec> = {
     places: 4,
     per: 'extremo',
     handle: 'mancuerna',
+    icon: 'load-db2',
   },
   none: {
     key: 'none',
@@ -149,6 +154,7 @@ export const PLATE_MODES: Record<PlateModeKey, PlateModeSpec> = {
     places: 0,
     per: '',
     handle: null,
+    icon: 'load-none',
   },
 };
 

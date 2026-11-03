@@ -136,3 +136,63 @@ export function unlinkAt<T extends SupersetMember>(items: readonly T[], index: n
   if (!id) return [...items];
   return items.map((item) => (item.superset === id ? { ...item, superset: null } : item));
 }
+
+/**
+ * Renombra en bloque los runs cuyo id ya está en `taken` (o que repiten otro run de
+ * la MISMA lista), para que pegar dos listas no fusione pares distintos en uno.
+ *
+ * El run es la unidad: un par son **dos entradas consecutivas con el mismo id**, así
+ * que se le da un id nuevo al run entero. Un run sin colisión no se toca, y un id
+ * suelto se respeta tal cual.
+ *
+ * Resuelve los cuatro caminos que se fusionaban: duplicar una rutina (el
+ * `structuredClone` copiaba el id), añadir la misma rutina dos veces a la sesión, dos
+ * rutinas del coach con la misma letra y dos rutinas que compartan id por casualidad.
+ */
+export function freshSupersetIds<T extends SupersetMember>(
+  entries: readonly T[],
+  taken: Iterable<string> = [],
+): T[] {
+  const used = new Set(taken);
+  const out: T[] = [];
+  let i = 0;
+  while (i < entries.length) {
+    const id = entries[i]?.superset ?? '';
+    if (!id) {
+      out.push(entries[i]);
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < entries.length && (entries[j]?.superset ?? '') === id) j += 1;
+    const next = used.has(id) ? newSupersetId() : id;
+    used.add(next);
+    for (let k = i; k < j; k += 1) {
+      const member = entries[k];
+      out.push(member.superset === next ? member : { ...member, superset: next });
+    }
+    i = j;
+  }
+  return out;
+}
+
+/**
+ * Limpia los ids que se quedaron solos. Un run de 1 no es par (`supersetGroups`
+ * exige dos), pero el id seguía viajando al historial y a la sincronización y, peor,
+ * bloqueaba el editor de rutinas: `linkAt` no empareja un item que ya tiene
+ * `superset` y el botón «Separar» no aparece (también pide dos), así que pulsar
+ * «Superserie» daba un error imposible de resolver.
+ *
+ * Se aplica al quitar o mover un ejercicio: desparejar por vecindad no debe dejar
+ * basura.
+ */
+export function pruneSupersets<T extends SupersetMember>(items: readonly T[]): T[] {
+  return items.map((item, index) => {
+    const id = item.superset;
+    if (!id) return item;
+    const prev = items[index - 1]?.superset ?? '';
+    const next = items[index + 1]?.superset ?? '';
+    if (prev === id || next === id) return item;
+    return { ...item, superset: null };
+  });
+}
