@@ -18,7 +18,6 @@ import { ListButton } from './kit';
 import { Modal } from './Modal';
 import { toast } from './toast';
 import {
-  adoptHandoff,
   announce,
   createSyncLink,
   DEFAULT_SYNC_URL,
@@ -26,7 +25,6 @@ import {
   joinSyncLink,
   localSessionCount,
   normalizeSyncUrl,
-  pendingHandoff,
   syncConfig,
   syncNow,
   syncStatus,
@@ -249,7 +247,6 @@ function ConflictModal({
 
 export function SyncCard() {
   const [link, setLink] = useState(false);
-  const handoff = pendingHandoff.value;
   const [conflict, setConflict] = useState<SyncPreview | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -289,20 +286,6 @@ export function SyncCard() {
           else setLink(true);
         }}
       />
-      {handoff ? (
-        <ListButton
-          icon="play"
-          title="Continuar aquí la sesión en curso"
-          sub={`${handoff.session.name || 'Entrenamiento'} · empezada en el otro dispositivo`}
-          onClick={() => {
-            if (!adoptHandoff()) {
-              toast('Ya hay una sesión en curso en este dispositivo', { kind: 'warn' });
-              return;
-            }
-            toast('Sesión retomada: sigue donde la dejaste', { kind: 'ok' });
-          }}
-        />
-      ) : null}
       {linked ? (
         <>
           <ListButton

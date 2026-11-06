@@ -34,6 +34,7 @@ import {
   clearJustAdded,
   discardSession,
   editSet,
+  finishEntryAt,
   finishSession,
   justAdded,
   moveExercise,
@@ -56,6 +57,7 @@ import { exercises, settings as settingsSignal } from '@/state/store';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
+import { Modal } from './Modal';
 import { PlatesModal } from './PlatesModal';
 import { Ring } from './Ring';
 import { RoutinePickerModal } from './RoutinePickerModal';
@@ -239,8 +241,55 @@ export function SessionDock({
   );
 }
 
-function SetRow(props: { entry: ActiveEntry; entryIndex: number; setIndex: number; unit: Unit }) {
-  const { entry, entryIndex: i, setIndex: j, unit } = props;
+/**
+ * Nombre del ejercicio que se puede deslizar en su propio recuadro cuando no
+ * cabe: en el móvil «Curl de muñeca con mancuerna unilateral» se cortaba en
+ * «Curl de muñeca…» y no había forma de leerlo. El marquesina va y viene
+ * (ping-pong) solo si de verdad sobra texto, así que los nombres cortos no se
+ * mueven y no se pierde el `ellipsis` en los demás.
+ */
+function ExName({ name }: { name: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const text = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+
+  useEffect(() => {
+    const el = box.current;
+    const tx = text.current;
+    if (!el || !tx) return;
+    const measure = (): void => {
+      const over = Math.max(0, tx.scrollWidth - el.clientWidth);
+      setShift((prev) => (Math.abs(prev - over) > 1 ? (over > 2 ? over : 0) : prev));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(tx);
+    return () => ro.disconnect();
+  }, [name]);
+
+  const duration = Math.max(3, Math.min(14, shift / 22));
+  return (
+    <div
+      ref={box}
+      class={`ex-name ex-name-scroll${shift ? ' marquee' : ''}`}
+      title={name}
+      style={shift ? `--marquee-shift:-${shift}px;--marquee-dur:${duration.toFixed(1)}s` : undefined}
+    >
+      <span ref={text}>{name}</span>
+    </div>
+  );
+}
+
+function SetRow(props: {
+  entry: ActiveEntry;
+  entryIndex: number;
+  setIndex: number;
+  unit: Unit;
+  /** todas las series hechas: el «×» de borrar deja sitio a «Completar» */
+  locked?: boolean;
+}) {
+  const { entry, entryIndex: i, setIndex: j, unit, locked } = props;
   const set = entry.sets[j];
   if (!set) return null;
   const showRpe = settingsSignal.value.showRpe;
@@ -301,7 +350,7 @@ function SetRow(props: { entry: ActiveEntry; entryIndex: number; setIndex: numbe
       >
         <Icon name="check" />
       </button>
-      {entry.sets.length > 1 ? (
+      {entry.sets.length > 1 && !locked ? (
         <button
           type="button"
           class="icon-btn"
@@ -317,6 +366,72 @@ function SetRow(props: { entry: ActiveEntry; entryIndex: number; setIndex: numbe
   );
 }
 
+/**
+ * «Completar ejercicio»: aparece cuando todas las series están marcadas y ocupa
+ * el sitio que tenían los «×» de borrar serie (que se ocultan al cerrar).
+ *
+ * Guarda ESE ejercicio como una sesión aparte, con su fecha y hora
+ * (`finishEntryAt`), para poder repartir una rutina entre días. Pide
+ * confirmación porque saca el ejercicio de la sesión en curso (aunque las series
+ * quedan guardadas en el historial y se pueden deshacer desde allí).
+ */
+function CompletionButton({
+  index,
+  name,
+  sets,
+  onDone,
+}: {
+  index: number;
+  name: string;
+  sets: number;
+  onDone?: (index: number) => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        class="btn complete-set mt-s"
+        onClick={() => setAsking(true)}
+        title="Guardar este ejercicio en el historial sin cerrar la rutina"
+      >
+        <Icon name="check-circle" />
+        Completar ejercicio
+      </button>
+      {asking ? (
+        <Modal
+          title="¿Completar este ejercicio?"
+          sub={name}
+          onClose={() => setAsking(false)}
+          foot={
+            <>
+              <button type="button" class="btn ghost" onClick={() => setAsking(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                class="btn primary"
+                onClick={() => {
+                  setAsking(false);
+                  onDone?.(index);
+                }}
+              >
+                <Icon name="check" />
+                Completar
+              </button>
+            </>
+          }
+        >
+          <div class="tiny muted">
+            Se guardarán {fmtN(sets, 0)} series en el historial con la fecha y hora de ahora, y el
+            ejercicio saldrá de esta rutina. Si es el último que queda, la sesión se cierra.
+          </div>
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 function EntryCard(props: {
   entry: ActiveEntry;
   index: number;
@@ -327,6 +442,7 @@ function EntryCard(props: {
   /** posición en su par de superserie (insignia «SS A · 1/2») */
   superset?: { letter: string; position: number; size: number };
   onPlates?: (index: number) => void;
+  onComplete?: (index: number) => void;
 }) {
   const { entry: en, index: i, total, unit, onPlates } = props;
   const [notesOpen, setNotesOpen] = useState(false);
@@ -337,6 +453,9 @@ function EntryCard(props: {
   const doneSets = en.sets.filter((s) => s.done).length;
   const volume = entryVolume(en, unit);
   const showRpe = settingsSignal.value.showRpe;
+  /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
+     deshacer el ejercicio por accidente al guardarlo como sesión suelta */
+  const complete = en.sets.length > 0 && doneSets === en.sets.length;
 
   /* El ejercicio recién añadido queda varias pantallas más abajo: si no, parece
      que no se ha añadido nada (antes `focusEntry`, views-train.js:274). El scroll va
@@ -374,7 +493,7 @@ function EntryCard(props: {
               SS {props.superset.letter} · {props.superset.position}/{props.superset.size}
             </div>
           ) : null}
-          <div class="ex-name">{en.name}</div>
+          <ExName name={en.name} />
           <div class="ex-meta">
             {ex ? `${groupLabel(ex.group)} · ${ex.type} · ` : ''}
             {doneSets}/{en.sets.length} series{volume ? ` · ${fmtVol(volume)} kg` : ''}
@@ -418,8 +537,16 @@ function EntryCard(props: {
           <span />
         </div>
         {en.sets.map((_set, j) => (
-          <SetRow key={j} entry={en} entryIndex={i} setIndex={j} unit={unit} />
+          <SetRow key={j} entry={en} entryIndex={i} setIndex={j} unit={unit} locked={complete} />
         ))}
+        {complete ? (
+          <CompletionButton
+            index={i}
+            name={en.name}
+            sets={en.sets.length}
+            onDone={props.onComplete}
+          />
+        ) : null}
         {notesOpen ? (
           <input
             class="input sm mt-s"
@@ -513,6 +640,7 @@ function EntryList(props: {
   session: ActiveSession;
   highlight: number | null;
   onPlates: (index: number) => void;
+  onComplete: (index: number) => void;
 }) {
   const entries = props.session.entries;
   const groups = supersetGroups(entries);
@@ -543,6 +671,7 @@ function EntryList(props: {
           group ? { letter: group.letter, position: group.indices.indexOf(i) + 1, size: group.indices.length } : undefined
         }
         onPlates={props.onPlates}
+        onComplete={props.onComplete}
       />
     );
   };
@@ -655,8 +784,28 @@ export function SessionCard() {
   }
 
   const prog = sessionProgress(session);
-  const finish = () => {
-    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
+  const completeEntry = (index: number): void => {
+    const entry = session.entries[index];
+    const volume = entry ? entryVolume(entry, session.unit) : 0;
+    const result = finishEntryAt(index);
+    if (!result.ok) {
+      setMessage({
+        text:
+          result.reason === 'save'
+            ? 'No se pudo guardar el ejercicio. Inténtalo de nuevo.'
+            : 'Marca alguna serie con repeticiones antes de completar.',
+        tone: 'warn',
+      });
+      return;
+    }
+    setMessage({
+      text: result.remaining
+        ? `${entry?.name ?? 'Ejercicio'} guardado · ${fmtVol(volume)} kg · quedan ${fmtN(result.remaining, 0)} ejercicios`
+        : `Ejercicio guardado · ${fmtVol(volume)} kg de volumen.`,
+      tone: 'ok',
+    });
+  };
+  const finish = () => {    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
     const volume = sessionProgress(session).volume;
     const result = finishSession();
     setNotesOpen(false);
@@ -752,7 +901,12 @@ export function SessionCard() {
       <section class="card tight">
         <div class="col" style="gap:10px">
           {session.entries.length ? (
-            <EntryList session={session} highlight={highlight} onPlates={setPlatesFor} />
+            <EntryList
+              session={session}
+              highlight={highlight}
+              onPlates={setPlatesFor}
+              onComplete={completeEntry}
+            />
           ) : (
             <div class="empty">
               <Icon name="dumbbell" />

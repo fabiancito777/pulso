@@ -53,7 +53,7 @@
   gap: 14px;
 }
 
-/* Subtítulo de pestaña: el `#appbar-sub`  (`.appbar-sub`,
+/* Subtítulo de pestaña: el `#appbar-sub`  (`.v2-bar-sub`,
    `anterior/assets/styles.css:59`), con el mismo tamaño y el mismo corte. */
 .v2-sub {
   display: block;

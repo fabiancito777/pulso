@@ -275,3 +275,74 @@ describe('finishSession', () => {
     expect(session.rest.value.running).toBe(false);
   });
 });
+
+/* ---------- completar un ejercicio sin cerrar la rutina ---------- */
+
+describe('finishEntryAt', () => {
+  /** Marca todas las series de un ejercicio. */
+  function markAll(index: number): void {
+    const count = session.active.value?.entries[index]?.sets.length ?? 0;
+    for (let j = 0; j < count; j += 1) session.toggleSetAt(index, j);
+  }
+
+  it('guarda el ejercicio aparte, lo quita de la sesión y marca el día', () => {
+    const [a, b] = store.exercises.value;
+    session.startFromPlan([{ exId: a?.id ?? '', sets: 2 }, { exId: b?.id ?? '', sets: 2 }], {
+      dayIso: '2026-09-28',
+    });
+    markAll(0);
+
+    const out = session.finishEntryAt(0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.session.entries).toHaveLength(1);
+    expect(out.remaining).toBe(1);
+    /* la rutina sigue en curso con el otro ejercicio */
+    expect(session.active.value?.entries.map((entry) => entry.exId)).toEqual([b?.id]);
+    expect(session.active.value?.finished).toEqual([a?.id]);
+    expect(store.sessions.value.map((s) => s.id)).toEqual([out.session.id]);
+    /* el registro va al día en que se completó (hoy), no al que tenía la sesión */
+    expect(out.session.date).toBe(today());
+    expect(store.schedule.value[today()]).toMatchObject({
+      status: 'done',
+      sessionId: out.session.id,
+    });
+    /* el cierre del ejercicio cancela el descanso que arrancó al marcar */
+    expect(session.rest.value.running).toBe(false);
+  });
+
+  it('al completar el último pendiente la sesión se cierra entera', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 1 }], { dayIso: '2026-09-28' });
+    markAll(0);
+
+    const out = session.finishEntryAt(0);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.remaining).toBe(0);
+    expect(session.active.value).toBeNull();
+    expect(store.readState().active).toBeNull();
+    expect(store.sessions.value).toHaveLength(1);
+  });
+
+  it('sin series marcadas no guarda nada y deja la sesión intacta', () => {
+    session.startFromPlan([{ exId: firstId(), sets: 2 }], { dayIso: '2026-09-28' });
+
+    expect(session.finishEntryAt(0)).toEqual({ ok: false, reason: 'empty' });
+    expect(session.active.value).not.toBeNull();
+    expect(store.sessions.value).toHaveLength(0);
+  });
+
+  it('volver a añadir un ejercicio completado lo reabre (no lo quita al sincronizar)', () => {
+    const [a, b] = store.exercises.value;
+    session.startFromPlan([{ exId: a?.id ?? '', sets: 1 }, { exId: b?.id ?? '', sets: 1 }], {
+      dayIso: '2026-09-28',
+    });
+    markAll(0);
+    session.finishEntryAt(0);
+    expect(session.active.value?.finished).toEqual([a?.id]);
+
+    session.addExercises([a?.id ?? '']);
+    expect(session.active.value?.entries.map((entry) => entry.exId)).toEqual([b?.id, a?.id]);
+    expect(session.active.value?.finished).toBeUndefined();
+  });
+});

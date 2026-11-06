@@ -79,20 +79,6 @@ export const GROUPS: readonly MuscleGroup[] = [
   { key: 'serrato', label: 'Serrato', color: '#bef264' },
 ];
 
-/* ---------- sinergias: qué grupos acompaña cada uno ---------- */
-export const OPTIONAL: Record<string, readonly string[]> = {
-  pecho: ['triceps', 'hombros'],
-  espalda: ['biceps', 'antebrazo'],
-  hombros: ['triceps'],
-  cuadriceps: ['gluteos', 'gemelos'],
-  femoral: ['gluteos', 'core'],
-  gluteos: ['femoral', 'core'],
-  biceps: ['antebrazo'],
-  triceps: ['pecho'],
-  core: ['gluteos'],
-  cardio: [],
-  movilidad: [],
-};
 
 /* ---------- material disponible ---------- */
 const equipment: EquipmentItem[] = [

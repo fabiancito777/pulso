@@ -22,17 +22,8 @@
  */
 import { signal } from '@preact/signals';
 
-import {
-  activeOf,
-  conflictAreas,
-  mergeStates,
-  stripForSync,
-  syncMetaOf,
-  type MergeReport,
-  type SyncArea,
-  type SyncPrefer,
-} from '@/domain/sync';
-import type { ActiveSession, AppState } from '@/domain/types';
+import { activeOf, conflictAreas, mergeStates, stripForSync, type MergeReport, type SyncArea, type SyncPrefer } from '@/domain/sync';
+import type { AppState } from '@/domain/types';
 import { toast } from '@/ui/toast';
 
 import {
@@ -45,7 +36,7 @@ import {
   type Profile,
 } from './profiles';
 import { active, onStateWritten, readProfileState, refresh, writeProfileState } from './store';
-import { resumeSession } from './session';
+import { armSession } from './session';
 import {
   deriveSyncKey,
   generateSyncCode,
@@ -163,22 +154,6 @@ function writeConfig(config: SyncConfig | null): void {
     console.warn('[pulso] no se pudo guardar la configuración de sync', err);
   }
 }
-
-/**
- * Sesión en curso que espera en el OTRO dispositivo.
- *
- * Viaja en el blob (es parte del estado) pero no se aplica sola: dos
- * dispositivos entrenando lo mismo a la vez se pisarían. La tarjeta de
- * sincronización ofrece «continuar aquí» y solo entonces se adopta.
- */
-export interface Handoff {
-  profileId: string;
-  session: ActiveSession;
-  /** cuándo se subió (ms) */
-  at: number;
-}
-
-export const pendingHandoff = signal<Handoff | null>(null);
 
 export const syncConfig = signal<SyncConfig | null>(readConfig());
 export const syncStatus = signal<SyncStatus>({
@@ -393,23 +368,16 @@ export async function syncNow(prefer?: SyncPrefer, depth = 0): Promise<SyncOutco
     const local = collectProfiles();
     const localIds = new Set(local.map((entry) => entry.id));
 
-    /* traspaso: si aquí no hay sesión en curso y allí sí, se OFRECE (no se
-       aplica). Si aquí ya hay una, la local manda y la oferta desaparece. */
-    const mine = local.find((entry) => entry.id === activeProfileId.value);
-    const theirs = remoteById.get(activeProfileId.value);
-    const localActive = mine ? activeOf(mine.state) : null;
-    const remoteActive = theirs ? activeOf(theirs.state) : null;
-    pendingHandoff.value =
-      !localActive && theirs && remoteActive
-        ? { profileId: theirs.id, session: remoteActive, at: remote.updatedAt }
-        : null;
-
     const writes: { id: string; state: AppState }[] = [];
     const union: Profile[] = [...profiles.value];
     const conflicts = new Set<SyncArea>();
     const reports: MergeReport[] = [];
     let localSessions = 0;
     let remoteSessions = 0;
+    /* ¿ya había sesión en curso aquí? Si no y la fusión trae una, hay que
+       encender las capas de «móvil bloqueado» como al retomarla a mano. */
+    const mineBefore = local.find((entry) => entry.id === activeProfileId.value);
+    const hadLocalActive = Boolean(mineBefore && activeOf(mineBefore.state));
 
     for (const entry of local) {
       const other = remoteById.get(entry.id);
@@ -465,6 +433,10 @@ export async function syncNow(prefer?: SyncPrefer, depth = 0): Promise<SyncOutco
       } finally {
         applying = false;
       }
+      /* el estado fusionado puede traer una sesión en curso que aquí no estaba:
+         `refresh` ya la puso en la signal, así que solo hay que encender las capas
+         de «móvil bloqueado» (como cuando se retoma a mano). */
+      if (!hadLocalActive && active.value) armSession();
     }
 
     const payload = buildPayload(collectProfiles());
@@ -570,20 +542,6 @@ export async function joinSyncLink(urlInput: string, codeInput: string): Promise
   return syncNow();
 }
 
-/**
- * Acepta el traspaso: la sesión en curso del otro dispositivo pasa a ser la de
- * aquí (con sus series marcadas y su cronómetro). Es explícito a propósito; ver
- * `Handoff`.
- */
-export function adoptHandoff(): boolean {
-  const pending = pendingHandoff.value;
-  if (!pending || active.value) return false;
-  if (pending.profileId !== activeProfileId.value) return false;
-  resumeSession(pending.session);
-  pendingHandoff.value = null;
-  return true;
-}
-
 /** Desvincula este dispositivo. La copia en la nube NO se borra. */
 export function unlinkSync(): void {
   writeConfig(null);
@@ -593,15 +551,24 @@ export function unlinkSync(): void {
 /* ---------- automático ---------- */
 
 const PUSH_DEBOUNCE_MS = 8_000;
+/**
+ * Con una sesión en curso el rebote es más corto: marcar una serie es el dato que
+ * más interesa tener al día en el otro dispositivo (y así se ve en el móvil sin
+ * esperar los 8 s de un ajuste cualquiera).
+ */
+const ACTIVE_PUSH_DEBOUNCE_MS = 2_500;
+/** Cada cuánto se mira si el otro dispositivo trajo progreso nuevo (app visible). */
+const PULL_INTERVAL_MS = 40_000;
 
 /** Programa una subida (con rebote) tras un cambio local. */
 export function schedulePush(): void {
   if (!readConfig() || running || applying) return;
+  const wait = active.value ? ACTIVE_PUSH_DEBOUNCE_MS : PUSH_DEBOUNCE_MS;
   if (autoTimer) clearTimeout(autoTimer);
   autoTimer = setTimeout(() => {
     autoTimer = null;
     void syncNow();
-  }, PUSH_DEBOUNCE_MS);
+  }, wait);
 }
 
 /**
@@ -631,12 +598,25 @@ export function startSyncAuto(): () => void {
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
   if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
 
+  /* Con la app abierta se mira el blob cada `PULL_INTERVAL_MS`: antes, marcar una
+     serie en el móvil no se veía en el PC hasta cambiar de pestaña o recargar
+     (la subida automática solo avisaba AL OTRO lado después de su propia
+     sincronización). Solo con la pestaña visible y sin conflicto pendiente: en
+     segundo plano no gastamos red, y una revisión no debe pisar la pantalla de
+     conflicto que el usuario está mirando. */
+  const poll = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (!syncConfig.value || running || syncStatus.value.kind === 'conflict') return;
+    void syncNow();
+  }, PULL_INTERVAL_MS);
+
   const boot = setTimeout(() => {
     if (syncConfig.value) void syncNow();
   }, 1200);
 
   return () => {
     clearTimeout(boot);
+    clearInterval(poll);
     if (autoTimer) clearTimeout(autoTimer);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('online', onOnline);
@@ -656,11 +636,6 @@ export function localSessionCount(): number {
     (total, entry) => total + (Array.isArray(entry.state.sessions) ? entry.state.sessions.length : 0),
     0,
   );
-}
-
-/** Última marca de cambio local, para enseñar «pendiente de subir». */
-export function lastLocalChange(): number {
-  return Math.max(0, ...collectProfiles().map((entry) => syncMetaOf(entry.state).at));
 }
 
 /** Aviso de resultado, con el tono que toca. */

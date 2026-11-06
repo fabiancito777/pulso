@@ -16,9 +16,6 @@ export const PLATES_DEFAULT: readonly PlateStock[] = [
 /** Barra de plástico: pesa 0 kg, todo el peso lo ponen los discos. */
 export const BARS_DEFAULT: BarWeights = { olimpica: 0, ez: 0, mancuerna: 0 };
 
-export const REST_PRESETS: readonly number[] = [45, 60, 90, 120, 150, 180, 240];
-export const INCREMENTS: readonly number[] = [1, 1.25, 2.5, 5, 10];
-
 export const DEFAULT_SETTINGS: Settings = {
   name: '',
   level: 'intermedio',

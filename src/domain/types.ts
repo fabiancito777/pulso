@@ -218,6 +218,10 @@ export interface Session {
    * saber qué cambió el usuario en plena sesión (quitar, añadir o sustituir).
    */
   plan?: RoutineItem[];
+  /** id de la sesión en curso de la que salió (evita duplicarla al sincronizar) */
+  liveId?: string;
+  /** se guardó un ejercicio suelto sin cerrar la rutina entera */
+  partial?: boolean;
   [key: string]: unknown;
 }
 
@@ -234,6 +238,12 @@ export interface ActiveSet {
   reps: number | '';
   done: boolean;
   ts: string | null;
+  /**
+   * Última vez que se marcó o desmarcó la serie (ISO). `ts` solo fecha las
+   * series hechas; `at` fecha también el desmarcado, y es lo que permite fusionar
+   * el progreso de dos dispositivos sin que una marca vieja reviva.
+   */
+  at?: string | null;
   rpe: number | null;
   /** reps objetivo de la prescripción (solo para pintarlas de referencia) */
   target?: number;
@@ -285,6 +295,19 @@ export interface ActiveSession {
    * que lo persiste en `Session.plan`. Ver el JSDoc de `Session.plan`.
    */
   plan?: RoutineItem[];
+  /**
+   * `exId` de los ejercicios que ya se cerraron como sesión suelta
+   * (`domain/session.finishEntry`). Evita que, al sincronizar, el otro
+   * dispositivo los vuelva a meter en la sesión en curso.
+   */
+  finished?: string[];
+  /**
+   * Última escritura de la sesión en curso (ISO). Lo sella `state/session.ts` en
+   * cada cambio y es lo que decide, al fusionar dos copias, de dónde salen el
+   * orden de los ejercicios y las notas: así los dos dispositivos convergen al
+   * mismo resultado.
+   */
+  updatedAt?: string;
 }
 
 /**

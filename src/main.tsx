@@ -24,6 +24,11 @@ initInstall();
    detalle sigue yendo a la consola. */
 if (typeof window !== 'undefined') {
   let lastToast = 0;
+  /* Avisos benignos que no deben llegar al usuario: el `ResizeObserver` se queja
+     cuando cambia el layout dentro de su propio callback, y la app lo usa a
+     propósito (centrar la nav en `App.tsx`). Se registran en consola y ya. */
+  const BENIGN =
+    /ResizeObserver loop (limit exceeded|completed with undelivered notifications)/i;
   const notify = (text: string): void => {
     const now = Date.now();
     if (now - lastToast < 15000) return;
@@ -32,7 +37,8 @@ if (typeof window !== 'undefined') {
   };
   window.addEventListener('error', (event) => {
     console.error('[pulso] error', event.error || event.message);
-    notify(`Error de la app: ${event.message || 'desconocido'} (mira la consola)`);
+    if (BENIGN.test(event.message || '')) return;
+    notify('Algo falló al dibujar esta pantalla. El detalle queda en la consola.');
   });
   window.addEventListener('unhandledrejection', (event) => {
     console.error('[pulso] promesa rechazada', event.reason);
@@ -43,7 +49,8 @@ if (typeof window !== 'undefined') {
         : typeof reason === 'string'
           ? reason
           : 'desconocido';
-    notify(`Promesa rechazada: ${text} (mira la consola)`);
+    if (BENIGN.test(text)) return;
+    notify('No se pudo completar la acción. El detalle queda en la consola.');
   });
 }
 

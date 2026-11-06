@@ -54,6 +54,7 @@ import {
   addSet as addSetTo,
   editSetField,
   entriesFromRoutine,
+  finishEntry,
   finishSession as finishActive,
   moveEntry,
   plateTarget,
@@ -80,8 +81,10 @@ import { notifyEnd, pageNotify, requestNotifyPermission } from '@/platform/notif
 import { postToSW } from '@/platform/sw';
 import {
   active,
+  commitEntry,
   commitSession,
   currentRestKey,
+  discardActive,
   exercises,
   findRoutine,
   onStateReplaced,
@@ -105,9 +108,15 @@ export { active };
 /** Segundos de sesión, para el cronómetro (el bucle los refresca una vez por segundo). */
 export const sessionSeconds = signal(0);
 
-function setActive(next: ActiveSession | null): void {
-  writeActive(next); /* ya actualiza la signal `active` */
-  sessionSeconds.value = next ? elapsed(next) : 0;
+function setActive(next: ActiveSession | null, stamp = true): void {
+  /* sella la escritura: es lo que decide, al fusionar con el otro dispositivo,
+     de dónde salen el orden de los ejercicios y las notas (ver
+     `mergeActiveSessions`). `stamp: false` es para una sesión que llega YA
+     fusionada: no debe parecer recién editada aquí. */
+  const stamped =
+    next && stamp ? { ...next, updatedAt: new Date(NOW()).toISOString() } : next;
+  writeActive(stamped); /* ya actualiza la signal `active` */
+  sessionSeconds.value = stamped ? elapsed(stamped) : 0;
 }
 
 function elapsed(session: ActiveSession): number {
@@ -248,17 +257,31 @@ export function startFromPlan(
 }
 
 /**
- * Retoma una sesión que llega de OTRO dispositivo (traspaso de la sincronización).
+ * Retoma una sesión que llega de OTRO dispositivo (no la crea ni la reinicia:
+ * entra tal cual, con las series ya marcadas y el cronómetro corriendo desde su
+ * `startedAt`) y enciende las capas de «móvil bloqueado».
  *
- * No la crea ni la reinicia: entra tal cual, con las series ya marcadas y el
- * cronómetro corriendo desde su `startedAt`, y enciende las mismas capas que un
- * arranque normal (keep-alive, wake lock y permiso de avisos). Si ya hay una
- * sesión en curso aquí no pisa nada: el traspaso nunca gana a lo local.
+ * La fusión de `state/sync.ts` ya escribe la sesión en `active`; esta función es
+ * para cuando la UI quiera adoptarla a mano.
  */
 export function resumeSession(session: ActiveSession): void {
   if (active.value) return;
   ensureAudio();
-  setActive(session);
+  /* sin re-sellar: la sesión ya trae su `updatedAt` del dispositivo donde se
+     escribió, y cambiarlo aquí la haría ganar todos los fusiones siguientes */
+  setActive(session, false);
+  startSessionEffects();
+}
+
+/**
+ * Enciende las capas de «móvil bloqueado» (permiso de avisos y wake lock) para la
+ * sesión que ya está en `active`. Es lo que hace `resumeSession` cuando la sesión
+ * llega de fuera, pero aquí la sesión ya la escribió la fusión (`refresh`), así
+ * que no hay que volver a ponerla.
+ */
+export function armSession(): void {
+  if (!active.value) return;
+  ensureAudio();
   startSessionEffects();
 }
 
@@ -291,8 +314,15 @@ export function addEntries(entries: readonly ActiveEntry[]): number | null {
      para que la rutina añadida no se fusione con la que ya estaba (duplicar una
      rutina, añadirla dos veces, dos rutinas del coach con la misma letra) */
   const taken = current.entries.map((entry) => entry.superset ?? '').filter(Boolean);
+  /* volver a añadir un ejercicio que se completó antes: deja de estar «cerrado»,
+     o al sincronizar el otro dispositivo lo volvería a quitar */
+  const readded = new Set(entries.map((entry) => entry.exId));
+  const stillFinished = (current.finished ?? []).filter((exId) => !readded.has(exId));
   update((session) => {
-    let next = session;
+    const base: typeof session = { ...session };
+    if (stillFinished.length) base.finished = stillFinished;
+    else delete base.finished;
+    let next = base;
     for (const entry of freshSupersetIds(entries, taken)) next = addEntry(next, entry);
     return next;
   });
@@ -432,10 +462,60 @@ export function finishSession(notes?: string): FinishResult {
 }
 
 export function discardSession(): void {
-  setActive(null);
+  discardActive();
   stopRestTimer();
   keepAliveOff();
   wakeLockOff();
+}
+
+/** Resultado de completar un ejercicio sin cerrar la rutina. */
+export type FinishEntryResult =
+  | { ok: true; session: Session; remaining: number }
+  | { ok: false; reason: 'empty' | 'no-entry' | 'save' };
+
+/**
+ * «Completar ejercicio» de la sesión en curso: lo guarda como una sesión aparte
+ * con SU fecha y hora y lo quita de la rutina en curso.
+ *
+ * Es lo que permite repartir una rutina entre días: haces dos ejercicios hoy, los
+ * completas, y mañana sigues con el resto sin que el historial mezcle los dos
+ * días. Si era el último ejercicio pendiente la sesión se cierra entera (misma
+ * ruta que «Finalizar»); si no, sigue activa con el resto, re-fechada a ahora.
+ *
+ * El `exId` cerrado viaja en `active.finished`: al sincronizar, el otro
+ * dispositivo lo descarta en vez de devolverlo a la sesión en curso.
+ */
+export function finishEntryAt(index: number): FinishEntryResult {
+  const current = active.value;
+  if (!current) return { ok: false, reason: 'empty' };
+  const entry = current.entries[index];
+  if (!entry) return { ok: false, reason: 'no-entry' };
+
+  const now = new Date(NOW()).toISOString();
+  const result = finishEntry(current, index, { now, dayIso: today() });
+  if (!result) return { ok: false, reason: 'empty' };
+
+  /* el `exId` cerrado viaja en `active.finished`: al sincronizar, el otro
+     dispositivo lo descarta en vez de devolverlo a la sesión en curso. */
+  const finished = [...new Set([...(current.finished ?? []), entry.exId])].sort();
+  const remaining = result.remaining
+    ? { ...result.remaining, finished, updatedAt: now }
+    : null;
+
+  /* UNA escritura: el registro y la sesión que queda se guardan juntos o nada */
+  if (!commitEntry(result.session, remaining)) return { ok: false, reason: 'save' };
+  sessionSeconds.value = remaining ? elapsed(remaining) : 0;
+
+  stopRestTimer();
+  beep('done', settings.value);
+  if (remaining) {
+    return { ok: true, session: result.session, remaining: remaining.entries.length };
+  }
+
+  /* era el último ejercicio: se cierra como una sesión normal */
+  keepAliveOff();
+  wakeLockOff();
+  return { ok: true, session: result.session, remaining: 0 };
 }
 
 /* ---------- descanso ---------- */

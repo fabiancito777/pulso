@@ -44,10 +44,12 @@ function HistoryRow({
       <div class="li-main">
         <div class="li-title">
           {s.name}
+          {s.partial ? <span class="badge">suelto</span> : null}
           {s.demo ? <span class="badge">demo</span> : null}
         </div>
         <div class="li-sub">
-          {dateLabel(s.date, 'medium')} · {fmtVol(s.volume)} kg · {fmtN(s.sets, 0)} series ·{' '}
+          {dateLabel(s.date, 'medium')}
+          {s.time ? ` · ${s.time}` : ''} · {fmtVol(s.volume)} kg · {fmtN(s.sets, 0)} series ·{' '}
           {fmtDur(s.minutes * 60_000)}
         </div>
         {s.groups.length ? <div class="li-sub pg2-groups">{s.groups.join(' · ')}</div> : null}

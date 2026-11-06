@@ -37,13 +37,11 @@ export const ICONS: Record<string, IconSpec> = {
       '<circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r="7.6" stroke-dasharray="2.4 4.6"/><path d="M12 2.6v2.2M12 19.2v2.2M4.4 7.3l1.9 1.1M17.7 15.6l1.9 1.1M4.4 16.7l1.9-1.1M17.7 8.4l1.9-1.1"/>',
   },
   plus: { paths: '<path d="M12 5v14M5 12h14"/>', sw: 2.2 },
-  minus: { paths: '<path d="M5 12h14"/>', sw: 2.2 },
   check: { paths: '<path d="M20 6 9 17l-5-5"/>', sw: 2.6 },
   x: { paths: '<path d="M18 6 6 18M6 6l12 12"/>', sw: 2.1 },
   trash: { paths: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>' },
   pencil: { paths: '<path d="M4 20h4L20 8l-4-4L4 16Z"/><path d="M14.5 5.5 18.5 9.5"/>' },
   play: { paths: '<path d="M7 4.5 19 12 7 19.5Z" fill="currentColor" stroke="none"/>' },
-  pause: { paths: '<path d="M8 5h3v14H8zM13 5h3v14h-3z" fill="currentColor" stroke="none"/>' },
   stop: {
     paths: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
   },
@@ -104,10 +102,6 @@ export const ICONS: Record<string, IconSpec> = {
     paths:
       '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   },
-  sliders: {
-    paths:
-      '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
-  },
   copy: {
     paths:
       '<rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M15 5.5A2.5 2.5 0 0 0 12.5 3H5.5A2.5 2.5 0 0 0 3 5.5v7A2.5 2.5 0 0 0 5.5 15"/>',
@@ -140,23 +134,9 @@ export const ICONS: Record<string, IconSpec> = {
     paths:
       '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3"/>',
   },
-  skip: { paths: '<path d="M5 5v14M19 5 8 12l11 7Z"/>' },
   tag: { paths: '<path d="M20.5 12.5 12 21l-8.5-8.5V4h8.5Z"/><path d="M7.5 7.5h.01"/>' },
-  scale: { paths: '<path d="M12 4v16M7 20h10M5 8h14M5 8l-2.5 5h5ZM19 8l-2.5 5h5ZM8.5 4h7"/>' },
-  infinity: {
-    paths:
-      '<path d="M6.5 9a3 3 0 0 0 0 6c2.5 0 3.5-3 5.5-3s3 3 5.5 3a3 3 0 0 0 0-6c-2.5 0-3.5 3-5.5 3s-3-3-5.5-3Z"/>',
-  },
-  power: { paths: '<path d="M12 3v8"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/>' },
   bars: { paths: '<path d="M4 7h16M4 12h16M4 17h10"/>' },
-  'bolt-circle': {
-    paths: '<circle cx="12" cy="12" r="9"/><path d="m13 7-4.5 6.5H12L11 17l4.5-6.5H13Z"/>',
-  },
   rest: {
     paths: '<path d="M4 17V8a4 4 0 0 1 8 0v9M4 13h8M12 17V8a4 4 0 0 1 8 0v9"/><path d="M4 21h16"/>',
-  },
-  lock: {
-    paths:
-      '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
   },
 };

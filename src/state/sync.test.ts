@@ -250,7 +250,7 @@ describe('lo que viaja', () => {
     expect(JSON.stringify(payload)).not.toContain('secreta');
   });
 
-  it('la sesión en curso viaja, pero el otro dispositivo no la adopta solo', async () => {
+  it('la sesión en curso viaja y el otro dispositivo la retoma sola con su progreso', async () => {
     const live = {
       id: 'live-1',
       routineId: null,
@@ -267,18 +267,13 @@ describe('lo que viaja', () => {
     const code = await link();
     expect(blobs.size).toBe(1);
 
-    /* B se une: recibe los datos y ve la oferta, pero NO una sesión abierta */
+    /* B se une: recibe los datos Y la sesión en curso (sin traspaso manual) */
     deviceWith([]);
     sync.unlinkSync();
     await sleep();
     await sync.joinSyncLink(URL_FAKE, code);
-    expect(store.active.value).toBeNull();
-    expect(sync.pendingHandoff.value?.session.id).toBe('live-1');
-
-    expect(sync.adoptHandoff()).toBe(true);
     expect(store.active.value?.id).toBe('live-1');
     expect(store.readState().active?.id).toBe('live-1');
-    expect(sync.pendingHandoff.value).toBeNull();
     void a;
   });
 });

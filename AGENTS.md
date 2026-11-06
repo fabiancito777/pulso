@@ -1,252 +1,211 @@
 # AGENTS.md · Pulso
 
-Documento de contexto de la app: **Vite 8 + TypeScript 6 + Preact 10 + Vitest 5**, con ESLint y
-Prettier. Siete pestañas montadas (Hoy, Entrenar, Rutinas, Calendario, Coach, Progreso y Ajustes),
-coach IA con memoria y consultas, planificador local sin key, perfiles, PWA y onboarding.
+Contexto para trabajar en esta app. Si el hilo se alarga o se pierde el contexto, **lee esto
+primero**: aquí está lo vital (stack, comandos, arquitectura, convenciones y las decisiones que no
+se deben "arreglar" sin querer).
 
-> `npm run test` ≈ **1354 tests** offline. Los `smoke`/`edge`/`quality` de `src/features/coach/`
-> hablan con la API REAL usando la key de `.env.local` y se excluyen por defecto (van con
-> `npm run test:net`).
-
----
-
-## 1. Qué es esta app
-
-| Qué hay                                                                                   | Cómo se abre                                          |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Aplicación de entrenamiento con Vite 8, TypeScript 6, Preact 10, Vitest 5 y ESLint/Prettier. | `npm run dev` (o `npm run build` + `npm run preview`) |
-
-- El estado vive en `localStorage` y se lee/escribe con lectura-modificación-escritura. Cada perfil
-  tiene su espacio de claves; el perfil principal usa `pulso.state` y el resto `pulso.state.<id>`.
-- El inventario de discos se guarda en **unidades** (`discs`). `normalizePlates` normaliza las filas
-  al leer y al escribir, sin reescribir `localStorage` al arrancar.
-- La API key del coach es única para todos los perfiles (`pulso.ai-key`).
-
-### Decisiones de stack y por qué
-
-- **Vite 8** — HMR, `import`/`export` reales y build estático minificado. `base: './'` para que el
-  `dist/` funcione también desde un subdirectorio.
-- **Preact 10 + `@preact/signals`** — estado reactivo con ~4 KB de runtime. Evita repintados a mano
-  y la clase de bug de tener varias copias del mismo nodo.
-- **TypeScript 6** (no 7) — a 16-sep-2026 `typescript-eslint` 8.70 exige `typescript <6.1`, así que
-  TS 7 dejaría el proyecto sin lint tipado. Cuando typescript-eslint lo soporte, subir es cambiar
-  una versión.
-- **Vitest 5** — la lógica y la UI se prueban sin navegador y con estado explícito.
-- **ESLint 10 + `typescript-eslint` (tipado) + Prettier** — el lint usa información de tipos
-  (`projectService`), por eso caza cosas que el lint clásico no ve.
+> Última actualización: 3-nov-2026 · reescrito para la v2 real (Vite + Preact). El anterior describía
+> la app vanilla de `js/*.js`, que ya no existe en el repo.
 
 ---
 
-## 2. Cómo ejecutarla y cómo verificarla
+## 1. Qué es
+
+App de entrenamiento personal: sesiones con series/peso/reps, timer de descanso, rutinas,
+calendario, estadísticas y un coach con IA opcional. **Todo vive en el dispositivo**
+(`localStorage`); el coach usa la **API key propia de Gemini** del usuario y **todo funciona sin
+key** (el planificador local cubre sugerencias y plan semanal).
+
+- **Stack**: Vite + TypeScript (strict) + Preact + `@preact/signals`. Sin router externo, sin
+  librería de gráficos, sin framework de CSS.
+- **Publicada**: <https://fabiancito777.github.io/pulso/> (GitHub Actions → Pages desde `main`).
+- **PWA**: instalable y offline (`public/sw.js`, `public/manifest.webmanifest`).
+- UI mobile-first en español, tema AMOLED por defecto.
+
+---
+
+## 2. Arrancar y verificar
 
 ```bash
-npm install          # una vez
-npm run dev          # http://localhost:5173 — desarrollo con HMR
-npm run build        # build de producción en dist/
-npm run preview      # sirve el build
+npm install
+npm run dev        # http://localhost:5173 (HMR)
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint .
+npm test           # vitest offline (excluye smoke/edge/quality)
+npm run build      # dist/ (sin sourcemaps a propósito: GitHub Pages sirve dist/ entero)
+npm run verify     # typecheck + lint + test + build
 ```
 
-| Comando             | Qué hace                                                                                                        |
-| ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `npm run typecheck` | `tsc --noEmit` con `strict`, `noUnusedLocals`…                                                                  |
-| `npm run lint`      | ESLint con reglas tipadas (`recommendedTypeChecked`)                                                            |
-| `npm run test`      | Vitest **offline** (≈ **1354 tests**: dominio, estado y UI; excluye smoke/edge/quality, que van con `test:net`) |
-| `npm run verify`    | typecheck + lint + test + build (lo que hay que dejar verde)                                                    |
-| `npm run format`    | Prettier sobre el proyecto                                                                                      |
+| Extra | Qué hace |
+|---|---|
+| `npm run test:net` | Incluye `smoke`/`edge`/`quality`, que llaman a Gemini con la key de `.env.local`. |
+| `npm run test:quality` | Solo el test de calidad del coach (API real). |
+| `npm run format` | Prettier. |
+| `node tools/sync-dev.mjs` | Servidor de sincronización local, sin cuenta de Cloudflare. |
 
-Notas de entorno:
+**Qué verificar según lo que toques**
 
-- El servidor de Vite manda `no-store`, así que el navegador no sirve código viejo.
-- Si algo de UI no se puede probar con Vitest (modales, timer, dibujo), se comprueba en el
-  navegador con Playwright y se guarda una captura en `_shots/` (está en `.gitignore`).
-- **Tests contra la API real**: `src/features/coach/smoke.test.ts`, `edge.test.ts` y `quality.test.ts`
-  no mockean la red: leen la key de **`.env.local`** (gitignored, **nunca commitear**) y hacen
-  llamadas a Gemini (presupuesto duro por archivo: 2 y 20; sin key se saltan enteros). `npm run test`
-  los **excluye** por defecto (pasada offline, sin red ni cuota); para ejecutarlos: `npm run test:net`
-  (o `npm run test:quality` solo el de calidad).
-- `_specs/` guarda las specs de trabajo (gitignored, como `_shots/`).
+- Dominio (`src/domain`), estado (`src/state`) o coach (`src/features/coach`): sus tests en
+  `src/**/*.test.ts` (Vitest, sin navegador).
+- UI: `npm run typecheck` + `npm run lint` y, si es un flujo de modal, timer, descanso con el móvil
+  bloqueado o instalación de la PWA, **mirarlo en el navegador**: eso no lo cubren los tests.
+- Antes de dar algo por bueno: `npm run verify`.
+
+> Estado de referencia (3-nov-2026): 77 archivos de test, 1436 comprobaciones, todas en verde;
+> `typecheck` y `lint` limpios.
 
 ---
 
-## 3. Arquitectura y carpetas
+## 3. Arquitectura
 
 ```
-index.html          → entrada de Vite (carga src/main.tsx)
-src/main.tsx        → monta <App /> en #app e importa los estilos
-src/app/            → shell de la app (App.tsx) y router.ts (pestañas y rutas por hash)
-src/domain/         → NÚCLEO PURO: sin DOM, sin localStorage, sin estado global
-    num / format / units / dates / text        utilidades base
-    plates.ts                                  calculadora de discos (solver)
-    analytics.ts                               volumen, 1RM (Epley), PRs, rachas, semanas
-    session.ts                                 reglas de la sesión en curso (marcar, arrastrar, cerrar)
-    rest.ts                                    timer de descanso por timestamp (máquina de estados)
-    plan.ts                                    plantillas y planner local (rotación y pesos, sin IA)
-    catalog.ts                                 catálogo base congelado (no se edita a mano)
-    data.ts                                    API del catálogo (grupos, material, disponibilidad)
-    library.ts                                 fusión semilla ↔ lo guardado (mergeSeed)
-    defaults.ts                                ajustes e inventario por defecto
-    types.ts                                   contrato del dominio y del estado
-    sync.ts                                    fusión de estados entre dispositivos (puro: marcas por área, tombstones, informe)
-src/state/          → estado y persistencia (store.ts) + signals
-    store.ts                                   ajustes, material, biblioteca, sesiones, apilar sesión
-    sync.ts                                    cliente de sync: empaquetar, cifrar, subir/bajar, conflictos, traspaso
-    profiles.ts                                índice de perfiles, claves por perfil y key compartida
-    session.ts                                 sesión activa y descanso (signals + efectos: audio, loop)
-    coach.ts                                   runner del coach: bucle de consultas y fallback local
-src/features/       → piezas concretas con sus propios tests
-    coach/                                     cerebro del coach: context (contexto), insights,
-                                               memory (memoria), history (historial y consultas),
-                                               prompts, parse (JSON), client (Gemini) y local
-                                               (planificador sin key)
-src/ui/             → componentes Preact (Plates.tsx, LoadView.tsx, ProgressCard.tsx,
-                      SessionCard.tsx, Icon.tsx, Ring.tsx)
-    *View.tsx                                  vistas de pestaña: Hoy, Settings, Progress, Routines,
-                                               Calendar y Coach (+ Onboarding.tsx: primera visita)
-    icons.ts                                   catálogo de iconos base congelado (no se edita)
-src/platform/       → lo que toca el navegador (audio.ts: pitidos y vibración; sync-crypto.ts: código de pareja y AES-GCM)
-src/styles/         → base.css (hoja base) + v2.css (shell) y estilos por vista
-_specs/             → specs de trabajo (gitignored)
-sync-worker/        → Worker de Cloudflare + KV que guarda los blobs cifrados (no entra en el build)
-tools/sync-dev.mjs  → el mismo API en local para probar sin desplegar (blobs en .sync-dev.json)
-.env.local          → API key del coach para los tests de red (gitignored, NUNCA commitear)
+index.html            · entrada de Vite (CSP en meta) → src/main.tsx
+src/main.tsx          · tema antes del primer pintado, install prompt, errores globales,
+                        ?demo=1, monta <App /> y registra el SW
+src/app/              · shell (App.tsx: appbar, nav v2-tabs, rutas) y router por hash
+src/domain/           · núcleo PURO (sin DOM ni signals): discos, analítica, sesión, descanso,
+                        supersets, planner, fechas, formatos, catálogo y semilla
+src/features/coach/   · contexto, memoria, historial, prompts, parseo tolerante, esquemas,
+                        cliente Gemini, generador de ejercicios y planificador local
+src/state/            · signals + persistencia: store, sesión activa, chat, coach, perfiles, sync
+src/ui/               · vistas y componentes Preact (Hoy, Entrenar, Rutinas, Calendario, Coach,
+                        Progreso, Ajustes, Onboarding) + kit, Modal, toast, gráficos, iconos
+src/platform/         · lo que toca el navegador: audio, keep-alive, wake lock, SW, notify,
+                        clipboard, files, theme, install, cripto de sync
+src/styles/           · base.css (base y componentes) + v2.css + una hoja por vista
+public/               · manifest, service worker e iconos
+sync-worker/          · Worker de Cloudflare + KV (sincronización cifrada)
+tools/                · utilidades de desarrollo (p. ej. `sync-dev.mjs`)
 ```
 
-Reglas de dependencia (de dentro hacia fuera, nunca al revés):
+**Regla de dependencias**: `domain ← features ← state ← ui`, y `platform` se usa desde `state`/`ui`.
+El dominio no importa nada de fuera de sí mismo (por eso se prueba sin navegador). Nada de imports
+circulares entre capas.
+
+**Flujo de datos**
 
 ```
-domain  ←  features  ←  state  ←  ui
+localStorage  ⇄  signals de src/state/store.ts  →  componentes Preact (leen signals, se repintan solos)
 ```
 
-- **`domain/` no importa nada de `features/`, `state/` ni de `ui/`.** Es la regla que hace que la
-  lógica se pueda probar sin navegador: el solver de discos recibe el inventario por parámetro en
-  vez de ir a buscar los ajustes.
-- **`features/` solo importa de `domain/`** (el cerebro del coach es puro: contexto, prompts,
-  parseo, memoria y planificador local), y es `state/coach.ts` quien le da red, clave y bucle.
-- **Nada escribe el estado directamente**: se pasa por `state/store.ts` (`patchSettings`,
-  `rememberPlateMode`), que lee-modifica-escribe el estado completo.
-- **Perfiles**: cada perfil usa `pulso.state` (el principal) o `pulso.state.<id>`; el descanso va
-  igual en `pulso.rest[.<id>]`. El índice vive en `pulso.profiles`, el activo en
-  `pulso.active-profile` y la **API key del coach es única** en `pulso.ai-key` (se inyecta al leer
-  y se sincroniza al escribir). Cambiar de perfil recarga la app para reinicializar los signals; no
-  se mueven datos del perfil principal.
-- **Los componentes no montan HTML a mano.** Preact escapa solo; si algún día hace falta HTML crudo,
-  será una decisión explícita y localizada.
-
-### Flujo de datos
-
-```
-localStorage['pulso.state'] / pulso.state.<id>  (placas en unidades, `discs`)
-        ↕  readState() / writeState()  (tolerantes: JSON roto → valores por defecto)
-   state (objeto completo en memoria)
-        ↕  patchSettings(patch)
-   signal `settings`  → cualquier componente que lea settings.value se repinta solo
-```
-
-`withDefaults()` rellena las claves que falten de forma recursiva, así que añadir un ajuste nuevo
-**no** necesita migración.
+No hay props-passing desde el shell para el estado: las vistas leen las signals directamente. El
+router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashchange`.
 
 ---
 
 ## 4. Convenciones
 
-- **Rutas y alias**: `@/…` apunta a `src/` (definido en `tsconfig.json` y en `vite.config.ts`).
-- **`catalog.ts` y `ui/icons.ts` son ficheros base congelados**: no se regeneran ni se tocan a la
-  ligera. Lo que se añade a mano (presets, ejercicios) va en `data.ts` / `seed.ts`, y `data.test.ts`
-  vigila la integridad del catálogo (grupos o material inexistentes, ids repetidos, rangos al revés).
-- **Nada de estado que se repinte solo en exceso**: un componente que lee `restSeconds.value` se
-  repinta cada segundo, así que eso vive en componentes pequeños (`RestBox`, `Clock`) y nunca en la
-  tarjeta que contiene los inputs: si no, cada tic reescribiría el `value` de lo que estás
-  escribiendo. Los campos de la sesión se guardan en `change` (no en `input`) por el mismo motivo,
-  y para que el arrastre del peso copie el valor cuando terminas de teclear.
-- **Material en los ejercicios**: `equip` es `''` (peso corporal) o `'a&b|c'` = exige `a` **y**
-  (`b` **o** `c`). Se consulta con `isAvailable`/`missingEquipment`/`equipTags` pasando el mapa de
-  material por parámetro (`{ clave: boolean }`), nunca leyendo el estado desde el dominio.
-- **Imports de tipos** con `import type` (`verbatimModuleSyntax` está activo).
-- **Números en inputs**: usa `inputNum()` de `src/domain/format.ts` para el `value` de un
-  `<input type="number">`. `fmtN()` usa la coma de es-ES y el navegador **descarta** ese valor (el
-  campo sale vacío). Fue un bug real.
-- **Fechas**: ISO local `YYYY-MM-DD` con `src/domain/dates.ts`. Nunca
-  `toISOString().slice(0, 10)` para fechas de calendario (desfase por zona horaria).
-- **Unidades**: todo se calcula **siempre en kg** (`toKg`/`fromKg`) y solo se convierte para
-  mostrar; cada sesión y cada disco guardan su unidad original.
-- **JSDoc en castellano** y nombres de identificadores en inglés. Los comentarios explican _por qué_,
-  no _qué_.
-- **CSS**: `base.css` (hoja base) + `v2.css` (shell) y un fichero por vista. Las clases nuevas se
-  añaden a su bloque correspondiente.
-- **Estilos/prettier**: 2 espacios, comillas simples, ancho 100.
-
-### Receta para añadir una funcionalidad
-
-1. **Dominio primero**: lleva la lógica a `src/domain/`, sin acceso al estado (que entre por
-   parámetro), y escribe el test en `xxx.test.ts`. Nada de UI todavía.
-2. **Estado después**: si necesita persistencia, añade el setter a `src/state/store.ts`.
-3. **UI al final**: crea el componente en `src/ui/`.
-4. **Da el bloque por cerrado solo cuando esté cubierto por tests.**
-
----
-
-## 5. Reglas que no se pueden romper
-
-- **Calculadora de discos**: el mismo inventario no rinde igual en todo, de ahí los **huecos**
-  (`bar` 2 lados, `db1` 2 extremos, `db2` 4 huecos = 2 por mancuerna, `none` 0). El inventario se
-  cuenta en **discos sueltos** (`PlateStock.discs`, enteros: un impar sobra uno en el reparto) y
-  `cap = floor(discos/huecos)` con reparto **simétrico**, eligiendo la suma más cercana al peso
-  pedido por enumeración completa (nunca propone discos que no tengas). El margen `exact` es 0,1 kg
-  y en `db2` el peso devuelto es el de **cada** mancuerna. El dibujo se agrupa en pilas con "×N"
-  cuando el hueco lleva más de 6 discos, porque si no la fila mide 984 px dentro de un contenedor de
-  579 y se ve cortada (parecía que un lado iba vacío).
-- **Reglas de la sesión**: el valor se arrastra hacia ABAJO (nunca hacia arriba ni a las series ya
-  marcadas), el RPE no se arrastra, el peso puede estar vacío (`''` ≠ `0`), desmarcar cancela el
-  descanso, y el descanso arranca en la última serie del ejercicio **solo** si quedan series de otro
-  (anunciando el siguiente ejercicio).
-  - El arrastre son **dos pasos** (`setSet` + `propagateSet`). `editSetField` hace los dos:
-    `propagateSet` **no** escribe la serie editada, solo las de abajo, y es fácil creer que sí.
-  - `toggleSet` **devuelve** la decisión de descanso (`start`/`cancel`/`none`) en vez de ejecutarla:
-    así "cuándo hay descanso" se prueba con Vitest y el timer, el pitido y el service worker viven
-    fuera del dominio.
-  - **Marcar una serie autorrellena la siguiente** con su peso y sus reps si está vacía
-    (`autofillNext`), y el descanso de una serie no se corta al marcar la última: si ya estaba
-    corriendo, sigue. Ojo: eso significa que marcar la última serie de la sesión no arranca nada
-    **pero tampoco para** lo que hubiera; lo para `finishSession`.
-- **Timer de descanso**: el tiempo restante sale de `endsAt - Date.now()` (nunca de un contador), así
-  que sigue siendo correcto con la pestaña congelada. `+15 s` con el descanso ya terminado arranca una
-  cuenta NUEVA y el aviso de "completado" se cierra solo a los 30 s. El bucle (500 ms) lo arranca
-  `App.tsx` y solo pinta/avisa: las decisiones están en `domain/rest.ts`.
-- **Sugerencia de peso**: si el 1RM calculado sale **igual o por encima** del peso de la última vez,
-  se propone `anterior + increment` (con las mismas reps el cálculo da exactamente el peso anterior,
-  así que repetir el entreno sugiere subir) y nunca se salta más de un incremento. Al revés, si pides
-  **más** repeticiones el peso baja de verdad. Está fijado en `analytics.test.ts` para que no se
-  "arregle" por parecer raro.
-- **Aviso con el móvil bloqueado**: pitido largo + keep-alive de audio + notificación programada en
-  el service worker. Son tres capas a propósito; no basta con una.
-- **PWA**: manifest instalable, service worker network-first (para no congelar versiones sin
-  hashes) y notificaciones de fin de descanso.
-- **Sincronización** (móvil ↔ PC): no hay cuentas. Un **código de pareja** (`PULSO-XXXX-…`, 80 bits)
-  deriva con PBKDF2 (210k, SHA-256) una clave AES-GCM; el servidor solo guarda un blob cifrado bajo
-  el SHA-256 del código (`sync-worker/`, KV). Consecuencias que hay que respetar al tocar esto:
-  - **Las marcas por área se sellan en `writeProfileState`** (`stampChanges`), el único punto por el
-    que pasan todas las escrituras. Si alguien escribe el estado por otro camino, la fusión se queda
-    ciega y gana el lado equivocado. Al aplicar un estado ya fusionado se usa `stamp: false`:
-    re-sellarlo lo convertiría en «lo más reciente» y ganaría todos los conflictos siguientes.
-  - **Sesiones y rutinas se unen por id**, nunca se reemplazan (perder un entreno no es una opción).
-    Los borrados van con **tombstone** (`meta.sync.deleted`) para que no resuciten desde el otro
-    dispositivo. Los ajustes, el material y el calendario son «último cambio gana» por bloque; la
-    biblioteca se une por id. La API key del coach **no** viaja (`stripForSync`) y los modos de carga
-    son del dispositivo.
-  - **La sesión en curso SÍ viaja, pero no se aplica sola**: se ofrece como traspaso
-    (`pendingHandoff` + `adoptHandoff()` → `resumeSession`), porque dos dispositivos entrenando a la
-    vez se pisarían. Sin esa oferta, empezar en el móvil y seguir en el PC no funcionaba.
-  - **No se sube si no cambió nada** (`contentOf` compara el contenido sin `exportedAt`). Sin esa
-    salida, dos dispositivos vinculados se quedan rebotando PUT → 409 → PUT para siempre.
-  - **Conflictos**: si un área cambió en los DOS lados desde `lastSyncAt`, `syncNow` no decide:
-    devuelve `conflict` con el informe y la tarjeta pregunta (combinar / este / el otro).
-  - **CSP**: `connect-src` lleva `https:` a propósito, porque la URL del servidor la configura el
-    usuario. Si algún día se fija un dominio, conviene cerrarlo a ese dominio (y a `localhost` en dev).
-  - Desplegar el Worker: `cd sync-worker && npx wrangler kv namespace create SYNC && npx wrangler deploy`,
-    y pegar la URL en Ajustes → Datos. Para probar sin cuenta: `node tools/sync-dev.mjs`.
+- **Rutas**: `#/tab` y `#/ajustes/<sub>`; `go(tab, sub)` en `src/app/router.ts`, pestañas en `TABS`.
+- **Estado**: nunca escribir `localStorage` ni mutar el estado a mano. Se pasa por los setters de
+  `src/state/store.ts` (lectura-modificación-escritura) o por los de `src/state/session.ts` para la
+  sesión activa. Los hooks (`onStateWritten`, `onStateReplaced`) mantienen el resto en sincronía.
+- **Perfiles**: cada perfil tiene su clave (`pulso.state` para el principal, `pulso.state.<id>` para
+  el resto; también `pulso.rest` y las claves de siembra). Usa `currentStateKey()`/`currentRestKey()`
+  en vez de componer claves a mano. La **API key del coach se comparte** entre perfiles.
+- **Persistencia**: el estado se escribe con debounce; el descanso va en su propia clave
+  (`pulso.rest`) porque cambia cada segundo y no merece reescribir todo.
+- **Fechas**: ISO local `YYYY-MM-DD` con `src/domain/dates.ts` (`today()`, `addDays()`, `diffDays()`).
+  Nunca `toISOString().slice(0, 10)` para fechas de calendario (desfase por zona horaria).
+- **Números en inputs**: `fmtN()` da coma decimal y **no sirve para `value` de
+  `<input type="number">`**; usa `inputNum()` (punto decimal). Todo se calcula en kg y se convierte
+  con `src/domain/units.ts`; cada disco guarda su unidad.
+- **Texto de usuario/IA**: Preact escapa solo; para HTML propio (markdown del chat, ayudas) pasa por
+  el parser de `src/state/chat.ts` (`parseMd`/`mdInline`), no por `innerHTML` suelto.
+- **Vistas**: un componente por pestaña dentro de `src/ui/`, estilos en `src/styles/<vista>.css`,
+  y su lógica con casos borde en `<vista>-helpers.ts` **con tests**.
+- **Añadir una pestaña**: entrada en `TABS` (`src/app/router.ts`) + componente en `src/ui/` + su
+  bloque en `App.tsx` (appbar/subtítulo).
+- **Modales**: `src/ui/Modal.tsx` + la pila de `src/ui/modal-stack.ts` (un `Escape` cierra solo el de
+  arriba; el foco vuelve al anterior). No montes diálogos propios fuera de esa pila.
+- **Avisos**: `toast()` (`src/ui/toast.tsx`) — máximo 3 a la vez, `err` 6 s, `sticky` para procesos en
+  curso. Los errores globales los captura `main.tsx`.
+- **Gráficos**: componentes de `src/ui/charts.tsx` (SVG propio) con las cuentas en
+  `charts-helpers.ts`; no añadas una librería.
+- **Iconos**: `src/ui/icons.ts` (mapa nombre → paths) + `<Icon name="…" />`. Si el nombre no existe,
+  cae a un icono por defecto; borra los que dejes sin uso.
+- **CSS**: `base.css` es la base y los componentes compartidos; `v2.css` y las hojas por vista
+  añaden lo suyo. Evita duplicar reglas: el proyecto arrastró durante meses restos de la v1
+  (`.nav*`, `.restbar*`, `.chart-wrap`…) que se limpiaron el 3-nov-2026.
+- **Nav**: la barra es `v2-tabs`, un **carril horizontal con scroll** (`overflow-x:auto`) que centra
+  la pestaña activa y difumina el borde cuando queda contenido fuera. No es una barra fija: no la
+  "arregles" recortando pestañas.
 
 ---
 
-## 6. Historial
+## 5. Cómo funciona lo importante
 
-El historial completo vive en `git log`. Este documento describe el estado actual.
+### Sesión activa
+`sessions` guarda lo terminado; `active` la sesión en curso (entradas con `sets` → `weight/reps/done`,
+más `basis`, `notes`, `restSec`, supersets). Al empezar se prellena con `suggestWeight()`
+(Epley + incremento); **sin historial el peso queda vacío**, no 0. Al terminar se guardan solo las
+series marcadas, se calcula el RPE medio y el día queda `done` en el calendario.
+
+- **Editar una serie se propaga hacia abajo** (`propagateSet`): el peso/reps de la serie N se copia a
+  las siguientes sin marcar del mismo ejercicio, nunca a las de arriba ni a las ya hechas. El RPE no
+  se arrastra.
+- **`basis`**: cada entrada lleva de dónde sale el peso («última vez 60 kg × 8 · hace 3 días»,
+  «repetición de 21 sep 2026», «sin historial»). Se muestra bajo el nombre del ejercicio: **el dato
+  ya está en pantalla**, no lo dupliques en otro sitio.
+- Supersets: ejercicios consecutivos con `ssId`; la insignia «SS A · 1/2» y el descanso corto del
+  primero marcan la transición.
+
+### Timer de descanso
+`src/domain/rest.ts` calcula **por timestamp** (`endsAt - now`), no acumulando: sigue siendo correcto
+con la pestaña en segundo plano o el móvil bloqueado. Se espeja en `pulso.rest`.
+- Arranca al marcar una serie **si queda algo por hacer**: series pendientes del ejercicio, o el
+  siguiente ejercicio si acabas de cerrar el actual (ahí el aviso lo nombra).
+- Desmarcar una serie lo cancela; `+15 s` con el descanso terminado abre una cuenta nueva.
+- Se pinta dentro del recuadro de sesión (y como barra compacta en otras pestañas); el recuadro es
+  `position: sticky` bajo la appbar.
+- **Aviso con el móvil bloqueado (requisito frágil)**: pitido largo (~3,5 s) + vibración +
+  notificación del sistema. Tres capas: audio de silencio en bucle + `mediaSession` (`keepAlive`),
+  wake lock que se refresca al volver a la app, y notificación **programada en el service worker**
+  (`schedule-rest` / `cancel-rest`) para cuando la pestaña está congelada. No quites ninguna.
+
+### Calculadora de discos
+Modos de carga: `bar` (2 huecos), `db1` (1 mancuerna), `db2` (2 mancuernas, 4 huecos) y `none`
+(máquina). Reparto **simétrico** y búsqueda del peso **más cercano** por enumeración de sumas
+(`src/domain/plates.ts`), no greedy. El modo se sugiere por ejercicio y se recuerda por id.
+
+### Coach (Gemini)
+`src/features/coach/`: `context.ts` construye el contexto (perfil, material e inventario, biblioteca
+permitida, historial serie a serie, días desde el último estímulo, récords, rutinas y volumen
+semanal), `prompts.ts` arma la petición, `parse.ts` tolera JSON envuelto, `local.ts` es el
+planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
+`thinkingConfig`: `thinkingLevel` (Gemini 3) o `thinkingBudget` (2.5), mutuamente excluyentes; el
+nivel manda. La espera máxima se ajusta al thinking (60/120/240 s) y se puede cancelar.
+
+### Sincronización y perfiles
+Código de pareja → se deriva una clave (AES-GCM) y el servidor (Worker + KV, `sync-worker/`) solo ve
+un hash y el texto cifrado. Sesiones y rutinas **se suman**; ajustes por «último cambio gana» usando
+las marcas de `src/domain/sync.ts`; si ambos cambiaron lo mismo, la app pregunta. Los tombstones
+evitan que un borrado resucite. `applySyncedState` **no re-sella** el estado a propósito.
+
+### PWA
+`public/sw.js`: precarga del shell y **network-first con respaldo en caché** (sin hashes de archivo,
+cache-first congelaría versiones). Mismo SW para las notificaciones de descanso. Solo se registra en
+`http/https`. El build va sin sourcemaps porque Pages publica `dist/` entero.
+
+---
+
+## 6. Trampas conocidas
+
+- `?demo=1` carga 8 semanas de ejemplo (se quitan en *Ajustes → Datos*); no dependas de ello en tests.
+- Los tests de red (`smoke`/`edge`/`quality`) gastan cuota real: no los metas en `npm test`.
+- `src/ui/icons.ts` y `src/domain/catalog.ts` son ficheros base sensibles: el catálogo lo vigila
+  `src/domain/data.test.ts` (nombres, grupos, material). Tócalos a mano y con cuidado.
+- El `ResizeObserver` avisa a veces al medir la nav; `main.tsx` **filtra ese aviso** para no enseñar
+  un error técnico en inglés. No vuelvas a volcarlo al usuario.
+- `applyTheme()` corre **antes** del render: si lo mueves, la app parpadea con el tema por defecto.
+- Antes de añadir un `localStorage` nuevo, pregúntate si cabe en el estado o en una clave por perfil.
+
+---
+
+## 7. Registro de cambios
+
+| Fecha | Cambio | Por qué |
+|---|---|---|
+| 15-sep-2026 | Primera versión de este documento (app vanilla). | Dejar contexto entre sesiones. |
+| 3-nov-2026 | `AGENTS.md` reescrito para la v2 (Vite + Preact); documentados router, signals, perfiles, sync, coach y PWA reales. | El documento describía `js/*.js`, `?selftest=1` y utilidades que ya no existen. |
+| 3-nov-2026 | `main.tsx`: se filtran los avisos benignos de `ResizeObserver` y los errores se muestran en lenguaje humano. | La app se acusaba a sí misma con un mensaje interno en inglés al abrir Ajustes y Coach. |
+| 3-nov-2026 | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso. | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`. |

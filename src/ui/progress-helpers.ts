@@ -29,6 +29,7 @@ import {
 import type { PersonalRecord } from '@/domain/analytics';
 import { GROUPS, groupKeysInUse, groupLabel } from '@/domain/data';
 import { today } from '@/domain/dates';
+import { fmtTime } from '@/domain/format';
 import { num } from '@/domain/num';
 import type { Exercise, Session } from '@/domain/types';
 
@@ -47,6 +48,10 @@ export interface SessionSummary {
   /** etiquetas de grupo, sin repetir y en el orden de la sesión */
   groups: string[];
   demo: boolean;
+  /** hora local de fin (`HH:MM`), vacía si la sesión no la trae */
+  time: string;
+  /** se guardó un ejercicio suelto, no la rutina entera */
+  partial: boolean;
 }
 
 /**
@@ -72,6 +77,8 @@ export function sessionSummary(session: Session, exercises: readonly Exercise[])
     minutes: Math.round(durationOf(session) / 60_000),
     groups,
     demo: session.demo === true,
+    time: fmtTime(session.endedAt),
+    partial: session.partial === true,
   };
 }
 

@@ -372,10 +372,14 @@ export function toggleSet(
   if (!entry || !set) return null;
 
   const done = opts.on === undefined ? !set.done : !!opts.on;
+  const stamp = opts.now ?? new Date().toISOString();
   const nextSet: ActiveSet = {
     ...set,
     done,
-    ts: done ? (opts.now ?? new Date().toISOString()) : null,
+    ts: done ? stamp : null,
+    /* `at` fecha también el desmarcado: es lo que permite fusionar el progreso
+       entre dispositivos (gana la última marca, no la que se subió después) */
+    at: stamp,
   };
   let next: ActiveSession = {
     ...session,
@@ -759,6 +763,119 @@ export interface FinishOptions {
   now?: string;
   /** Inyectable para los tests. */
   id?: string;
+  /** Día del calendario del registro (por defecto, hoy local). */
+  dayIso?: string;
+}
+
+/**
+ * Una entrada de la sesión en curso hecha `SessionEntry`, o `null` si no tiene
+ * ninguna serie marcada con reps. Lo comparten el cierre de la sesión entera y el
+ * de un solo ejercicio: las dos descartan de la misma forma las series a medias,
+ * las reps vacías y los pesos vacíos (`null` ≠ `0`).
+ */
+function logEntry(entry: ActiveEntry, rpes: number[]): SessionEntry | null {
+  const sets: SetLog[] = [];
+  for (const set of entry.sets) {
+    if (!set.done) continue;
+    const reps = num(set.reps);
+    if (!reps) continue;
+    if (set.rpe) rpes.push(num(set.rpe));
+    const empty = set.weight === '' || set.weight === null || set.weight === undefined;
+    sets.push({
+      weight: empty ? null : num(set.weight),
+      reps,
+      done: true,
+      ts: set.ts ?? undefined,
+      rpe: set.rpe ? num(set.rpe) : null,
+    });
+  }
+  if (!sets.length) return null;
+  return {
+    exId: entry.exId,
+    name: entry.name,
+    ...(entry.group ? { group: entry.group } : {}),
+    restSec: entry.restSec ?? undefined,
+    notes: entry.notes || '',
+    ...(entry.superset ? { superset: entry.superset } : {}),
+    sets,
+  };
+}
+
+/** Primer instante conocido de una entrada (su primera serie), para fechar un cierre parcial. */
+function entryStartedAt(entry: ActiveEntry, fallback: string): string {
+  for (const set of entry.sets) {
+    if (set.at) return set.at;
+    if (set.ts) return set.ts;
+  }
+  return fallback;
+}
+
+/**
+ * Cierra SOLO un ejercicio de la sesión en curso: lo apila como una sesión propia
+ * (con la fecha y hora del momento) y devuelve la sesión que queda con el resto de
+ * ejercicios.
+ *
+ * Es lo que permite hacer una rutina repartida en varios días: completas dos
+ * ejercicios hoy, otros mañana, y el historial (y el coach) ve cada bloque en el
+ * día en que se hizo de verdad. La sesión que queda se re-fecha a `now` para que
+ * su cronómetro y su día tampoco arrastren la fecha del primer bloque.
+ *
+ * Devuelve `null` si el ejercicio no existe o no tiene ninguna serie marcada con
+ * reps: quien llama avisa de eso, igual que con `finishSession`.
+ */
+export function finishEntry(
+  session: ActiveSession,
+  entryIndex: number,
+  opts: FinishOptions = {},
+): { session: Session; remaining: ActiveSession | null } | null {
+  const entry = session.entries[entryIndex];
+  if (!entry) return null;
+  const rpes: number[] = [];
+  const log = logEntry(entry, rpes);
+  if (!log) return null;
+
+  const now = opts.now ?? new Date().toISOString();
+  const dayIso = opts.dayIso ?? today();
+  /* quitar un miembro de una superserie deja el id suelto: se limpia, igual que
+     al borrar un ejercicio (`removeEntry`) */
+  const rest = pruneSupersets(session.entries.filter((_candidate, i) => i !== entryIndex));
+  /* el snapshot del plan se recorta en los dos lados: el del registro es solo
+     este ejercicio y el de la sesión que sigue no arrastra uno ya cerrado */
+  const restPlan = session.plan?.filter((item) => item.exId !== entry.exId);
+  const remaining: ActiveSession | null = rest.length
+    ? {
+        ...session,
+        entries: rest,
+        startedAt: now,
+        dayIso,
+        ...(restPlan && restPlan.length ? { plan: restPlan } : {}),
+      }
+    : null;
+
+  const plan = session.plan?.filter((item) => item.exId === entry.exId);
+
+  return {
+    session: {
+      id: opts.id ?? uid('s'),
+      name: entry.name,
+      routineId: session.routineId,
+      date: dayIso,
+      startedAt: entryStartedAt(entry, session.startedAt),
+      endedAt: now,
+      unit: session.unit,
+      source: session.source,
+      entries: [log],
+      notes: opts.notes ?? '',
+      rpe: rpes.length ? round(avg(rpes), 1) : null,
+      ...(plan && plan.length ? { plan } : {}),
+      liveId: session.id,
+      /* «parcial» solo si la rutina sigue abierta: al completar el ÚLTIMO
+         ejercicio la sesión queda cerrada como una normal, y así sincronizar no la
+         reabre en el otro dispositivo (ver `finishedIds` en `domain/sync`). */
+      ...(rest.length ? { partial: true } : {}),
+    },
+    remaining,
+  };
 }
 
 /**
@@ -779,31 +896,8 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
   const rpes: number[] = [];
   const entries: SessionEntry[] = [];
   for (const entry of session.entries) {
-    const sets: SetLog[] = [];
-    for (const set of entry.sets) {
-      if (!set.done) continue;
-      const reps = num(set.reps);
-      if (!reps) continue;
-      if (set.rpe) rpes.push(num(set.rpe));
-      const empty = set.weight === '' || set.weight === null || set.weight === undefined;
-      sets.push({
-        weight: empty ? null : num(set.weight),
-        reps,
-        done: true,
-        ts: set.ts ?? undefined,
-        rpe: set.rpe ? num(set.rpe) : null,
-      });
-    }
-    if (!sets.length) continue;
-    entries.push({
-      exId: entry.exId,
-      name: entry.name,
-      ...(entry.group ? { group: entry.group } : {}),
-      restSec: entry.restSec ?? undefined,
-      notes: entry.notes || '',
-      ...(entry.superset ? { superset: entry.superset } : {}),
-      sets,
-    });
+    const log = logEntry(entry, rpes);
+    if (log) entries.push(log);
   }
   if (!entries.length) return null;
 
@@ -811,7 +905,7 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
     id: opts.id ?? uid('s'),
     name: session.name,
     routineId: session.routineId,
-    date: session.dayIso || today(),
+    date: opts.dayIso ?? (session.dayIso || today()),
     startedAt: session.startedAt,
     endedAt: opts.now ?? new Date().toISOString(),
     unit: session.unit,
@@ -819,6 +913,9 @@ export function finishSession(session: ActiveSession, opts: FinishOptions = {}):
     entries,
     notes: opts.notes ?? session.notes ?? '',
     rpe: rpes.length ? round(avg(rpes), 1) : null,
+    /* el id de la sesión en curso: al sincronizar, el otro dispositivo sabe que
+       esta ya terminó y no la vuelve a abrir (ver `mergeStates`) */
+    liveId: session.id,
     /* el snapshot viajó en `ActiveSession.plan` hasta aquí: ahora queda en el historial */
     ...(session.plan ? { plan: session.plan } : {}),
   };

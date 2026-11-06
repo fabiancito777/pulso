@@ -207,7 +207,6 @@
    en vez de perderse fuera del recorte y por debajo solo hay bloques, no
    mensajes legibles.
    El `.v2-shell` del selector es a propósito: gana en especificidad al
-   `body.has-rest.composer` de base.css (0,2,1) sin tocar esa hoja. */
 .v2-shell .coach-view .composer {
   position: sticky;
   bottom: 0;

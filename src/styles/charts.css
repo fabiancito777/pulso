@@ -2,13 +2,13 @@
    Pulso v2 · charts.css — estilos de los gráficos de Progreso (src/ui/charts.tsx)
 
    Port del aspecto de  + `views-stats.js`. Las clases
-   genéricas  (`.chart-wrap`, `.ct-grid`, `.ct-axis`, `.ct-line`,
+   genéricas  (`.ct-grid`, `.ct-axis`, `.ct-line`,
    `.ct-dot`, `.bar`, `.empty`, `.sec-head`, `.kpi`…) ya viven en `base.css` y
    aquí NO se repiten: solo se añade lo propio con prefijo `ch-`, para poder
    podar `base.css` cuando la vista esté entera en componentes.
    ========================================================================== */
 
-/* Contenedor de un gráfico: misma caja que `.chart-wrap`. */
+/* Contenedor de un gráfico. */
 .ch-wrap {
   background: var(--surface);
   border: 1px solid var(--border);

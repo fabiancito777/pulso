@@ -19,12 +19,13 @@
  * Todo es puro: recibe estados, devuelve un estado nuevo y un informe. Nada de
  * `localStorage`, `fetch` ni relojes implícitos (el `now` se inyecta).
  *
- * Lo que NO viaja (`stripForSync`): la sesión en curso, el chat del coach y la
- * API key de Gemini. La sesión en curso es de un dispositivo concreto —dos
- * dispositivos entrenando a la vez es un problema que no existe— y la key es un
- * secreto que no debe salir del navegador.
+ * Lo que NO viaja (`stripForSync`): el chat del coach y la API key de Gemini.
+ * La **sesión en curso SÍ viaja** (con sus series marcadas) para que el progreso
+ * se vea en el otro dispositivo; al fusionar se emparejan las series por su
+ * último cambio (ver `mergeActiveSessions`), así que marcar en el móvil y en el PC
+ * no se pisa. La API key es un secreto que no debe salir del navegador.
  */
-import type { AppState, Session } from './types';
+import type { ActiveEntry, ActiveSession, ActiveSet, AppState, Session } from './types';
 
 /** Áreas que se fusionan por «último cambio gana». Las sesiones y las rutinas van por id. */
 export const SYNC_AREAS = ['settings', 'equipment', 'exercises', 'routines', 'schedule'] as const;
@@ -44,9 +45,20 @@ export interface SyncMeta {
   areas: Partial<Record<SyncArea, number>>;
   /** borrados recientes, para que no resuciten al fusionar */
   deleted: SyncTombstones;
+  /**
+   * ids de sesiones EN CURSO que se descartaron a propósito. Ahora la sesión en
+   * curso se sincroniza sola, así que sin esto el otro dispositivo la devolvería
+   * en la siguiente sincronización (y reaparecería un entreno que tiraste).
+   */
+  discarded: string[];
 }
 
-export const EMPTY_SYNC: SyncMeta = { at: 0, areas: {}, deleted: { sessions: {}, routines: {} } };
+export const EMPTY_SYNC: SyncMeta = {
+  at: 0,
+  areas: {},
+  deleted: { sessions: {}, routines: {} },
+  discarded: [],
+};
 
 /** Cuántos borrados se recuerdan por tipo (los más recientes). */
 export const TOMBSTONE_MAX = 500;
@@ -78,6 +90,24 @@ export function isoMs(value: unknown): number {
 
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * JSON con las claves ordenadas: para desempatar de forma ESTABLE. Con
+ * `JSON.stringify` a pelo el orden de las claves depende de cómo se construyó el
+ * objeto, y los dos dispositivos podrían no coincidir nunca (subida → rebote
+ * infinito). Ver la misma idea en `canonical` de `state/sync.ts`.
+ */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stable(obj[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 function clone<T>(value: T): T {
@@ -127,6 +157,7 @@ export function syncMetaOf(state: unknown): SyncMeta {
       sessions: pruneTombstones(asObj(deleted.sessions)),
       routines: pruneTombstones(asObj(deleted.routines)),
     },
+    discarded: asList(raw.discarded).filter((id): id is string => typeof id === 'string' && id !== ''),
   };
 }
 
@@ -201,6 +232,21 @@ export function withTombstone(
     [kind]: pruneTombstones({ ...sync.deleted[kind], [id]: now }),
   };
   return { ...state, meta: { ...asObj(state.meta), sync: { ...sync, at: now, deleted } } };
+}
+
+/** Cuántos descartes de sesión en curso se recuerdan (los más recientes). */
+export const DISCARDED_MAX = 50;
+
+/**
+ * Recuerda que una sesión en curso se DESCARTÓ a propósito: sin esto, como la
+ * sesión en curso se sincroniza sola, el otro dispositivo la devolvería en la
+ * siguiente sincronización.
+ */
+export function withDiscarded(state: AppState, liveId: string): AppState {
+  if (!liveId) return state;
+  const sync = syncMetaOf(state);
+  const discarded = [liveId, ...sync.discarded.filter((id) => id !== liveId)].slice(0, DISCARDED_MAX);
+  return { ...state, meta: { ...asObj(state.meta), sync: { ...sync, at: Date.now(), discarded } } };
 }
 
 /* ---------- piezas que se fusionan ---------- */
@@ -284,6 +330,109 @@ function settingsDiff(local: unknown, remote: unknown): SettingsChange[] {
     out.push({ key, from: readable(l[key]), to: readable(r[key]) });
   }
   return out;
+}
+
+/* ---------- sesión en curso ---------- */
+
+/** Marca temporal de una serie: la del último cambio, si la hay. */
+function setStamp(set: ActiveSet): number {
+  return isoMs(set.at) || isoMs(set.ts) || 0;
+}
+
+/**
+ * Fusiona dos copias de la MISMA serie (mismo ejercicio, misma posición). Gana la
+ * que se tocó más tarde; sin marcas (sesiones creadas antes de `at`) gana la hecha,
+ * porque el caso normal es «lo marqué en el otro dispositivo».
+ */
+function mergeSet(a: ActiveSet, b: ActiveSet): ActiveSet {
+  const mine = setStamp(a);
+  const theirs = setStamp(b);
+  if (theirs > mine) return { ...b };
+  if (mine > theirs) return { ...a };
+  /* empate (incluidas las sesiones antiguas sin marcas): decisión SIMÉTRICA.
+     Los dos dispositivos tienen que llegar al mismo resultado o se subirían la
+     copia el uno al otro para siempre. */
+  if (a.done !== b.done) return { ...(b.done ? b : a) };
+  /* misma marca: se parte de la copia canónicamente menor y, si le falta el
+     peso, se toma el del otro (un peso real nunca se pierde) */
+  const base = stable(a) <= stable(b) ? a : b;
+  const other = base === a ? b : a;
+  return base.weight === '' && other.weight !== '' ? { ...base, weight: other.weight } : { ...base };
+}
+
+function mergeEntry(a: ActiveEntry, b: ActiveEntry): ActiveEntry {
+  const count = Math.max(a.sets.length, b.sets.length);
+  const sets: ActiveSet[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const mine = a.sets[i];
+    const theirs = b.sets[i];
+    if (mine && theirs) sets.push(mergeSet(mine, theirs));
+    else if (mine) sets.push({ ...mine });
+    else if (theirs) sets.push({ ...theirs });
+  }
+  /* el resto de campos de la entrada (notas, descanso, `basis`…) y su orden: la
+     copia canónicamente menor, para que el resultado no dependa de quién fusiona */
+  const base = stable(a) <= stable(b) ? a : b;
+  return { ...base, sets };
+}
+
+/**
+ * Fusiona las series de dos copias de la misma sesión en curso: **el progreso de
+ * un dispositivo no se pierde al llegar el del otro**. Se emparejan las entradas
+ * por `exId` (el orden puede haber cambiado al añadir o reordenar) y las series
+ * por posición, y cada serie se queda con su último cambio (`at`, ver
+ * `ActiveSet`).
+ *
+ * Es **simétrica**: `mergeActiveSessions(a, b)` y `mergeActiveSessions(b, a)`
+ * dan exactamente el mismo resultado (salvo el orden de ejercicios, que sale de
+ * `updatedAt`). Sin eso, los dos dispositivos se subirían la copia el uno al otro
+ * para siempre.
+ *
+ * Devuelve `a` si son otra sesión (ids distintos): dos dispositivos entrenando
+ * cosas distintas no se pisan.
+ */
+export function mergeActiveSessions(a: ActiveSession, b: ActiveSession): ActiveSession {
+  if (a.id !== b.id) return a;
+  /* un ejercicio cerrado como sesión suelta en CUALQUIERA de los dos lados ya no
+     vuelve a la sesión en curso: sin esto, fusionar se lo comería y reaparecería */
+  const finished = new Set([...(a.finished ?? []), ...(b.finished ?? [])]);
+  const mineById = new Map(a.entries.map((entry) => [entry.exId, entry]));
+  const theirsById = new Map(b.entries.map((entry) => [entry.exId, entry]));
+
+  /* el orden de los ejercicios, las notas y el snapshot son «de la sesión», no de
+     las series: los manda la escritura más reciente (`updatedAt`). Si empatan,
+     decide el JSON canónico para que los dos lados converjan. */
+  const mineTs = isoMs(a.updatedAt);
+  const theirsTs = isoMs(b.updatedAt);
+  const takeTheirs = theirsTs > mineTs || (theirsTs === mineTs && stable(b) < stable(a));
+  const lead = takeTheirs ? b : a;
+  const trail = takeTheirs ? a : b;
+
+  const entryIds: string[] = [];
+  for (const entry of lead.entries) {
+    if (!finished.has(entry.exId) && !entryIds.includes(entry.exId)) entryIds.push(entry.exId);
+  }
+  for (const entry of trail.entries) {
+    if (!finished.has(entry.exId) && !entryIds.includes(entry.exId)) entryIds.push(entry.exId);
+  }
+
+  const entries = entryIds.map((exId) => {
+    const mine = mineById.get(exId);
+    const theirs = theirsById.get(exId);
+    if (mine && theirs) return mergeEntry(mine, theirs);
+    /* solo en uno de los dos lados: se queda esa copia tal cual (nunca se pierde
+       un ejercicio que el otro añadió) */
+    const only = (mine ?? theirs) as ActiveEntry;
+    return { ...only, sets: only.sets.map((set) => ({ ...set })) };
+  });
+
+  return {
+    ...lead,
+    /* ordenado: si no, la lista llegaría en distinto orden según quién fusiona y
+       los dos dispositivos se pasarían la copia el uno al otro para siempre */
+    ...(finished.size ? { finished: [...finished].sort() } : {}),
+    entries,
+  };
 }
 
 /* ---------- fusión ---------- */
@@ -514,6 +663,39 @@ export function mergeStates(
   next.sessions = sessions;
   next.routines = [...routines.values()].map((r) => r as unknown as RoutineShape);
 
+  /* sesión en curso: el progreso (series marcadas) sigue al otro dispositivo
+     automáticamente. Tres casos:
+     - la misma sesión en los dos lados → se fusionan las series (`mergeActiveSessions`);
+     - solo la tiene el otro → se adopta aquí;
+     - ya hay una sesión CERRADA en el historial con su `liveId` → no se resucita
+       (la terminaste en el otro dispositivo). */
+  const localActive = activeOf(local);
+  const remoteActive = activeOf(remote);
+  /* `finishedIds` = sesiones que cerraron la sesión en curso ENTERA. Las
+     «parciales» (`partial`) conservan el `liveId` para enlazar el historial, pero
+     la rutina sigue abierta: si contaran, sincronizar mataría el resto. */
+  const finishedIds = new Set(
+    sessions
+      .filter((session) => session.partial !== true)
+      .map((session) => session.liveId)
+      .filter((id): id is string => typeof id === 'string' && id !== ''),
+  );
+  /* las sesiones que se descartaron a propósito en este dispositivo: si no se
+     recordaran, el otro lado las devolvería en la siguiente sincronización */
+  const discarded = new Set([...localSync.discarded, ...remoteSync.discarded]);
+  const blocked = (id: string): boolean => finishedIds.has(id) || discarded.has(id);
+  if (localActive && blocked(localActive.id)) {
+    /* la sesión que tenía aquí ya se cerró o la descartaste: no se resucita, pero
+       si el otro tiene OTRA en curso, esa sí se adopta */
+    next.active = remoteActive && !blocked(remoteActive.id) ? clone(remoteActive) : null;
+  } else if (localActive && remoteActive) {
+    const merged = mergeActiveSessions(localActive, remoteActive);
+    /* todos sus ejercicios se completaron por separado: ya no queda sesión */
+    next.active = merged.entries.length ? merged : null;
+  } else if (!localActive && remoteActive && !blocked(remoteActive.id)) {
+    next.active = clone(remoteActive);
+  }
+
   /* meta: lo local manda, pero `onboarded` se hereda y los tombstones se suman */
   const localMeta = asObj(local.meta);
   const remoteMeta = asObj(remote.meta);
@@ -524,6 +706,7 @@ export function mergeStates(
       sessions: mergeTombstones(localTomb, remoteTomb),
       routines: mergeTombstones(localRt, remoteRt),
     },
+    discarded: [...discarded].slice(0, DISCARDED_MAX),
   };
   next.meta = {
     ...remoteMeta,
@@ -599,8 +782,8 @@ export function conflictAreas(
  * Copia del estado lista para subir: sin el chat y sin la API key. Lo demás
  * entero, porque el formato es el mismo que el de un backup.
  *
- * La sesión en curso SÍ viaja: es lo que permite retomarla en otro dispositivo
- * (`pendingHandoff` en `state/sync.ts`). No se aplica sola, se ofrece.
+ * La sesión en curso SÍ viaja: es lo que hace que una serie marcada en el móvil se
+ * vea en el PC (`mergeActiveSessions`). No hace falta traspaso manual.
  */
 export function stripForSync(state: AppState): AppState {
   const settings = asObj(state.settings);

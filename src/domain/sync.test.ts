@@ -16,6 +16,7 @@ import {
   stampChanges,
   stripForSync,
   syncMetaOf,
+  withDiscarded,
   withTombstone,
   type SyncArea,
 } from './sync';
@@ -332,6 +333,140 @@ describe('áreas: gana el último cambio', () => {
 
 /* ---------- lo que viaja ---------- */
 
+/* ---------- sesión en curso ---------- */
+
+function live(
+  id: string,
+  sets: { weight?: number | ''; reps?: number | ''; done?: boolean; at?: string }[],
+  extra: Partial<AppState['active'] & object> = {},
+): NonNullable<AppState['active']> {
+  return {
+    id,
+    routineId: null,
+    name: 'Empuje A',
+    startedAt: '2026-09-10T10:00:00.000Z',
+    unit: 'kg',
+    entries: [
+      {
+        exId: 'press',
+        name: 'Press',
+        repMin: 8,
+        repMax: 12,
+        notes: '',
+        sets: sets.map((set) => ({
+          weight: set.weight ?? 60,
+          reps: set.reps ?? 8,
+          done: set.done ?? false,
+          ts: set.done ? '2026-09-10T10:05:00.000Z' : null,
+          at: set.at ?? null,
+          rpe: null,
+        })),
+      },
+    ],
+    notes: '',
+    dayIso: '2026-09-10',
+    source: 'manual',
+    ...extra,
+  };
+}
+
+describe('fusión de la sesión en curso (progreso entre dispositivos)', () => {
+  it('suma las series marcadas en los dos lados, no se queda con una copia entera', () => {
+    const local = stamped({ active: live('l1', [{ done: true }, {}, {}]) }, {});
+    const remote = stamped({ active: live('l1', [{}, { done: true }, {}]) }, {});
+    const { state } = mergeStates(local, remote);
+    const sets = activeOf(state)?.entries[0]?.sets ?? [];
+    expect(sets.map((set) => set.done)).toEqual([true, true, false]);
+  });
+
+  it('el resultado es simétrico: fusionar en el otro sentido da lo mismo', () => {
+    const a = stamped({ active: live('l1', [{ done: true }, {}, {}]) }, {});
+    const b = stamped({ active: live('l1', [{}, { done: true }, {}]) }, {});
+    const ab = activeOf(mergeStates(a, b).state)?.entries[0]?.sets.map((s) => s.done);
+    const ba = activeOf(mergeStates(b, a).state)?.entries[0]?.sets.map((s) => s.done);
+    expect(ab).toEqual(ba);
+  });
+
+  it('desmarcar en un lado (más tarde) apaga la marca del otro', () => {
+    const marked = live('l1', [{ done: true, at: '2026-09-10T10:05:00.000Z' }]);
+    const unmarked = live('l1', [{ done: false, at: '2026-09-10T10:09:00.000Z' }]);
+    const { state } = mergeStates(stamped({ active: marked }, {}), stamped({ active: unmarked }, {}));
+    expect(activeOf(state)?.entries[0]?.sets[0]?.done).toBe(false);
+  });
+
+  it('si aquí no hay sesión, se adopta la del otro para que el progreso se vea', () => {
+    const remote = stamped({ active: live('l1', [{ done: true }]) }, {});
+    const { state } = mergeStates(stamped({}, {}), remote);
+    expect(activeOf(state)?.id).toBe('l1');
+    expect(activeOf(state)?.entries[0]?.sets[0]?.done).toBe(true);
+  });
+
+  it('una sesión ya cerrada en el historial no vuelve a abrirse', () => {
+    const closed = session('s1', '2026-09-10', undefined, { liveId: 'l1' });
+    const local = stamped({ sessions: [closed] }, {});
+    const remote = stamped({ active: live('l1', [{ done: true }]) }, {});
+    const { state } = mergeStates(local, remote);
+    expect(activeOf(state)).toBeNull();
+  });
+
+  it('el ejercicio completado suelto no vuelve a la sesión en curso al fusionar', () => {
+    const local = stamped({ active: live('l1', [{ done: true }], { finished: ['press'] }) }, {});
+    const remote = stamped({ active: live('l1', [{ done: true }]) }, {});
+    const { state } = mergeStates(local, remote);
+    const entries = activeOf(state)?.entries ?? [];
+    expect(entries.map((entry) => entry.exId)).not.toContain('press');
+  });
+
+  it('fusionar es idempotente: volver a fusionar lo ya fusionado no cambia nada', () => {
+    const a = stamped({ active: live('l1', [{ done: true, at: '2026-09-10T10:05:00.000Z' }]) }, {});
+    const b = stamped({ active: live('l1', [{ done: false, at: '2026-09-10T10:09:00.000Z' }]) }, {});
+    const once = mergeStates(a, b).state;
+    const twice = mergeStates(once, b).state;
+    expect(activeOf(twice)).toEqual(activeOf(once));
+    /* y en el otro sentido tampoco se mueve */
+    expect(activeOf(mergeStates(b, once).state)).toEqual(activeOf(once));
+  });
+
+  it('sin marcas de tiempo (sesión antigua) la fusión es igual en los dos sentidos', () => {
+    const a = live('l1', [{ done: true, weight: '' }]);
+    const b = live('l1', [{ done: true, weight: 40 }]);
+    const ab = activeOf(mergeStates(stamped({ active: a }, {}), stamped({ active: b }, {})).state);
+    const ba = activeOf(mergeStates(stamped({ active: b }, {}), stamped({ active: a }, {})).state);
+    expect(ab).toEqual(ba);
+    /* un peso real no se pierde al desempatar */
+    expect(ab?.entries[0]?.sets[0]?.weight).toBe(40);
+  });
+
+  it('una sesión descartada aquí no vuelve desde el otro dispositivo', () => {
+    const remote = stamped({ active: live('l1', [{ done: true }]) }, {});
+    /* el descarte se apunta en `meta.sync.discarded` */
+    const local = withDiscarded(stamped({}, {}), 'l1');
+    const { state } = mergeStates(local, remote);
+    expect(activeOf(state)).toBeNull();
+  });
+
+  it('una sesión PARCIAL en el historial no cierra la rutina que sigue abierta', () => {
+    /* completar un ejercicio guarda una sesión con `partial` + `liveId`: la
+       rutina sigue en curso, así que no debe darse por terminada */
+    const partial = session('s1', '2026-09-10', '2026-09-10T10:30:00.000Z', {
+      liveId: 'l1',
+      partial: true,
+    });
+    const local = stamped({ sessions: [partial], active: live('l1', [{ done: true }]) }, {});
+    const remote = stamped({ active: live('l1', [{ done: true }, { done: true }]) }, {});
+    const { state } = mergeStates(local, remote);
+    expect(activeOf(state)?.id).toBe('l1');
+    expect(activeOf(state)?.entries[0]?.sets.map((set) => set.done)).toEqual([true, true]);
+  });
+
+  it('dos sesiones distintas no se mezclan', () => {
+    const local = stamped({ active: live('l1', [{ done: true }]) }, {});
+    const remote = stamped({ active: live('l2', [{}, { done: true }]) }, {});
+    const { state } = mergeStates(local, remote);
+    expect(activeOf(state)?.id).toBe('l1');
+  });
+});
+
 describe('stripForSync', () => {
   it('quita el chat y la key del coach, pero la sesión en curso VIAJA', () => {
     const state = baseState({
@@ -342,7 +477,7 @@ describe('stripForSync', () => {
     const out = stripForSync(state);
     expect(out.settings?.ai.apiKey).toBe('');
     expect('chat' in out).toBe(false);
-    /* viaja para poder retomarla en el otro dispositivo (traspaso explícito) */
+    /* viaja para que el progreso se vea en el otro dispositivo */
     expect(activeOf(out)?.id).toBe('a');
   });
 

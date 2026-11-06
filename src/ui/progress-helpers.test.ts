@@ -109,7 +109,9 @@ describe('sessionSummary', () => {
       endedAt: '2026-09-20T10:45:00.000Z',
     });
     const out = sessionSummary(s, BIBLIO);
-    expect(out).toEqual({
+    /* la hora depende de la zona del sistema: solo se comprueba la forma */
+    expect(out.time).toMatch(/^\d{2}:\d{2}$/);
+    expect(out).toMatchObject({
       id: 's-2026-09-20',
       date: '2026-09-20',
       name: 'Entrenamiento',
@@ -118,6 +120,7 @@ describe('sessionSummary', () => {
       minutes: 45,
       groups: ['Pecho'],
       demo: false,
+      partial: false,
     });
   });
 

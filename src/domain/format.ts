@@ -69,6 +69,18 @@ export function fmtMmss(sec: unknown): string {
 export const fmtRpe = (v: unknown): string => (num(v) ? fmtN(v, 1) : '—');
 
 /**
+ * Hora local `HH:MM` de un timestamp ISO, para el historial: con «completar
+ * ejercicio» interesa saber a qué hora se hizo, no solo qué día. Vacío si el
+ * timestamp no se puede leer.
+ */
+export function fmtTime(ts: unknown): string {
+  if (typeof ts !== 'string' || !ts) return '';
+  const d = new Date(ts);
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
  * Valor para un `<input type="number">`: punto decimal y sin separadores.
  * ⚠️ `fmtN()` usa la coma de es-ES y el navegador DESCARTA ese `value` (el campo
  * sale vacío). Fue un bug real; aquí vive en un solo sitio.

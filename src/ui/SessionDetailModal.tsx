@@ -18,7 +18,7 @@ import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
 import { resolveExercise } from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
-import { fmtDur, fmtN, fmtRpe, fmtVol } from '@/domain/format';
+import { fmtDur, fmtN, fmtRpe, fmtTime, fmtVol } from '@/domain/format';
 import type { Session } from '@/domain/types';
 import { startFromPlan } from '@/state/session';
 import { active, exercises, removeSession, sessions } from '@/state/store';
@@ -98,6 +98,8 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
     >
       <div class="tiny muted pg2-sub">
         {dateLabel(date, 'medium')} · {relative(date)}
+        {session.endedAt ? ` · ${fmtTime(session.endedAt)}` : ''}
+        {session.partial ? ' · ejercicio suelto' : ''}
       </div>
 
       <div class="grid c3">

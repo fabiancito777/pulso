@@ -19,7 +19,7 @@ import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
 import { normalizePlates } from '@/domain/plates';
-import { stampChanges, syncMetaOf, withTombstone } from '@/domain/sync';
+import { stampChanges, withDiscarded, withTombstone } from '@/domain/sync';
 import type {
   ActiveSession,
   AppState,
@@ -32,27 +32,7 @@ import type {
 } from '@/domain/types';
 import { toast } from '@/ui/toast';
 
-import {
-  MAX_PROFILES,
-  activeProfile,
-  activeProfileId,
-  addProfileRecord,
-  corruptPrefixFor,
-  dataKeysFor,
-  profiles,
-  readSharedApiKey,
-  removeProfileRecord,
-  replaceProfiles,
-  restKeyFor,
-  seedKeyFor,
-  setActiveProfileId,
-  setupKeyFor,
-  stateKeyFor,
-  touchProfile,
-  updateProfileRecord,
-  writeSharedApiKey,
-  type Profile,
-} from './profiles';
+import { MAX_PROFILES, activeProfile, activeProfileId, addProfileRecord, corruptPrefixFor, dataKeysFor, profiles, readSharedApiKey, removeProfileRecord, replaceProfiles, restKeyFor, seedKeyFor, setActiveProfileId, setupKeyFor, stateKeyFor, updateProfileRecord, writeSharedApiKey, type Profile } from './profiles';
 
 export const STATE_KEY = 'pulso.state';
 /**
@@ -65,17 +45,8 @@ export const STATE_KEY = 'pulso.state';
  */
 export const STATE_VERSION = 3;
 
-/**
- * Claves sueltas de `localStorage` (fuera del estado), con el mismo nombre que les
- * da antes (`U.st` prefija `pulso.`). El descanso va aparte porque cambia cada 15
- * segundos y no merece reescribir todo el estado.
- */
-export const STORAGE_KEYS = { state: STATE_KEY, rest: 'pulso.rest' } as const;
-
 /** Claves del perfil activo (el principal conserva las históricas). */
-export const currentStateKey = (): string => stateKeyFor(activeProfileId.value);
 export const currentRestKey = (): string => restKeyFor(activeProfileId.value);
-export const currentProfileId = (): string => activeProfileId.value;
 
 /** ¿Se puede usar localStorage? Si no, se avisa en la UI (los datos no persisten). */
 export const storageAvailable = ((): boolean => {
@@ -1228,11 +1199,6 @@ export function profileSessionCount(id: string): number {
   return asSessions(readProfileState(id).sessions).length;
 }
 
-/** Marca como usado el perfil indicado (la hoja lo hace al cambiar). */
-export function touchProfileNow(id: string): void {
-  touchProfile(id);
-}
-
 /* ---------- backup de todos los perfiles ---------- */
 
 export interface ProfilesBackup {
@@ -1374,29 +1340,6 @@ export function refresh(): void {
   active.value = asActive(next.active);
 }
 
-/**
- * Aplica al perfil activo un estado YA fusionado por la sincronización.
- *
- * `stamp: false` es deliberado: el estado trae las marcas de los dos
- * dispositivos y re-sellarlas aquí lo convertiría en «lo más reciente» y ganaría
- * todos los conflictos siguientes sin que el usuario haya tocado nada.
- */
-export function applySyncedState(state: AppState): void {
-  writeProfileState(activeProfileId.value, state, { stamp: false });
-  refresh();
-  runStateReplacedHooks();
-}
-
-/**
- * ¿Ha tocado el usuario algo desde `since` (ms)? Es lo que distingue «este lado
- * cambió» de «esto simplemente es distinto» al decidir si hay conflicto que
- * consultar. Una sesión nueva no cuenta: las sesiones se suman siempre.
- */
-export function changedSince(since: number): boolean {
-  const state = readState();
-  return syncMetaOf(state).at > since;
-}
-
 /* ---------- sesiones ---------- */
 
 /**
@@ -1441,6 +1384,21 @@ export function writeActive(next: ActiveSession | null): boolean {
 }
 
 /**
+ * Descarta la sesión en curso y recuerda su id: como la sesión en curso se
+ * sincroniza sola, sin este tombstone el otro dispositivo la devolvería en la
+ * siguiente sincronización.
+ */
+export function discardActive(): boolean {
+  const current = active.value;
+  const state = readState();
+  const withTomb = current ? withDiscarded(state, current.id) : state;
+  withTomb.active = null;
+  const saved = writeState(withTomb);
+  active.value = null;
+  return saved;
+}
+
+/**
  * Apila una sesión terminada y marca el día como hecho: es lo que hacían juntos
  * `S.addSession` + `S.setDay(iso, {status:'done'})`, así que el calendario
  * de la rama `main` ve el día igual que si lo hubieras entrenado allí.
@@ -1456,6 +1414,36 @@ function byStartedAtDesc(a: Session, b: Session): number {
   if (ia < ib) return -1;
   if (ia > ib) return 1;
   return 0;
+}
+
+/**
+ * Guarda un ejercicio completado SIN cerrar la rutina (`finishEntryAt`): apila su
+ * sesión, marca el día como hecho y deja en `active` lo que falta.
+ *
+ * Va en UNA escritura a propósito: si fueran dos (apilar y luego actualizar
+ * `active`) un fallo entre medias dejaría el ejercicio duplicado (en el historial
+ * y en la sesión en curso).
+ */
+export function commitEntry(session: Session, remaining: ActiveSession | null): boolean {
+  const state = readState();
+  const all = [session, ...asSessions(state.sessions)].sort(byStartedAtDesc);
+  state.sessions = all;
+  const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
+    ? { ...(state.schedule as Record<string, ScheduleDay>) }
+    : {};
+  const day = plan[session.date];
+  plan[session.date] = {
+    ...(isPlainObject(day) ? day : {}),
+    status: 'done',
+    sessionId: session.id,
+  };
+  state.schedule = plan;
+  state.active = remaining;
+  if (!writeState(state)) return false;
+  sessions.value = all;
+  schedule.value = plan;
+  active.value = remaining;
+  return true;
 }
 
 export function commitSession(session: Session): boolean {

@@ -18,6 +18,7 @@ import {
   editSetField,
   elapsedSec,
   entriesFromRoutine,
+  finishEntry,
   finishSession,
   moveEntry,
   newEntry,
@@ -624,6 +625,87 @@ describe('progress y el reloj', () => {
     const base = nuevaSesion();
     expect(elapsedSec({ ...base, startedAt: 'no-es-fecha' })).toBe(0);
     expect(elapsedSec(base, Number.NaN)).toBe(0);
+  });
+});
+
+/* ---------- completar un ejercicio suelto ---------- */
+
+describe('finishEntry (rutina repartida en días)', () => {
+  const sesion = () =>
+    startSession({
+      exercises: BIBLIOTECA,
+      suggest: sinHistorial,
+      exIds: ['press-banca', 'sentadilla'],
+      now: '2026-09-24T10:00:00.000Z',
+      dayIso: '2026-09-24',
+      id: 'live_1',
+    });
+
+  /** Marca todas las series de una entrada. */
+  const completar = (session: ActiveSession, entryIndex: number): ActiveSession => {
+    let next = session;
+    const count = session.entries[entryIndex]?.sets.length ?? 0;
+    for (let j = 0; j < count; j += 1) next = marcar(next, entryIndex, j)!.session;
+    return next;
+  };
+
+  it('guarda solo ese ejercicio con su fecha y hora, y deja el resto en curso', () => {
+    const session = completar(sesion(), 0);
+    const out = finishEntry(session, 0, { now: '2026-09-24T11:30:00.000Z', dayIso: '2026-09-24' });
+    expect(out).not.toBeNull();
+    if (!out) return;
+    expect(out.session.entries.map((entry) => entry.exId)).toEqual(['press-banca']);
+    expect(out.session).toMatchObject({
+      name: 'Press de banca',
+      date: '2026-09-24',
+      endedAt: '2026-09-24T11:30:00.000Z',
+      partial: true,
+      liveId: 'live_1',
+    });
+    expect(out.session.entries[0]?.sets).toHaveLength(4);
+    /* el resto sigue, con el cronómetro y el día re-fechados a ahora */
+    expect(out.remaining?.entries.map((entry) => entry.exId)).toEqual(['sentadilla']);
+    expect(out.remaining?.startedAt).toBe('2026-09-24T11:30:00.000Z');
+  });
+
+  it('al completar el último ejercicio pendiente no queda sesión', () => {
+    const unaSola = startSession({
+      exercises: BIBLIOTECA,
+      suggest: sinHistorial,
+      exIds: ['press-banca'],
+      now: '2026-09-24T10:00:00.000Z',
+      dayIso: '2026-09-24',
+      id: 'live_1',
+    });
+    const out = finishEntry(completar(unaSola, 0), 0, { now: '2026-09-24T12:00:00.000Z' });
+    expect(out?.remaining).toBeNull();
+    /* cerrada del todo: NO es parcial (sincronizar no debe reabrirla) */
+    expect(out?.session.partial).toBeUndefined();
+    expect(out?.session.liveId).toBe('live_1');
+  });
+
+  it('el snapshot del plan se reparte: el registro conserva solo su ejercicio', () => {
+    const items: RoutineItem[] = [
+      { exId: 'press-banca', sets: 4 },
+      { exId: 'sentadilla', sets: 3 },
+    ];
+    const session = completar(
+      startSession({
+        exercises: BIBLIOTECA,
+        suggest: sinHistorial,
+        routine: { id: 'rt-1', items },
+        now: '2026-09-24T10:00:00.000Z',
+      }),
+      0,
+    );
+    const out = finishEntry(session, 0, { now: '2026-09-24T11:00:00.000Z' });
+    expect(out?.session.plan?.map((item) => item.exId)).toEqual(['press-banca']);
+    expect(out?.remaining?.plan?.map((item) => item.exId)).toEqual(['sentadilla']);
+  });
+
+  it('sin series marcadas con reps no cierra nada', () => {
+    expect(finishEntry(sesion(), 0, { now: '2026-09-24T11:00:00.000Z' })).toBeNull();
+    expect(finishEntry(sesion(), 9, { now: '2026-09-24T11:00:00.000Z' })).toBeNull();
   });
 });
 
