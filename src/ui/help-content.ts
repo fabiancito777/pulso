@@ -133,9 +133,7 @@ export const HELP_IDS = [
   'opt.exercises',
   'opt.model',
   'opt.thinkingLevel',
-  'opt.thinkingBudget',
   'opt.timeoutSec',
-  'opt.temperature',
   'opt.maxTokens',
   'opt.includeThoughts',
   'opt.systemPrompt',
@@ -807,7 +805,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Modelo',
     paras: [
-      'Qué versión de Gemini usa el coach. Los «Flash» son rápidos y baratos; el «Pro» razona más. El que viene marcado va bien para rutinas y análisis.',
+      'Qué versión de Gemini usa el coach. Solo hay dos: «3.8 Flash», el más capaz y el que viene marcado, y «3.5 Flash-Lite», más rápido y barato para el día a día.',
     ],
     see: ['opt.thinkingLevel', 'coach.apiKey'],
   },
@@ -818,17 +816,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Cuánto piensa el modelo antes de responder. «Bajo» contesta rápido y es lo normal. Súbelo para rutinas complicadas o análisis: tardará más y gastará más.',
     ],
-    see: ['opt.thinkingBudget', 'opt.temperature'],
-  },
-  'opt.thinkingBudget': {
-    id: 'opt.thinkingBudget',
-    section: 'ajustes',
-    title: 'Presupuesto de pensamiento',
-    paras: [
-      'Los tokens que como mucho puede usar el modelo para pensar. Déjalo vacío y lo decide él. Solo toca esto con modelos 2.5, si quieres forzar más o menos razonamiento.',
-      'Si arriba has elegido un nivel de pensamiento, este campo no hace nada.',
-    ],
-    see: ['opt.thinkingLevel', 'opt.maxTokens'],
+    see: ['opt.timeoutSec', 'opt.maxTokens'],
   },
   'opt.timeoutSec': {
     id: 'opt.timeoutSec',
@@ -840,23 +828,15 @@ export const HELP: Record<HelpId, HelpTopic> = {
     ],
     see: ['opt.thinkingLevel', 'opt.maxTokens'],
   },
-  'opt.temperature': {
-    id: 'opt.temperature',
-    section: 'ajustes',
-    title: 'Temperature',
-    paras: [
-      'Cuánto varía el coach al responder. En 0 repite siempre lo mismo, que va bien para cálculos. En 1 propone cosas más distintas. Si una rutina te sale siempre igual, súbelo un poco.',
-    ],
-    see: ['opt.model'],
-  },
   'opt.maxTokens': {
     id: 'opt.maxTokens',
     section: 'ajustes',
     title: 'Máximo de tokens de salida',
     paras: [
-      'Cuánto puede escribir el coach de una vez (4096 por defecto). Súbelo si una rutina se queda a medias, bájalo si prefieres respuestas cortas.',
+      'Cuánto puede escribir el coach de una vez (4096 por defecto). Los tokens de pensamiento cuentan dentro de este tope, así que con pensamiento alto puede quedarse sin sitio: súbelo si una rutina se queda a medias.',
+      'Las propuestas de entreno y de plan semanal piden un mínimo más alto por su cuenta, porque un plan de 7 días es un JSON largo.',
     ],
-    see: ['coach.footer', 'opt.thinkingBudget'],
+    see: ['coach.footer', 'opt.thinkingLevel'],
   },
   'opt.includeThoughts': {
     id: 'opt.includeThoughts',

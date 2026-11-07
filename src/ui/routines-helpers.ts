@@ -29,6 +29,7 @@ import { matchExercise } from '@/domain/match';
 import { clamp, int, num } from '@/domain/num';
 import { richItems, routineFromTemplate } from '@/domain/plan';
 import type { PlanInput } from '@/domain/plan';
+import { sanitizePrescription } from '@/domain/prescription';
 import { norm, similarity } from '@/domain/text';
 import type { Exercise, RoutineItem, RoutineTemplate, Session } from '@/domain/types';
 import type { ScheduleDay } from '@/state/store';
@@ -223,14 +224,24 @@ export function toSuggestion(raw: unknown, library: readonly Exercise[]): Routin
     const name = firstString(entry, ['name', 'exercise', 'ejercicio']);
     if (!name) continue;
     const resolved = resolveName(name, library);
+    const clean = sanitizePrescription(
+      {
+        sets: entry.sets === undefined ? undefined : int(entry.sets, 3),
+        repMin: entry.repMin === undefined ? undefined : int(entry.repMin, 8),
+        repMax: entry.repMax === undefined ? undefined : int(entry.repMax, 12),
+        rest: entry.rest === undefined ? undefined : int(entry.rest, 90),
+        weight: toWeight(entry.weight),
+      },
+      { sets: 3, repMin: 8, repMax: 12, rest: 90, weight: null },
+    );
     exercises.push({
       name: resolved.name,
       matched: resolved.matched,
-      sets: int(entry.sets, 3),
-      repMin: int(entry.repMin, 8),
-      repMax: int(entry.repMax, 12),
-      rest: int(entry.rest, 90),
-      weight: toWeight(entry.weight),
+      sets: clean.sets,
+      repMin: clean.repMin,
+      repMax: clean.repMax,
+      rest: clean.rest,
+      weight: clean.weight,
       notes: firstString(entry, ['notes', 'note']),
       /* el par viaja hasta la tarjeta y hasta «Aplicar»: sin esto se guardaba a
          ciegas una rutina con superseries que el usuario nunca vio */

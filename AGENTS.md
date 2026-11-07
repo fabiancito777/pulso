@@ -4,7 +4,7 @@ Contexto para trabajar en esta app. Si el hilo se alarga o se pierde el contexto
 primero**: aquí está lo vital (stack, comandos, arquitectura, convenciones y las decisiones que no
 se deben "arreglar" sin querer).
 
-> Última actualización: 3-nov-2026 · reescrito para la v2 real (Vite + Preact). El anterior describía
+> Última actualización: 7-nov-2026 · reescrito para la v2 real (Vite + Preact). El anterior describía
 > la app vanilla de `js/*.js`, que ya no existe en el repo.
 
 ---
@@ -51,7 +51,7 @@ npm run verify     # typecheck + lint + test + build
   bloqueado o instalación de la PWA, **mirarlo en el navegador**: eso no lo cubren los tests.
 - Antes de dar algo por bueno: `npm run verify`.
 
-> Estado de referencia (3-nov-2026): 77 archivos de test, 1436 comprobaciones, todas en verde;
+> Estado de referencia (7-nov-2026): 77 archivos de test, 1450 comprobaciones, todas en verde;
 > `typecheck` y `lint` limpios.
 
 ---
@@ -172,8 +172,21 @@ Modos de carga: `bar` (2 huecos), `db1` (1 mancuerna), `db2` (2 mancuernas, 4 hu
 permitida, historial serie a serie, días desde el último estímulo, récords, rutinas y volumen
 semanal), `prompts.ts` arma la petición, `parse.ts` tolera JSON envuelto, `local.ts` es el
 planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
-`thinkingConfig`: `thinkingLevel` (Gemini 3) o `thinkingBudget` (2.5), mutuamente excluyentes; el
-nivel manda. La espera máxima se ajusta al thinking (60/120/240 s) y se puede cancelar.
+
+- **Modelos**: solo dos, en `AI_MODELS` (`src/domain/catalog.ts`): `gemini-3.8-flash` (por defecto)
+  y `gemini-3.5-flash-lite`. No hay descubrimiento de modelos por API; un `model` guardado que ya no
+  esté en la lista se resetea al de fábrica en la migración del estado.
+- **Sin `temperature`**: Gemini 3.6+ la ignora en `generateContent`, así que el ajuste se retiró del
+  estado y de la UI (la migración v4 lo borra del `localStorage`).
+- **`thinkingConfig`**: solo `thinkingLevel` (`auto`/`low`/`high`); `thinkingBudget` es de 2.5 y no
+  se usa. La espera máxima se ajusta al nivel (60/120/240 s) y se puede cancelar.
+- **Validación de la salida**: lo que devuelve el modelo NO se guarda a ciegas. `domain/prescription.ts`
+  (`sanitizePrescription`) acota series/reps/descanso/peso antes de crear rutinas o días, y se comparte
+  con el planificador local; la UI usa la misma función (`ui/routines-helpers.ts`).
+- **Fallback local**: `suggest`/`plan` sin key, o con fallo de red/auth/cuota o JSON ilegible, resuelven
+  con `local.ts` y marcan `origin: 'local'` + `fallback` (motivo conservado para la vista). La base
+  local viaja además DENTRO del prompt como borrador a mejorar (`localHead` en `prompts.ts`).
+- **`applyWeek` descarta los días anteriores a hoy** (`skipped`); las fechas se comparan como ISO local.
 
 ### Sincronización y perfiles
 Código de pareja → se deriva una clave (AES-GCM) y el servidor (Worker + KV, `sync-worker/`) solo ve
@@ -209,3 +222,4 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 3-nov-2026 | `AGENTS.md` reescrito para la v2 (Vite + Preact); documentados router, signals, perfiles, sync, coach y PWA reales. | El documento describía `js/*.js`, `?selftest=1` y utilidades que ya no existen. |
 | 3-nov-2026 | `main.tsx`: se filtran los avisos benignos de `ResizeObserver` y los errores se muestran en lenguaje humano. | La app se acusaba a sí misma con un mensaje interno en inglés al abrir Ajustes y Coach. |
 | 3-nov-2026 | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso. | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`. |
+| 7-nov-2026 | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso. |

@@ -965,34 +965,33 @@ describe('inventario en unidades', () => {
   });
 });
 
-/* ---------- migración de la temperatura por defecto (v3) ---------- */
+/* ---------- migración de los ajustes de IA retirados (v4) ---------- */
 
-describe('migración de ai.temperature', () => {
-  const rawState = (version: number, temperature: number): void => {
+describe('migración v4 de ai', () => {
+  const rawState = (version: number, ai: Record<string, unknown>): void => {
     const state = store.defaultState();
     state.version = version;
-    state.settings.ai.temperature = temperature;
+    Object.assign(state.settings.ai, ai);
     mem.set(store.STATE_KEY, JSON.stringify(state));
   };
 
-  it('el 0,7 del default viejo pasa a 1', () => {
-    rawState(2, 0.7);
+  it('quita temperature y thinkingBudget, que ya no existen', () => {
+    rawState(3, { temperature: 0.7, thinkingBudget: 512 });
 
     const out = store.readState();
 
-    expect(out.settings.ai.temperature).toBe(1);
+    expect('temperature' in out.settings.ai).toBe(false);
+    expect('thinkingBudget' in out.settings.ai).toBe(false);
     expect(out.version).toBe(store.STATE_VERSION);
   });
 
-  it('respeta un valor elegido a mano', () => {
-    rawState(2, 0.4);
-
-    expect(store.readState().settings.ai.temperature).toBe(0.4);
+  it('un modelo que ya no está soportado vuelve al de fábrica', () => {
+    rawState(3, { model: 'gemini-2.5-pro' });
+    expect(store.readState().settings.ai.model).toBe('gemini-3.8-flash');
   });
 
-  it('en v3 ya no reescribe el 0,7', () => {
-    rawState(3, 0.7);
-
-    expect(store.readState().settings.ai.temperature).toBe(0.7);
+  it('un modelo soportado se respeta', () => {
+    rawState(3, { model: 'gemini-3.5-flash-lite' });
+    expect(store.readState().settings.ai.model).toBe('gemini-3.5-flash-lite');
   });
 });

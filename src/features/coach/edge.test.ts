@@ -266,7 +266,13 @@ suite('edge cases contra Gemini (API real)', () => {
         live,
         newEntry({ exId: idOf(N_SUST), sets: 3, library: store.exercises.value }),
       );
-      live = editSetField(live, live.entries.length - 1, 0, 'weight', 55);
+      /* `newEntry` deja las series en blanco: sin reps `finishSession` descarta la
+         entrada y la sustitución nunca llegaría al historial. Se rellenan todas. */
+      const añadido = live.entries.length - 1;
+      for (let j = 0; j < live.entries[añadido].sets.length; j++) {
+        live = editSetField(live, añadido, j, 'reps', 8);
+      }
+      live = editSetField(live, añadido, 0, 'weight', 55);
 
       for (let i = 0; i < live.entries.length; i++) {
         for (let j = 0; j < live.entries[i].sets.length; j++) {

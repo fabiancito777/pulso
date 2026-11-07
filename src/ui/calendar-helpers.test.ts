@@ -12,6 +12,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import { addDays, today } from '@/domain/dates';
+
 import {
   autoPlanEngine,
   autoPlanRequest,
@@ -313,8 +315,11 @@ describe('propuesta: local vs IA', () => {
    guarda el `source` del plan tal cual y la rutina que nace de él se guarda
    como 'generador' si no vino de la IA. */
 describe('applyWeek: la fuente del plan distingue local de IA', () => {
+  /* `applyWeek` descarta los días pasados, así que los fixtures usan fechas
+     futuras relativas a hoy. */
+  const iso = addDays(today(), 7);
+
   it('escribe source "local" en los días y "generador" en la rutina creada', () => {
-    const iso = '2026-10-05';
     const antes = store.routines.value.length;
     const name = store.exercises.value[0]?.name ?? '';
 
@@ -325,19 +330,21 @@ describe('applyWeek: la fuente del plan distingue local de IA', () => {
       rationale: ['semana de prueba'],
       days: [
         { date: iso, type: 'entreno', title: 'Tren superior', exercises: [{ name }] },
-        { date: '2026-10-06', type: 'descanso', title: 'Descanso', exercises: [] },
+        { date: addDays(iso, 1), type: 'descanso', title: 'Descanso', exercises: [] },
       ],
     });
 
-    expect(result).toEqual({ days: 2, routines: 1, unresolved: [] });
+    expect(result).toEqual({ days: 2, routines: 1, unresolved: [], skipped: 0 });
     expect(store.schedule.value[iso]).toMatchObject({ source: 'local', status: 'planned' });
-    expect(store.schedule.value['2026-10-06']).toMatchObject({ source: 'local', status: 'rest' });
+    expect(store.schedule.value[addDays(iso, 1)]).toMatchObject({
+      source: 'local',
+      status: 'rest',
+    });
     expect(store.routines.value[antes]?.source).toBe('generador');
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
   });
 
   it('un plan de la IA (sin source en el JSON) se escribe como ia', () => {
-    const iso = '2026-10-12';
     coach.applyWeek({ days: [{ date: iso, type: 'descanso', title: 'Descanso', exercises: [] }] });
     expect(store.schedule.value[iso]).toMatchObject({ source: 'ia', status: 'rest' });
   });

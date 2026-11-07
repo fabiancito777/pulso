@@ -84,9 +84,9 @@ describe('ningún tema se queda sin ancla', () => {
 describe('Ajustes · fase 2', () => {
   const src = SOURCES['./SettingsView.tsx'] ?? '';
 
-  it('las 27 entradas opt.* de la guía están enganchadas', () => {
+  it('las 25 entradas opt.* de la guía están enganchadas', () => {
     const opts = HELP_IDS.filter((id) => id.startsWith('opt.'));
-    expect(opts).toHaveLength(27);
+    expect(opts).toHaveLength(25);
     const used = new Set(idsIn(src));
     for (const id of opts) expect(used.has(id), id).toBe(true);
   });

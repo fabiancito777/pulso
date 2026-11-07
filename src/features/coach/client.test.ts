@@ -12,11 +12,10 @@ import {
   DEFAULT_MODEL,
   GeminiError,
   generate,
-  listModels,
-  MODELS_LIMIT,
   REQUEST_TIMEOUT_MS,
   testConnection,
   thinkingTimeoutMs,
+  TRANSIENT_RETRIES,
 } from './client';
 import type { ResponseSchema } from './types';
 
@@ -161,16 +160,13 @@ describe('buildBody', () => {
     expect('responseMimeType' in sinJson.generationConfig).toBe(false);
   });
 
-  it('thinkingConfig: manda el level, o el budget si no hay level (nunca los dos)', () => {
+  it('thinkingConfig: manda el level y nunca el budget (los dos modelos son Gemini 3)', () => {
     expect(thinkingOf(opts({ thinkingLevel: 'medium' }))).toEqual({ thinkingLevel: 'medium' });
-    expect(thinkingOf(opts({ thinkingBudget: 512 }))).toEqual({ thinkingBudget: 512 });
-    expect(thinkingOf(opts({ thinkingLevel: 'high', thinkingBudget: 256 }))).toEqual({
-      thinkingLevel: 'high',
-    });
-    /* 'auto' cuenta como "sin level": ahí sí se respeta el budget */
-    expect(thinkingOf(opts({ thinkingLevel: 'auto', thinkingBudget: 128 }))).toEqual({
-      thinkingBudget: 128,
-    });
+    expect(thinkingOf(opts({ thinkingLevel: 'high' }))).toEqual({ thinkingLevel: 'high' });
+    /* 'auto' cuenta como "sin level": con includeThoughts no se manda tampoco */
+    expect(thinkingOf(opts({ thinkingLevel: 'auto' }))).toBeUndefined();
+    /* la app ya no tiene el ajuste: un budget suelto no puede colarse */
+    expect('thinkingBudget' in (buildBody(opts()) as SentBody).generationConfig).toBe(false);
   });
 
   it('thinkingConfig: includeThoughts solo, y la clave no aparece si no se pide nada', () => {
@@ -179,14 +175,14 @@ describe('buildBody', () => {
     expect('thinkingConfig' in (buildBody(opts()) as SentBody).generationConfig).toBe(false);
   });
 
-  it('temperature y maxOutputTokens: los pedidos, o los valores por defecto', () => {
+  it('manda maxOutputTokens y NUNCA temperature (Gemini 3 la ignora)', () => {
     expect((buildBody(opts()) as SentBody).generationConfig).toMatchObject({
-      temperature: 0.7,
       maxOutputTokens: 4096,
     });
-    expect(
-      (buildBody(opts({ temperature: 0.2, maxOutputTokens: 128 })) as SentBody).generationConfig,
-    ).toMatchObject({ temperature: 0.2, maxOutputTokens: 128 });
+    expect((buildBody(opts({ maxOutputTokens: 128 })) as SentBody).generationConfig).toMatchObject({
+      maxOutputTokens: 128,
+    });
+    expect('temperature' in (buildBody(opts()) as SentBody).generationConfig).toBe(false);
   });
 
   it('la API key no viaja dentro del body', () => {
@@ -197,7 +193,7 @@ describe('buildBody', () => {
 describe('generate · éxito', () => {
   it('devuelve texto, finish, modelo y usage, y el body pide JSON', async () => {
     const f = makeFetch(reply());
-    const out = await generate(opts({ json: true, temperature: 0.4, maxOutputTokens: 512 }), f);
+    const out = await generate(opts({ json: true, maxOutputTokens: 512 }), f);
     expect(out).toMatchObject({
       text: 'respuesta',
       finish: 'STOP',
@@ -207,7 +203,6 @@ describe('generate · éxito', () => {
     expect(out.ms).toBeGreaterThanOrEqual(0);
     expect(sentBody(f).generationConfig).toMatchObject({
       responseMimeType: 'application/json',
-      temperature: 0.4,
       maxOutputTokens: 512,
     });
   });
@@ -378,7 +373,7 @@ describe('generate · política de reintentos', () => {
       kind: 'quota',
       status: 429,
     });
-    expect(siempre429).toHaveBeenCalledTimes(3); /* inicial + 2 reintentos */
+    expect(siempre429).toHaveBeenCalledTimes(TRANSIENT_RETRIES + 1); /* inicial + reintentos */
   });
 
   it('429 diario (QuotaFailure de Google) → daily, SIN reintentos y mensaje en castellano', async () => {
@@ -445,7 +440,7 @@ describe('generate · política de reintentos', () => {
     );
     expect(err).toMatchObject({ kind: 'quota', status: 429 });
     expect(err?.daily).toBeFalsy(); /* es el 429 de siempre: se reintenta */
-    expect(porMinuto).toHaveBeenCalledTimes(3); /* inicial + 2 reintentos */
+    expect(porMinuto).toHaveBeenCalledTimes(TRANSIENT_RETRIES + 1); /* inicial + reintentos */
   });
 
   it('403 → auth: NUNCA se reintenta', async () => {
@@ -460,12 +455,23 @@ describe('generate · política de reintentos', () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
-  it('red caída → reintenta y, agotados los 2, lanza network', async () => {
+  it('red caída → reintenta y, agotados los reintentos, lanza network', async () => {
     const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
       Promise.reject(new TypeError('fetch failed')),
     );
     await expect(generate(opts(), f)).rejects.toMatchObject({ kind: 'network' });
-    expect(f).toHaveBeenCalledTimes(3);
+    expect(f).toHaveBeenCalledTimes(TRANSIENT_RETRIES + 1);
+  });
+
+  it('la MISMA política con fetch inyectado: sin espera pero con los mismos reintentos', async () => {
+    /* Antes, con `fetchFn` mockeado la política caía a 3 intentos: la ruta de
+       producción no la cubría ningún test. Ahora el número de intentos es el
+       mismo y lo único distinto es que no se espera entre ellos. */
+    const f = makeFetch({ error: { code: 503, message: 'high demand' } }, 503);
+    const t0 = Date.now();
+    await expect(generate(opts(), f)).rejects.toMatchObject({ kind: 'http', status: 503 });
+    expect(f).toHaveBeenCalledTimes(TRANSIENT_RETRIES + 1);
+    expect(Date.now() - t0).toBeLessThan(1_000); /* sin backoff real en tests */
   });
 
   it('sin candidatos se agota en 2 reintentos y lanza empty (3 llamadas)', async () => {
@@ -617,124 +623,6 @@ describe('testConnection · kind para la UI', () => {
   });
 });
 
-/* ---------- listModels ---------- */
-
-/** Página de `GET /models` con la forma de la API. */
-function modelsPage(
-  models: Record<string, unknown>[],
-  nextPageToken?: string,
-): Record<string, unknown> {
-  return nextPageToken ? { models, nextPageToken } : { models };
-}
-
-function model(id: string, over: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    name: `models/${id}`,
-    displayName: id,
-    supportedGenerationMethods: ['generateContent'],
-    ...over,
-  };
-}
-
-describe('listModels', () => {
-  it('sin key → kind auth y no se llama a la red', async () => {
-    const f = makeFetch(modelsPage([]));
-    await expect(listModels('   ', f)).rejects.toMatchObject({ kind: 'auth' });
-    expect(f).not.toHaveBeenCalled();
-  });
-
-  it('la key va en la cabecera, nunca en la URL', async () => {
-    const f = makeFetch(modelsPage([model('gemini-3.8-flash')]));
-    await listModels('clave-secreta-123', f);
-    expect(sentUrl(f)).toContain('/models?pageSize=200');
-    expect(sentUrl(f)).not.toContain('key=');
-    expect(f.mock.calls[0][1]?.headers as Record<string, string>).toMatchObject({
-      'x-goog-api-key': 'clave-secreta-123',
-    });
-  });
-
-  it('quita el prefijo models/ y deja solo los que generan contenido', async () => {
-    const f = makeFetch(
-      modelsPage([
-        model('gemini-3.8-flash', {
-          displayName: 'Gemini 3.8 Flash',
-          description: 'La versión rápida de Gemini para tareas cotidianas',
-        }),
-        model('text-embedding-004', { supportedGenerationMethods: ['embedContent'] }),
-        model('imagen-4', { supportedGenerationMethods: ['generateImages'] }),
-        model('gemini-live-001'),
-      ]),
-    );
-    const list = await listModels('clave', f);
-    expect(list.map((m) => m.id)).toEqual(['gemini-3.8-flash']);
-    expect(list[0]).toMatchObject({ label: 'Gemini 3.8 Flash' });
-    expect(list[0].hint).toContain('versión rápida');
-  });
-
-  it('pagina con nextPageToken hasta agotar la respuesta', async () => {
-    const f = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify(modelsPage([model('uno')], 'tok-1'))),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify(modelsPage([model('dos')]))),
-      });
-    const list = await listModels('clave', f);
-    expect(list.map((m) => m.id)).toEqual(['uno', 'dos']);
-    expect(f).toHaveBeenCalledTimes(2);
-    expect(String(f.mock.calls[1][0])).toContain('pageToken=tok-1');
-  });
-
-  it('no devuelve más de MODELS_LIMIT aunque la API mande más', async () => {
-    const enGafas = Array.from({ length: 400 }, (_, i) => model(`modelo-${i}`));
-    const f = makeFetch(modelsPage(enGafas));
-    const list = await listModels('clave', f);
-    expect(list).toHaveLength(MODELS_LIMIT);
-    expect(f).toHaveBeenCalledTimes(1);
-  });
-
-  it('401 → auth, 429 → quota, red caída → network', async () => {
-    const auth = makeFetch({ error: { code: 401, message: 'API key no válida' } }, 401);
-    await expect(listModels('mala', auth)).rejects.toMatchObject({ kind: 'auth' });
-
-    const cuota = makeFetch({ error: { code: 429, message: 'Cuota agotada' } }, 429);
-    await expect(listModels('clave', cuota)).rejects.toMatchObject({ kind: 'quota' });
-
-    const caida = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
-      Promise.reject(new TypeError('fetch failed')),
-    );
-    await expect(listModels('clave', caida)).rejects.toMatchObject({ kind: 'network' });
-  });
-
-  it('si la cuenta no devuelve nada utilizable → empty (la UI se queda en AI_MODELS)', async () => {
-    const f = makeFetch(
-      modelsPage([model('text-embedding-004', { supportedGenerationMethods: ['embedContent'] })]),
-    );
-    await expect(listModels('clave', f)).rejects.toMatchObject({
-      kind: 'empty',
-      message: 'La cuenta no devolvió modelos con generateContent',
-    });
-  });
-
-  it('respuesta no-JSON → parse', async () => {
-    const f = vi.fn((_url: RequestInfo | URL, _init?: RequestInit) =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve('<html>bum</html>'),
-      } as Response),
-    );
-    await expect(listModels('clave', f as unknown as typeof fetch)).rejects.toMatchObject({
-      kind: 'parse',
-    });
-  });
-});
-
 /* ---------- timeout, aborto y prompt vacío ---------- */
 
 /** `fetch` que nunca resuelve pero rechaza cuando su señal se aborta. */
@@ -821,37 +709,6 @@ describe('thinkingTimeoutMs', () => {
   });
 });
 
-describe('listModels — timeout y paginación', () => {
-  it('un token repetido corta el bucle (no se queda pidiendo páginas)', async () => {
-    const f = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify(modelsPage([model('uno')], 'rep'))),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        text: () => Promise.resolve(JSON.stringify(modelsPage([model('dos')], 'rep'))),
-      });
-    const list = await listModels('clave', f);
-    expect(list.map((m) => m.id)).toEqual(['uno', 'dos']);
-    expect(f).toHaveBeenCalledTimes(2);
-  });
-
-  it('un timeout por petición lanza network', async () => {
-    const f = hangingFetch();
-    const err = await listModels('clave', f as unknown as typeof fetch, {
-      timeoutMs: 5,
-    }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(GeminiError);
-    expect(err).toMatchObject({ kind: 'network' });
-    expect((err as GeminiError).message).toContain('no respondió a tiempo');
-    expect(f).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe('fallbackMessage — no filtra el crudo de la API', () => {
   it('un HTML de proxy se queda en console.warn y el usuario ve un mensaje fijo', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -863,7 +720,7 @@ describe('fallbackMessage — no filtra el crudo de la API', () => {
           text: () => Promise.resolve('<html><body>proxy roto</body></html>'),
         } as Response),
       );
-      const err = await listModels('clave', f as unknown as typeof fetch).catch(
+      const err = await generate(opts(), f as unknown as typeof fetch).catch(
         (e: unknown) => e,
       );
       expect(err).toMatchObject({ kind: 'parse' });

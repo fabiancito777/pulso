@@ -16,7 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { findExerciseByName, isAvailable } from '@/domain/data';
-import { addDays } from '@/domain/dates';
+import { addDays, today } from '@/domain/dates';
 import type { UnresolvedName } from '@/domain/match';
 import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
@@ -51,8 +51,9 @@ const create = await import('./exercise-create');
 
 const NOMBRE = 'Press de Piso con Mancuernas';
 const FECHA_SESION = '2026-09-20';
-const INICIO_SEMANA = '2026-09-28';
-
+/* una semana FUTURA respecto de hoy: `applyWeek` descarta los días pasados, así
+   que un lunes fijo en el calendario dejaría de served en cuanto pasara la fecha */
+const INICIO_SEMANA = addDays(today(), 7);
 /** Id real del ejercicio del fixture (la biblioteca ya está fusionada al cargar). */
 function pressId(): string {
   const found = findExerciseByName(store.exercises.value, NOMBRE);
@@ -152,7 +153,6 @@ describe('runCoachTask', () => {
     expect(arg?.system).toContain('Eres Pulso Coach');
     expect(arg?.system).toContain('CONTEXTO DEL USUARIO');
     expect(arg?.system).toContain('MEMORIA DEL COACH');
-    expect(arg?.temperature).toBe(1);
     expect(arg?.maxOutputTokens).toBe(4096);
     expect(arg?.thinkingLevel).toBe('low');
     expect(arg?.includeThoughts).toBe(true);
@@ -168,6 +168,30 @@ describe('runCoachTask', () => {
     expect(arg?.responseSchema).toBe(SUGGEST_RESPONSE_SCHEMA);
     expect(arg?.system).toContain('DÍA DE HOY');
     expect(arg?.system).not.toContain('CONSULTA');
+  });
+
+  it('suggest y plan meten la propuesta local como BORRADOR; chat no', async () => {
+    const gen = makeGen([
+      res('{"title":"x","focus":"","rationale":[],"exercises":[]}'),
+      res('{"rationale":"x","days":[]}'),
+      res('ok'),
+    ]);
+
+    await coach.runCoachTask('suggest', {}, { generateFn: gen });
+    await coach.runCoachTask('plan', {}, { generateFn: gen });
+    await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+
+    const sug = gen.mock.calls[0]?.[0].prompt ?? '';
+    expect(sug).toContain('Propuesta generada en el dispositivo');
+    /* la base no es un adorno: el prompt dice explícitamente qué hacer con ella */
+    expect(sug).toContain('borrador YA coherente');
+
+    const plan = gen.mock.calls[1]?.[0].prompt ?? '';
+    expect(plan).toContain('Base generada en el dispositivo');
+    /* el plan local trae los 7 días, no una lista vacía */
+    expect(plan).toContain('"days"');
+
+    expect(gen.mock.calls[2]?.[0].prompt ?? '').not.toContain('generada en el dispositivo');
   });
 
   it('P5: suggest/plan no bajan de 8192 tokens de salida, chat respeta el ajuste', async () => {
@@ -499,14 +523,20 @@ describe('runCoachTask', () => {
 
     const plan = await coach.runCoachTask('plan', {}, { generateFn: gen });
     expect(gen).not.toHaveBeenCalled();
-    const payloadPlan = plan.payload as { source: string; days: unknown[]; from: string };
+    const payloadPlan = plan.payload as { source: string; days: { date: string }[]; from: string };
     expect(payloadPlan.source).toBe('local');
     expect(payloadPlan.days).toHaveLength(7);
     expect(payloadPlan.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    /* el plan local cubre la semana en curso desde el lunes, así que `applyWeek`
+       descarta los días ya pasados: se comprueba contra las fechas del payload */
+    const hoy = today();
+    const futuros = payloadPlan.days.filter((d) => d.date >= hoy);
     const aplicado = coach.applyWeek(plan.payload);
-    expect(aplicado.days).toBe(7);
-    expect(aplicado.routines).toBeGreaterThan(0);
+    expect(aplicado.days).toBe(futuros.length);
+    expect(aplicado.skipped).toBe(payloadPlan.days.length - futuros.length);
     expect(aplicado.unresolved).toEqual([]);
+    /* los días futuros SÍ quedan escritos (los del pasado, no) */
+    for (const day of futuros) expect(store.schedule.value[day.date]).toBeDefined();
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
   });
 
@@ -565,8 +595,21 @@ describe('runCoachTask', () => {
     expect(out.text).toContain('IA no disponible');
   });
 
-  it('P2: una respuesta de la IA queda marcada como `model`, sin `fallback`', async () => {
-    const gen = makeGen([
+  it('un JSON ilegible de suggest/plan cae al plan local en vez de dejar payload vacío', async () => {
+    const gen = makeGen([res('Perdona, no puedo darte JSON ahora mismo.')]);
+
+    const out = await coach.runCoachTask('suggest', {}, { generateFn: gen });
+
+    /* la llamada salió, pero la respuesta no traía propuesta parseable */
+    expect(gen).toHaveBeenCalledTimes(1);
+    expect(out.origin).toBe('local');
+    expect(out.fallback?.kind).toBe('parse');
+    expect(out.payload).toBeTruthy();
+    expect((out.payload as { source: string }).source).toBe('local');
+    expect(out.text).toContain('```json');
+  });
+
+  it('P2: una respuesta de la IA queda marcada como `model`, sin `fallback`', async () => {    const gen = makeGen([
       res('{"title":"Propuesta IA","focus":"","rationale":["ok"],"exercises":[]}', {
         usage: { prompt: 100, candidates: 50, total: 150 },
       }),
@@ -771,9 +814,14 @@ describe('applySuggestionAsRoutine', () => {
 });
 
 describe('applyWeek', () => {
+  /* El plan se aplica comparando contra HOY: los días pasados se descartan. Los
+     fixtures usan una semana FUTURA fija y se le pasa a `applyWeek` el lunes de
+     esa semana como `todayIso`, así el test no depende del reloj. */
+  const LUNES = INICIO_SEMANA;
+
   it('escribe los 7 días, crea rutina por día de entreno y marca lastPlanAt', () => {
     const days = Array.from({ length: 7 }, (_, i) => {
-      const date = addDays(INICIO_SEMANA, i);
+      const date = addDays(LUNES, i);
       const descanso = i === 6;
       return {
         date,
@@ -786,25 +834,28 @@ describe('applyWeek', () => {
       };
     });
 
-    const aplicado = coach.applyWeek({
-      source: 'ia',
-      rationale: 'Reparto con 48 h entre grupos',
-      days,
-    });
-
-    expect(aplicado).toEqual({ days: 7, routines: 6, unresolved: [] });
-    expect(Object.keys(store.schedule.value).sort()).toEqual(
-      Array.from({ length: 7 }, (_, i) => addDays(INICIO_SEMANA, i)),
+    const aplicado = coach.applyWeek(
+      {
+        source: 'ia',
+        rationale: 'Reparto con 48 h entre grupos',
+        days,
+      },
+      LUNES,
     );
 
-    expect(store.schedule.value[INICIO_SEMANA]).toMatchObject({
+    expect(aplicado).toEqual({ days: 7, routines: 6, unresolved: [], skipped: 0 });
+    expect(Object.keys(store.schedule.value).sort()).toEqual(
+      Array.from({ length: 7 }, (_, i) => addDays(LUNES, i)),
+    );
+
+    expect(store.schedule.value[LUNES]).toMatchObject({
       status: 'planned',
       type: 'entreno',
       title: 'Empuje 1',
       focus: 'Pecho',
       source: 'ia',
     });
-    const descanso = addDays(INICIO_SEMANA, 6);
+    const descanso = addDays(LUNES, 6);
     expect(store.schedule.value[descanso]).toMatchObject({
       status: 'rest',
       type: 'descanso',
@@ -816,7 +867,7 @@ describe('applyWeek', () => {
     expect(store.routines.value[0]?.source).toBe('ia');
     expect(store.routines.value[0]?.name).toContain('Empuje 1 ·');
     expect(store.routines.value[0]?.items[0]).toMatchObject({ exId: pressId(), sets: 4 });
-    expect(store.schedule.value[INICIO_SEMANA]?.routineId).toBe(store.routines.value[0]?.id);
+    expect(store.schedule.value[LUNES]?.routineId).toBe(store.routines.value[0]?.id);
     expect(persistedRoutines()).toHaveLength(6);
 
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
@@ -825,29 +876,53 @@ describe('applyWeek', () => {
     );
   });
 
+  it('los días ANTERIORES a hoy se descartan y se cuentan en skipped', () => {
+    const aplicado = coach.applyWeek(
+      {
+        source: 'ia',
+        days: [
+          { date: addDays(LUNES, -2), type: 'entreno', title: 'Pasado', exercises: [] },
+          { date: addDays(LUNES, -1), type: 'descanso', title: 'Pasado', exercises: [] },
+          { date: LUNES, type: 'descanso', title: 'Hoy', exercises: [] },
+          { date: addDays(LUNES, 1), type: 'descanso', title: 'Futuro', exercises: [] },
+        ],
+      },
+      LUNES,
+    );
+
+    expect(aplicado).toEqual({ days: 2, routines: 0, unresolved: [], skipped: 2 });
+    expect(store.schedule.value[addDays(LUNES, -2)]).toBeUndefined();
+    expect(store.schedule.value[addDays(LUNES, -1)]).toBeUndefined();
+    expect(store.schedule.value[LUNES]?.title).toBe('Hoy');
+    expect(store.schedule.value[addDays(LUNES, 1)]?.title).toBe('Futuro');
+  });
+
   it('lo que no resuelve se acumula en unresolved y no crea rutina vacía', () => {
-    const aplicado = coach.applyWeek({
-      source: 'ia',
-      days: [
-        {
-          date: INICIO_SEMANA,
-          type: 'entreno',
-          title: 'Empuje',
-          focus: 'Pecho',
-          exercises: [
-            { name: NOMBRE, sets: 4, repMin: 6, repMax: 8, weight: 80, rest: 180, notes: '' },
-            { name: 'Press de Piso con Mancuernas inclinado', sets: 3 },
-          ],
-        },
-        {
-          date: addDays(INICIO_SEMANA, 1),
-          type: 'entreno',
-          title: 'Tirón',
-          focus: 'Espalda',
-          exercises: [{ name: 'Kroc Row unilateral con mancuerna', sets: 3 }],
-        },
-      ],
-    });
+    const aplicado = coach.applyWeek(
+      {
+        source: 'ia',
+        days: [
+          {
+            date: LUNES,
+            type: 'entreno',
+            title: 'Empuje',
+            focus: 'Pecho',
+            exercises: [
+              { name: NOMBRE, sets: 4, repMin: 6, repMax: 8, weight: 80, rest: 180, notes: '' },
+              { name: 'Press de Piso con Mancuernas inclinado', sets: 3 },
+            ],
+          },
+          {
+            date: addDays(LUNES, 1),
+            type: 'entreno',
+            title: 'Tirón',
+            focus: 'Espalda',
+            exercises: [{ name: 'Kroc Row unilateral con mancuerna', sets: 3 }],
+          },
+        ],
+      },
+      LUNES,
+    );
 
     expect(aplicado.days).toBe(2);
     /* solo el día 1 queda con rutina: el día 2 NO tenía ni un ejercicio reconocible */
@@ -858,15 +933,44 @@ describe('applyWeek', () => {
     ]);
     expect(aplicado.unresolved[0]?.reason).toContain('inclinado');
     expect(aplicado.unresolved[1]?.reason).toBe('no está en tu biblioteca');
-    expect(store.schedule.value[addDays(INICIO_SEMANA, 1)]?.routineId).toBeUndefined();
+    expect(store.schedule.value[addDays(LUNES, 1)]?.routineId).toBeUndefined();
+  });
+
+  it('sanea los números raros del modelo antes de guardarlos', () => {
+    coach.applyWeek(
+      {
+        days: [
+          {
+            date: LUNES,
+            type: 'entreno',
+            title: 'Empuje',
+            exercises: [
+              {
+                name: NOMBRE,
+                sets: 40,
+                repMin: 9,
+                repMax: 5,
+                rest: 50000,
+                weight: 9999,
+              },
+            ],
+          },
+        ],
+      },
+      LUNES,
+    );
+
+    const item = store.routines.value[0]?.items[0];
+    expect(item).toMatchObject({ sets: 12, repMin: 9, repMax: 9, rest: 600, weight: 500 });
   });
 
   it('un plan sin days no toca ni el calendario ni meta', () => {
-    expect(coach.applyWeek(null)).toEqual({ days: 0, routines: 0, unresolved: [] });
+    expect(coach.applyWeek(null)).toEqual({ days: 0, routines: 0, unresolved: [], skipped: 0 });
     expect(coach.applyWeek({ rationale: 'nada' })).toEqual({
       days: 0,
       routines: 0,
       unresolved: [],
+      skipped: 0,
     });
     expect(store.schedule.value).toEqual({});
     expect(store.meta.value.lastPlanAt).toBeNull();
@@ -1000,25 +1104,26 @@ describe('ajustes anidados ', () => {
     const model = store.settings.value.ai.model;
 
     store.setSettingsPath('bars.olimpica', 20);
-    store.setSettingsPath('ai.temperature', 0.7);
+    store.setSettingsPath('ai.maxTokens', 2048);
 
     expect(store.settings.value.bars.olimpica).toBe(20);
     expect(store.settings.value.bars.ez).toBe(0);
-    expect(store.settings.value.ai.temperature).toBe(0.7);
+    expect(store.settings.value.ai.maxTokens).toBe(2048);
     expect(store.settings.value.ai.model).toBe(model);
     expect(store.settings.value.ai.apiKey).toBe('test-key');
 
     /* escrito de verdad en `pulso.state` (lectura-modificación-escritura) */
     store.refresh();
     expect(store.settings.value.bars.olimpica).toBe(20);
-    expect(store.settings.value.ai.temperature).toBe(0.7);
+    expect(store.settings.value.ai.maxTokens).toBe(2048);
     expect(store.settings.value.ai.model).toBe(model);
   });
 
   it('una ruta vacía no rompe ni borra nada', () => {
+    const maxTokens = store.settings.value.ai.maxTokens;
     store.setSettingsPath('', 1);
-    store.setSettingsPath('.temperature', 1);
-    expect(store.settings.value.ai.temperature).toBe(1);
+    store.setSettingsPath('.maxTokens', 1);
+    expect(store.settings.value.ai.maxTokens).toBe(maxTokens);
   });
 });
 

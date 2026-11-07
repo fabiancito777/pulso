@@ -704,8 +704,7 @@ function StatusCard() {
   }
 
   const level = String(ai.thinkingLevel ?? 'auto');
-  const budget = String(ai.thinkingBudget ?? '').trim();
-  const thinking = level === 'auto' ? (budget ? `budget ${budget}` : 'auto') : level;
+  const thinking = level === 'auto' ? 'auto' : level;
 
   return (
     <section class="card tight">

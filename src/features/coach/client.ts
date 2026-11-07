@@ -9,15 +9,17 @@
  * de una red caída.
  */
 
-import { trunc } from '@/domain/text';
-import type { ModelOption } from '@/domain/types';
 import type { ResponseSchema } from './types';
 
-/** Modelo por defecto de la app (el mismo que ). */
+/**
+ * Modelo por defecto de la app.
+ *
+ * La app da soporte a DOS modelos (ver `AI_MODELS`): `gemini-3.8-flash` y
+ * `gemini-3.5-flash-lite`. Los 2.5 quedan fuera porque usan `thinkingBudget` en
+ * vez de `thinkingLevel`, y los 3.6/3.7 porque su serie ya no aporta nada sobre
+ * el 3.8 (mismo thinking, peor calidad y precio).
+ */
 export const DEFAULT_MODEL = 'gemini-3.8-flash';
-
-/** Cuántos modelos se quedan como máximo al listar (`C.listModels` ). */
-export const MODELS_LIMIT = 120;
 
 /** Mensaje ya mantenido con el modelo. El rol de Gemini es `model`, no `assistant`. */
 export interface ChatMsg {
@@ -46,13 +48,9 @@ export interface GenOpts {
   history?: ChatMsg[];
   /** Nivel de razonamiento; `'auto'` deja que elija el modelo. */
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'auto';
-  /** Presupuesto de tokens de razonamiento (alternativa a `thinkingLevel`). */
-  thinkingBudget?: number;
   /** Pide los pensamientos como partes con `thought: true` en la respuesta. */
   includeThoughts?: boolean;
-  /** Temperatura (0,7 por defecto, como ). */
-  temperature?: number;
-  /** Tope de tokens de respuesta (4096 por defecto, como ). */
+  /** Tope de tokens de respuesta (4096 por defecto). */
   maxOutputTokens?: number;
   /** Para cancelar la llamada desde la UI. */
   signal?: AbortSignal;
@@ -108,7 +106,6 @@ export class GeminiError extends Error {
 }
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const DEFAULT_TEMPERATURE = 0.7;
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 
 /**
@@ -148,9 +145,6 @@ export function thinkingTimeoutMs(level?: string | null): number {
  * corte sigue siendo el tope duro (`timeoutMs`).
  */
 export const SLOW_NOTIFY_MS = 60_000;
-
-/** Tope de páginas de `GET /models`: un `nextPageToken` repetido no hace un bucle. */
-export const MAX_MODEL_PAGES = 10;
 
 /**
  * Señal de un intento: externa (cancelación de la UI) + temporizador propio.
@@ -261,12 +255,10 @@ interface LooseResponse {
 
 interface ThinkingConfig {
   thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
-  thinkingBudget?: number;
   includeThoughts?: boolean;
 }
 
 interface GenerationConfig {
-  temperature: number;
   maxOutputTokens: number;
   responseMimeType?: string;
   responseSchema?: ResponseSchema;
@@ -274,14 +266,14 @@ interface GenerationConfig {
 }
 
 /**
- * `generationConfig.thinkingConfig`: level XOR budget (nunca los dos a la vez;
- * `'auto'` cuenta como "sin nivel", igual que ) más `includeThoughts`.
- * Si no hay nada que configurar no se manda la clave.
+ * `generationConfig.thinkingConfig`: `thinkingLevel` (los dos modelos soportados
+ * son Gemini 3, así que `thinkingBudget` ya no aplica) más `includeThoughts`.
+ * `'auto'` cuenta como "sin nivel" y deja decidir al modelo. Si no hay nada que
+ * configurar no se manda la clave.
  */
 function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
   const tc: ThinkingConfig = {};
   if (o.thinkingLevel && o.thinkingLevel !== 'auto') tc.thinkingLevel = o.thinkingLevel;
-  else if (typeof o.thinkingBudget === 'number') tc.thinkingBudget = o.thinkingBudget;
   if (o.includeThoughts) tc.includeThoughts = true;
   return Object.keys(tc).length ? tc : undefined;
 }
@@ -339,7 +331,6 @@ export function buildBody(o: GenOpts, opts: { dropThinking?: boolean } = {}): un
   const contents = normalizeContents(o);
 
   const generationConfig: GenerationConfig = {
-    temperature: o.temperature ?? DEFAULT_TEMPERATURE,
     maxOutputTokens: o.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   };
   if (o.json) generationConfig.responseMimeType = 'application/json';
@@ -484,27 +475,29 @@ function networkError(err: unknown): GeminiError {
 
 /* ---------- política de reintentos ---------- */
 
-/** Reintentos máximos: la llamada original + como mucho 2 más (3 en total). */
-const MAX_RETRIES = 2;
-/** Backoff entre intentos: 300-600 ms, nunca más (la app no puede quedarse parada). */
+/**
+ * Política de reintentos, UNA sola para todos los callers (antes dependía de si
+ * había un `fetch` mockeado, y eso significaba que la ruta de producción no la
+ * cubría ningún test).
+ *
+ * - `unusable` (la respuesta llegó pero no sirve): 2 reintentos con backoff
+ *   corto de 300-600 ms, que es repetir la petición lo antes posible.
+ * - `transient` (red caída, 429 o 5xx): hasta `TRANSIENT_RETRIES` reintentos con
+ *   backoff exponencial + jitter, siempre con una pared de tiempo
+ *   (`TRANSIENT_BUDGET_MS`) contada desde el primer intento. La API devuelve 503
+ *   «high demand» en picos que se resuelven solos en segundos; un tope de 2
+ *   reintentos de 300 ms se rendía ANTES de que pasara el pico. Quien quiera
+ *   cortar antes tiene `GenOpts.signal`.
+ *
+ * Con `fetchFn` inyectado (tests) la espera es 0, pero los reintentos y la
+ * pared de tiempo son los MISMOS: lo que se prueba es la política real.
+ */
+const UNUSABLE_RETRIES = 2;
+/** Exportado para que los tests fijen el contrato sin repetir el número. */
+export const TRANSIENT_RETRIES = 8;
+const TRANSIENT_BUDGET_MS = 60_000;
 const BACKOFF_MIN_MS = 300;
 const BACKOFF_SPAN_MS = 300;
-
-/**
- * Reintentos de un fallo TRANSITORIO cuando la red es de verdad (sin `fetchFn`
- * mockeado).
- *
- * La API devuelve 503 `UNAVAILABLE` («high demand») en picos que se resuelven
- * solos en cuestión de segundos, y con 2 reintentos de 300 ms la llamada se
- * daba por perdida ANTES de que el pico pasara: el error llegaba a la UI (y a
- * los tests de red) con la ventana todavía abierta. Aquí se espera con backoff
- * exponencial y jitter, pero NUNCA más de `TRANSIENT_BUDGET_MS` desde el primer
- * intento: un pico de verdad se resuelve en segundos y el usuario prefiere
- * esperar un rato a un error, pero la app no puede quedarse parada para siempre
- * (quien quiere cortar tiene `GenOpts.signal`).
- */
-const TRANSIENT_RETRIES = 10;
-const TRANSIENT_BUDGET_MS = 120_000;
 const TRANSIENT_BACKOFF_MIN_MS = 500;
 const TRANSIENT_BACKOFF_MAX_MS = 4_000;
 
@@ -530,10 +523,9 @@ function retryReason(err: GeminiError): 'unusable' | 'transient' | null {
 }
 
 /**
- * Pausa antes del siguiente intento. Con `fetchFn` mockeado es 0 siempre
- * (los tests no esperan de verdad); en red real un fallo transitorio espera con
- * backoff exponencial + jitter y el resto (respuesta sin texto) con los 300-600
- * ms de siempre, que es repetir la petición lo antes posible.
+ * Pausa antes del siguiente intento. Con `fetchFn` inyectado es 0 (los tests no
+ * esperan de verdad); en red real un transitorio espera con backoff exponencial
+ * + jitter y el resto con los 300-600 ms de siempre.
  */
 function backoff(fetchFn: unknown, reason: 'unusable' | 'transient', attempt: number): number {
   if (fetchFn) return 0;
@@ -665,12 +657,12 @@ async function requestOnce(
  *    con texto. Los reintentos de (ii) repiten el mismo body.
  * 3. NUNCA se reintenta con texto utilizable ni en errores 400/403 (`auth`),
  *    `blocked`, `parse` ni el resto de 4xx.
- * 4. (i) siempre son 2 reintentos con backoff de 300-600 ms. (ii) en red real
- *    sube a `TRANSIENT_RETRIES` con backoff exponencial y pared de tiempo
+ * 4. (i) son `UNUSABLE_RETRIES` reintentos con backoff de 300-600 ms. (ii) son
+ *    `TRANSIENT_RETRIES` con backoff exponencial y pared de tiempo
  *    `TRANSIENT_BUDGET_MS`, para surfear los 503 «high demand» de la API sin
  *    dejar la app parada.
- * 5. Con `fetchFn` inyectado (tests con fetch mock) la espera es 0 y la política
- *    es la clásica de 3 intentos, así que los tests no esperan de verdad.
+ * 5. La política es la MISMA con `fetchFn` inyectado o sin él; lo único que
+ *    cambia es que en los tests la espera es 0 para no alargar la suite.
  *
  * Rechaza con `GeminiError`: `auth` sin key o con 401/403, `quota` con 429,
  * `blocked` si la API bloquea el prompt, `http` para el resto de errores HTTP,
@@ -711,12 +703,9 @@ export async function generate(o: GenOpts, fetchFn?: typeof fetch): Promise<GenR
       if (!(err instanceof GeminiError)) throw err;
       const reason = retryReason(err);
       if (!reason) throw err;
-      /* En red real un transitorio tiene más margen (backoff exponencial dentro
-         de `TRANSIENT_BUDGET_MS`); con `fetchFn` mockeado, la política clásica
-         de 2 reintentos, que es la que fijan los tests. */
-      const patient = !fetchFn && reason === 'transient';
-      if (attempt >= (patient ? TRANSIENT_RETRIES : MAX_RETRIES)) throw err;
-      if (patient && Date.now() - t0 >= TRANSIENT_BUDGET_MS) throw err;
+      const transient = reason === 'transient';
+      if (attempt >= (transient ? TRANSIENT_RETRIES : UNUSABLE_RETRIES)) throw err;
+      if (transient && Date.now() - t0 >= TRANSIENT_BUDGET_MS) throw err;
       /* (i): a partir de AHORA el body se manda sin thinkingConfig */
       if (reason === 'unusable') dropThinking = true;
       const wait = backoff(fetchFn, reason, attempt);
@@ -764,129 +753,4 @@ export async function testConnection(
       kind: err instanceof GeminiError ? err.kind : undefined,
     };
   }
-}
-
-/** Respuesta de `GET /models`, leída campo a campo y de forma tolerante. */
-interface ModelsPage {
-  error?: ApiError;
-  models?: {
-    name?: string;
-    displayName?: string;
-    description?: string;
-    supportedGenerationMethods?: string[];
-  }[];
-  nextPageToken?: string;
-}
-
-/** Modelos que antes excluía del selector: no sirven para generar contenido. */
-const MODEL_EXCLUDE = /embedding|aqa|imagen|veo|tts|live/i;
-
-/**
- * Modelos disponibles PARA TU proyecto: `GET /models` con la key en la
- * cabecera `x-goog-api-key` (nunca en la URL, política de este módulo),
- * paginando `nextPageToken` hasta `MODELS_LIMIT`, como `C.listModels`.
- *
- * Solo se quedan los que soportan `generateContent` y que no son de imagen,
- * audio, vídeo ni embeddings. El listado NO consume cuota de `generateContent`
- * (es una request HTTP más), pero sí necesita key y red: por eso, si esto
- * falla o viene vacío, la UI sigue con el catálogo `AI_MODELS`.
- *
- * Lanza `GeminiError`: `auth` sin key o con 401/403, `quota` con 429, `http`
- * para el resto de errores HTTP, `network` si no hay conexión (o vence el
- * timeout por petición) y `empty` si la cuenta no devuelve ningún modelo
- * utilizable. Con `fetchFn` mockeado (tests) no se espera entre páginas y no se
- * toca la red.
- *
- * `nextPageToken` se recuerda: un token repetido (API que no avanza) corta el
- * bucle, igual que el tope `MAX_MODEL_PAGES`, para que el selector no se quede
- * girando indefinidamente.
- */
-export interface ListModelsOpts {
-  /** Tiempo máximo por petición en ms (`REQUEST_TIMEOUT_MS` por defecto). */
-  timeoutMs?: number;
-  /** Cancelación externa opcional. */
-  signal?: AbortSignal;
-}
-
-export async function listModels(
-  apiKey: string,
-  fetchFn?: typeof fetch,
-  opts: ListModelsOpts = {},
-): Promise<ModelOption[]> {
-  const key = String(apiKey ?? '').trim();
-  if (!key) throw new GeminiError('auth', 'Falta la API key de Gemini (Ajustes → Coach AI)');
-  const call: (url: string, init: RequestInit) => Promise<unknown> = fetchFn ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS;
-
-  const out: ModelOption[] = [];
-  const seen = new Set<string>();
-  let token = '';
-  for (let pageNo = 0; pageNo < MAX_MODEL_PAGES; pageNo++) {
-    const url = `${BASE}/models?pageSize=200${
-      token ? `&pageToken=${encodeURIComponent(token)}` : ''
-    }`;
-    const gate = deadline(opts.signal, timeoutMs);
-    let fetched: unknown;
-    let res: LooseResponse;
-    let status: number | undefined;
-    let data: unknown = null;
-    let raw = '';
-    try {
-      try {
-        fetched = await call(url, { headers: { 'x-goog-api-key': key }, signal: gate.signal });
-      } catch (err) {
-        if (gate.timedOut()) throw timeoutError(timeoutMs);
-        throw networkError(err);
-      }
-
-      res = fetched as LooseResponse;
-      status = typeof res.status === 'number' ? res.status : undefined;
-      try {
-        if (typeof res.text === 'function') raw = await res.text();
-        else if (typeof res.json === 'function') data = await res.json();
-      } catch (err) {
-        if (gate.timedOut()) throw timeoutError(timeoutMs);
-        throw networkError(err);
-      }
-    } finally {
-      gate.dispose();
-    }
-
-    if (raw.trim()) {
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        throw new GeminiError('parse', fallbackMessage(status, raw));
-      }
-    }
-
-    const failed =
-      res.ok === false || (res.ok === undefined && status !== undefined && status >= 400);
-    if (failed) throw httpError(status, data, raw);
-    if (!data || typeof data !== 'object')
-      throw new GeminiError('empty', 'Respuesta vacía de la API');
-    const page = data as ModelsPage;
-    if (page.error) throw httpError(status, page, '');
-
-    for (const model of page.models ?? []) {
-      const id = String(model.name ?? '').replace(/^models\//, '');
-      if (!id || MODEL_EXCLUDE.test(id)) continue;
-      if (!(model.supportedGenerationMethods ?? []).includes('generateContent')) continue;
-      out.push({
-        id,
-        label: model.displayName || id,
-        hint: model.description ? trunc(model.description, 90) : '',
-      });
-      if (out.length >= MODELS_LIMIT) break;
-    }
-
-    token = String(page.nextPageToken ?? '');
-    if (!token || out.length >= MODELS_LIMIT) break;
-    if (seen.has(token)) break;
-    seen.add(token);
-  }
-
-  if (!out.length)
-    throw new GeminiError('empty', 'La cuenta no devolvió modelos con generateContent');
-  return out;
 }

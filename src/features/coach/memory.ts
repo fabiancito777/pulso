@@ -4,7 +4,7 @@
  * Es markdown persistido en `settings.ai.memory` con cinco encabezados. El
  * modelo la recibe tal cual dentro del contexto y puede DEVOLVER aprendizajes
  * nuevos en un bloque ```` ```memoria ```` al final de su respuesta; la app los
- * vuelca aquí con `extractMemoryBlock` + `applyMemoryEntries`.
+ * vuelca aquí con `extractBlocks` (`./parse`) + `applyMemoryEntries`.
  *
  * Reglas que no se pueden romper:
  *
@@ -38,8 +38,9 @@ import type { MemorySeed, MemoryUpdate } from './types';
 
 /**
  * El cierre ```` ```memoria … ``` ```` con SOLO espacio en blanco detrás: el
- * bloque cuenta únicamente si cierra la respuesta (regla  que sigue
- * vigente para no confundir un ejemplo con un aprendizaje).
+ * bloque cuenta únicamente si cierra la respuesta, que es lo que pide
+ * `MEMORY_INSTRUCTION`. Así un bloque de ejemplo citado a mitad de una
+ * explicación no se guarda como aprendizaje.
  */
 const MEMORY_CLOSE = /```memoria[^\n]*\n?[\s\S]*?```([\s\S]*)$/i;
 
@@ -73,14 +74,13 @@ export function defaultMemory(seed: MemorySeed = {}): string {
 }
 
 /**
- * Separa el bloque ```` ```memoria … ``` ```` si cierra el texto del modelo.
+ * Separa el bloque ```` ```memoria … ``` ```` si CIERRA el texto del modelo.
  * Devuelve el texto SIN ese bloque (`rest`) y su contenido (`block`, o `null`
- * si no hay bloque o viene vacío).
+ * si no hay bloque, viene vacío o no cierra la respuesta).
  *
- * Va sobre `extractBlocks` cuando la extracción sale LIMPIA: exactamente un
- * bloque y nada más allá de su cierre. Si el bloque viene en mitad del texto,
- * acompañado de otro o no cierra la respuesta, no se arranca (misma regla que
- * antes, fijada en `memory.test.ts`).
+ * Es el camino que usa el coach (`state/coach.ts`) desde que se unificó con
+ * `extractBlocks`: el modelo a veces cita el formato dentro de una explicación,
+ * y solo el bloque final es un aprendizaje de verdad.
  */
 export function extractMemoryBlock(text: string): { rest: string; block: string | null } {
   const raw = String(text ?? '');

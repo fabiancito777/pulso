@@ -360,16 +360,15 @@ export const THEMES: readonly OptionItem[] = [
 ];
 
 /* ---------- modelos del coach ---------- */
+/**
+ * Los DOS modelos que soporta la app. Se recortó a propósito: los 3.6/3.7 no
+ * aportan nada sobre el 3.8 y los 2.5 usan `thinkingBudget` en vez de
+ * `thinkingLevel`, lo que obligaba a mantener dos configuraciones de pensamiento
+ * y a un campo de Ajustes que solo servía en esos dos modelos.
+ */
 export const AI_MODELS: readonly ModelOption[] = [
   { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', hint: 'más inteligente · recomendado' },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', hint: 'razonamiento multi-paso' },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', hint: 'equilibrado' },
-  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', hint: 'thinking por defecto medio' },
   { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', hint: 'rápido y económico' },
-  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite', hint: 'alto rendimiento' },
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', hint: 'usa thinkingBudget' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', hint: 'usa thinkingBudget' },
-  { id: 'gemini-flash-latest', label: 'gemini-flash-latest', hint: 'alias móvil' },
 ];
 
 /* ---------- niveles de razonamiento del coach ---------- */

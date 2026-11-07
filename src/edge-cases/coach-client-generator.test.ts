@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Exercise } from '@/domain/types';
+import { AI_MODELS } from '@/domain/data';
 import {
   buildBody,
   DEFAULT_MODEL,
   generate,
-  listModels,
-  MODELS_LIMIT,
 } from '@/features/coach/client';
 import {
   buildGeneratorRequest,
@@ -111,13 +110,10 @@ describe('client (196–206)', () => {
     expect(called).toBe(false);
   });
 
-  it('203 · listModels respeta MODELS_LIMIT', async () => {
-    const models = Array.from({ length: 200 }, (_, i) => ({
-      name: `models/m${i}`,
-      supportedGenerationMethods: ['generateContent'],
-    }));
-    const out = await listModels('k', fakeFetch({ models }));
-    expect(out.length).toBe(MODELS_LIMIT);
+  it('203 · el catálogo tiene exactamente los dos modelos soportados', () => {
+    /* La app recortó el soporte a Gemini 3 (thinkingLevel): un 2.5 o un alias
+       rompería el `thinkingConfig` y ya no aparece en el selector. */
+    expect(AI_MODELS.map((m) => m.id)).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
   });
 
   it('204 · El modelo por defecto es gemini-3.8-flash', () => {

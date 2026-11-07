@@ -121,9 +121,7 @@ export interface AiSettings {
   apiKey: string;
   model: string;
   thinkingLevel: string;
-  thinkingBudget: string | number;
   includeThoughts: boolean;
-  temperature: number;
   maxTokens: number;
   /**
    * Espera máxima por respuesta en segundos (0 o vacío = automática, según el

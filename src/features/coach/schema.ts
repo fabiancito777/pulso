@@ -86,6 +86,9 @@ export const PLAN_RESPONSE_SCHEMA: ResponseSchema = {
     rationale: { type: 'STRING', description: 'Explicación breve del reparto' },
     days: {
       type: 'ARRAY',
+      description: 'Los 7 días de la semana, con su fecha exacta',
+      minItems: 7,
+      maxItems: 7,
       items: {
         type: 'OBJECT',
         properties: {

@@ -44,11 +44,20 @@
  */
 import { weeklySeries } from '@/domain/analytics';
 import type { AIExerciseProposal } from '@/domain/ai-exercise';
-import { addDays, dowLong, iso, label as dateLabel, nowTs, startOfWeek } from '@/domain/dates';
+import {
+  addDays,
+  dowLong,
+  iso,
+  label as dateLabel,
+  nowTs,
+  startOfWeek,
+  today,
+} from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { int, num } from '@/domain/num';
+import { sanitizePrescription } from '@/domain/prescription';
 import { freshSupersetIds } from '@/domain/supersets';
 import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
@@ -59,8 +68,14 @@ import { queryHistory } from '@/features/coach/history';
 import type { HistoryQuery } from '@/features/coach/history';
 import { localSuggest, localWeek, summarizeLocal } from '@/features/coach/local';
 import type { LocalParams, PlanJSON, SuggestJSON } from '@/features/coach/local';
-import { applyMemoryEntries } from '@/features/coach/memory';
-import { extractBlocks, extractCreations, parseJSON, payloadItems } from '@/features/coach/parse';
+import { applyMemoryEntries, extractMemoryBlock } from '@/features/coach/memory';
+import {
+  asProposal,
+  extractBlocks,
+  extractCreations,
+  parseJSON,
+  payloadItems,
+} from '@/features/coach/parse';
 import {
   boundedHistory,
   buildRequest,
@@ -300,13 +315,26 @@ function resolveItems(list: unknown): {
       if (failure) unresolved.push(failure);
       continue;
     }
+    /* El modelo es libre de devolver `sets: 40` o `rest: 50000`: sin este
+       saneado, un JSON raro acababa guardado tal cual en una rutina. Los rangos
+       son los del editor manual (`domain/exercise-draft.ts`). */
+    const clean = sanitizePrescription(
+      {
+        sets: raw.sets === undefined ? undefined : int(raw.sets, ex.sets),
+        repMin: raw.repMin === undefined ? undefined : int(raw.repMin, ex.repMin),
+        repMax: raw.repMax === undefined ? undefined : int(raw.repMax, ex.repMax),
+        rest: raw.rest === undefined ? undefined : int(raw.rest, ex.rest),
+        weight: toWeight(raw.weight),
+      },
+      { sets: ex.sets, repMin: ex.repMin, repMax: ex.repMax, rest: ex.rest, weight: null },
+    );
     items.push({
       exId: ex.id,
-      sets: int(raw.sets, ex.sets),
-      repMin: int(raw.repMin, ex.repMin),
-      repMax: int(raw.repMax, ex.repMax),
-      rest: int(raw.rest, ex.rest),
-      weight: toWeight(raw.weight),
+      sets: clean.sets,
+      repMin: clean.repMin,
+      repMax: clean.repMax,
+      rest: clean.rest,
+      weight: clean.weight,
       notes: typeof raw.notes === 'string' ? raw.notes : '',
       /* el coach marca el par con una letra compartida en dos ejercicios seguidos */
       ...(typeof raw.superset === 'string' && raw.superset.trim()
@@ -421,8 +449,11 @@ function weeklyBrief(list: readonly Session[], weeks: number, todayIso: string):
  *
  * Exportado como `aiGenOptions` (contrato de Fase 0, spec
  * `_specs/creacion-ejercicios-plan.md` §3.3): el generador de ejercicios arma
- * sus `GenOpts` con la MISMA key, modelo, temperatura y thinking que el coach
- * sin duplicar estas líneas ni tocar `features/coach/client.ts`.
+ * sus `GenOpts` con la MISMA key, modelo y thinking que el coach sin duplicar
+ * estas líneas ni tocar `features/coach/client.ts`.
+ *
+ * No manda `temperature`: desde Gemini 3.6 la API la ignora (y la rechazará en
+ * generaciones futuras), así que el ajuste se retiró de la app entera.
  */
 /**
  * Tope de espera por intento: `ai.timeoutSec` manda (0 o vacío = automático)
@@ -442,7 +473,6 @@ export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
     system: req.system,
     prompt: req.prompt,
     json: req.json,
-    temperature: num(ai.temperature, 1),
     maxOutputTokens: int(ai.maxTokens, 4096),
     timeoutMs: timeoutFor(ai),
   };
@@ -452,8 +482,6 @@ export function aiGenOptions(ai: Settings['ai'], req: CoachRequest): GenOpts {
   /* El esquema viaja con las tareas JSON (`suggest`/`plan`): `client.buildBody`
      solo lo manda si además se pide `responseMimeType: application/json` */
   if (req.json && req.responseSchema) opts.responseSchema = req.responseSchema;
-  const budget = String(ai.thinkingBudget ?? '').trim();
-  if (budget) opts.thinkingBudget = int(budget, -1);
   if (ai.includeThoughts) opts.includeThoughts = true;
   return opts;
 }
@@ -561,8 +589,9 @@ export async function runCoachTask(
   const ai = st.ai;
   const hasKey = String(ai.apiKey ?? '').trim() !== '';
 
-  /* foto del estado para la tarea entera (la misma para el modelo y para el
-     planificador local, que se usa sin key o si la llamada falla) */
+  /* foto del estado para la tarea entera (la misma para el modelo, para la
+     propuesta que se le pasa como base y para el planificador local, que se usa
+     sin key o si la llamada falla) */
   const snap: Omit<LocalParams, 'todayIso'> = {
     settings: st,
     exercises: exercises.value,
@@ -591,11 +620,11 @@ export async function runCoachTask(
   }
   const ctx = buildContext({
     settings: st,
-    sessions: sessions.value,
+    sessions: snap.sessions,
     routines: routines.value,
     schedule: schedule.value,
-    equipment: equipment.value,
-    exercises: exercises.value,
+    equipment: snap.equipment,
+    exercises: snap.exercises,
     opts: {
       todayIso,
       maxSessions: opts.maxSessions ?? SESSIONS_BY_TASK[task],
@@ -629,12 +658,22 @@ export async function runCoachTask(
   }
   if (task === 'analyze') {
     reqOpts.weeks = ANALYZE_WEEKS;
-    reqOpts.weeklyBrief = weeklyBrief(sessions.value, ANALYZE_WEEKS, todayIso);
+    reqOpts.weeklyBrief = weeklyBrief(snap.sessions, ANALYZE_WEEKS, todayIso);
   }
+  /* La propuesta del dispositivo viaja como DATO de apertura del prompt (ver
+     `localHead` en `prompts.ts`): el modelo la recibe primero y la mejora o
+     corrige, en vez de partir de cero. Se calcula con la MISMA foto de estado
+     (`snap`) que el resto de la tarea, así que si el usuario cambia el material
+     a mitad de la llamada la base sigue siendo coherente con lo que se le
+     contó al modelo. Es cálculo puro y barato: no toca la red. */
+  if (isLocalTask(task)) reqOpts.local = buildLocal(task, snap, todayIso, from);
   const req = buildRequest(task, reqOpts);
   const base = aiGenOptions(ai, req);
   /* El tope de Ajustes manda en chat/analyze; en suggest/plan (JSON largo) no
-     puede bajar del mínimo — el `?? 4096` es el default de `aiGenOptions` */
+     puede bajar del mínimo — el `?? 4096` es el default de `aiGenOptions`.
+     `maxOutputTokens` incluye los tokens de pensamiento, así que con thinking
+     alto el JSON podía quedarse sin sitio: el techo alto no cuesta más (solo se
+     factura lo generado) y evita que un plan de 7 días se corte a medias. */
   if (task === 'suggest' || task === 'plan') {
     base.maxOutputTokens = Math.max(base.maxOutputTokens ?? 4096, JSON_TASK_MAX_TOKENS);
   }
@@ -694,7 +733,7 @@ export async function runCoachTask(
       if (!query) continue; /* un bloque ilegible no rompe la tarea */
       consulted.push(query.exercise);
       answers.push(
-        queryHistory(sessions.value, query, { unit: st.units, exercises: exercises.value }),
+        queryHistory(snap.sessions, query, { unit: st.units, exercises: snap.exercises }),
       );
     }
     if (!answers.length) {
@@ -726,19 +765,16 @@ export async function runCoachTask(
     });
   }
 
-  /* 5 · memoria: se vuelca y se quita del texto final */
-  const { rest: clean, blocks: memoryBlocks } = extractBlocks(text, 'memoria');
+  /* 5 · memoria: se vuelca y se quita del texto final. `extractMemoryBlock`
+     exige que el bloque CIERRE la respuesta: citar el formato a mitad de una
+     explicación no es un aprendizaje. */
+  const { rest: clean, block: memoryBlock } = extractMemoryBlock(text);
   const memoryAdded: string[] = [];
-  if (memoryBlocks.length) {
-    let memory = String(settings.value.ai.memory ?? '');
-    for (const block of memoryBlocks) {
-      if (!block.trim()) continue;
-      const update = applyMemoryEntries(memory, block);
-      memory = update.memory;
-      memoryAdded.push(...update.added);
-    }
+  if (memoryBlock) {
+    const update = applyMemoryEntries(String(st.ai.memory ?? ''), memoryBlock);
+    memoryAdded.push(...update.added);
     if (memoryAdded.length) {
-      patchSettings({ ai: { ...settings.value.ai, memory } });
+      patchSettings({ ai: { ...settings.value.ai, memory: update.memory } });
     }
   }
 
@@ -747,10 +783,27 @@ export async function runCoachTask(
      confirmación — aquí NUNCA se crea nada, eso es un clic del usuario */
   const { rest: finalText, creations } = extractCreations(clean);
 
+  /* 7 · una tarea JSON sin JSON utilizable cae al plan local en vez de dejar al
+     usuario con «no devolvió una sugerencia legible». Pasa sobre todo cuando el
+     thinking alto consume el presupuesto y el `finishReason` es `MAX_TOKENS`:
+     el cliente devuelve el texto parcial a propósito (para que el chat pueda
+     enseñarlo), pero en `suggest`/`plan` un JSON a medias no sirve de nada. */
+  const payload = extractPayload(task, clean);
+  if (isLocalTask(task) && payload === undefined) {
+    const cortado = res.finish === 'MAX_TOKENS';
+    const cause = new GeminiError(
+      'parse',
+      cortado
+        ? 'La propuesta se cortó por el límite de tokens y no se pudo interpretar'
+        : 'La propuesta no traía un JSON interpretable',
+    );
+    return localOutcome(buildLocal(task, snap, todayIso, from), clock() - t0, cause);
+  }
+
   return {
     origin: 'model',
     text: finalText.trim(),
-    payload: extractPayload(task, clean),
+    payload,
     thoughts: res.thoughts,
     finish: res.finish,
     usage: res.usage,
@@ -816,16 +869,33 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
  * de TODOS los días— los nombres que no se asociaron a ningún ejercicio: un plan
  * no puede perder ejercicios sin que la vista lo cuente. Un plan sin `days` no
  * toca nada ni siquiera `meta`.
+ *
+ * Los días ANTERIORES a hoy se descartan (`skipped`): un plan de la semana en
+ * curso llega con el lunes ya pasado, y aplicarlo sobrescribía el calendario de
+ * días que ya ocurrieron. Las fechas se comparan como ISO local, así que el
+ * orden lexicográfico es el cronológico. `todayIso` se expone para poder probar
+ * el corte sin depender del reloj.
  */
-export function applyWeek(plan: unknown): {
+export function applyWeek(
+  plan: unknown,
+  todayIso: string = today(),
+): {
   days: number;
   routines: number;
   unresolved: UnresolvedName[];
+  /** días del plan que se ignoraron por ser anteriores a hoy */
+  skipped: number;
 } {
-  const out: { days: number; routines: number; unresolved: UnresolvedName[] } = {
+  const out: {
+    days: number;
+    routines: number;
+    unresolved: UnresolvedName[];
+    skipped: number;
+  } = {
     days: 0,
     routines: 0,
     unresolved: [],
+    skipped: 0,
   };
   if (!isPlain(plan) || !Array.isArray(plan.days)) return out;
 
@@ -834,6 +904,10 @@ export function applyWeek(plan: unknown): {
     if (!isPlain(raw)) continue;
     const dayIso = dayIsoOf(raw.date) || dayIsoOf(raw.iso);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
+    if (dayIso < todayIso) {
+      out.skipped++;
+      continue;
+    }
 
     const list = Array.isArray(raw.exercises) ? raw.exercises : raw.items;
     const { items, unresolved } = resolveItems(list);
@@ -875,30 +949,6 @@ export function applyWeek(plan: unknown): {
 /* ---------- propuestas de ejercicios nuevos al aplicar ---------- */
 
 /**
- * Propuesta de ejercicio nuevo montada con los atributos que traía el propio
- * payload (si el nombre está en él): lo que no venga se infiere después, en
- * `proposalToDraft`. Solo `name` es obligatorio, igual que en el resto del
- * circuito de creación.
- */
-function proposalFrom(name: string, items: readonly Record<string, unknown>[]): AIExerciseProposal {
-  const proposal: AIExerciseProposal = { name };
-  const raw = items.find(
-    (item) => typeof item.name === 'string' && norm(item.name.trim()) === norm(name),
-  );
-  if (!raw) return proposal;
-  for (const key of ['group', 'equip', 'type', 'desc'] as const) {
-    const field = raw[key];
-    if (typeof field === 'string' && field.trim()) proposal[key] = field.trim();
-  }
-  for (const key of ['sets', 'rest', 'repMin', 'repMax'] as const) {
-    const field = raw[key];
-    if (typeof field === 'number' && Number.isFinite(field)) proposal[key] = field;
-  }
-  if (raw.unilateral === true) proposal.unilateral = true;
-  return proposal;
-}
-
-/**
  * Parte lo que no se resolvió al aplicar una propuesta:
  *
  * - **creable**: `reason === 'no está en tu biblioteca'` → la vista pinta la
@@ -911,6 +961,10 @@ function proposalFrom(name: string, items: readonly Record<string, unknown>[]): 
  * Pura y aparte a propósito: `resolveItems`/`applySuggestionAsRoutine`/
  * `applyWeek` conservan SU forma (`{items, unresolved}`, `{routine, unresolved}`
  * y `{days, routines, unresolved}`), que es la que fijan sus tests.
+ *
+ * Los atributos del ejercicio se leen con `asProposal` (el mismo normalizador
+ * del bloque ```crear```) en vez de con una copia local: eran dos funciones
+ * idénticas y solo una estaba probada.
  */
 export function partitionUnresolved(
   unresolved: readonly UnresolvedName[],
@@ -929,7 +983,11 @@ export function partitionUnresolved(
     const key = norm(item.name);
     if (seen.has(key)) continue; /* el mismo nombre dos veces = UNA tarjeta */
     seen.add(key);
-    creatable.push(proposalFrom(item.name, items));
+    const raw = items.find(
+      (candidate) =>
+        typeof candidate.name === 'string' && norm(candidate.name.trim()) === norm(item.name),
+    );
+    creatable.push(asProposal(raw ?? { name: item.name }) ?? { name: item.name });
   }
   return { creatable, warnings };
 }

@@ -828,11 +828,14 @@ export function CalendarView() {
     if (!plan) return;
     const result = applyWeek(plan.raw);
     setApplied(result.days);
+    /* `skipped` son los días que ya pasaron: se dicen para que no parezca que
+       el plan se perdió por el camino. */
+    const skipped = result.skipped ? ` · ${result.skipped} días pasados ignorados` : '';
     setNotice({
       kind: result.unresolved.length ? 'warn' : 'ok',
       text: result.unresolved.length
-        ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas · sin usar (${result.unresolved.length}): ${unresolvedNames(result.unresolved)}`
-        : `Plan aplicado: ${result.days} días, ${result.routines} rutinas`,
+        ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped} · sin usar (${result.unresolved.length}): ${unresolvedNames(result.unresolved)}`
+        : `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped}`,
     });
   }
 

@@ -190,13 +190,21 @@ function supersetLine(opts: BuildRequestOpts): string[] {
 
 /**
  * Bloque `local` (propuesta del dispositivo) como DATOS de apertura del prompt:
- * el modelo lo recibe primero, como contexto que puede mejorar, y después vienen
- * las instrucciones y la petición. Cada tarea rotula el bloque a su manera
- * (mismos textos que ).
+ * el modelo lo recibe primero y lo usa como BORRADOR, no como algo que ignorar.
+ * Arrancar de una propuesta coherente con el historial y el material ahorra
+ * que el modelo reinvente la sesión desde cero y hace que sus cambios se
+ * limiten a lo que de verdad aporta (ajustar pesos, cambiar un ejercicio que no
+ * encaja, ordenar mejor). El bloque se rotula con la INSTRUCCIÓN de qué hacer
+ * con él, para que no quede como un dato huérfano.
  */
 function localHead(opts: BuildRequestOpts, label: string): string[] {
   if (opts.local === undefined) return [];
-  return [label, JSON.stringify(opts.local), ''];
+  return [
+    label,
+    JSON.stringify(opts.local),
+    'Trata esa base como un borrador YA coherente con sus datos: consérvala en lo que sea correcto y cambia solo lo que mejore (pesos, ejercicios que no encajen, orden, descansos). No la repitas tal cual sin revisar.',
+    '',
+  ];
 }
 
 function suggestPrompt(opts: BuildRequestOpts): string {

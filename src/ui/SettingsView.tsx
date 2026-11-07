@@ -42,7 +42,7 @@ import { maxLoadable, solvePlates } from '@/domain/plates';
 import type { EquipmentItem, Exercise, ModelOption, PlateStock, Theme, Unit } from '@/domain/types';
 import { fromKg } from '@/domain/units';
 import { go } from '@/app/router';
-import { listModels, testConnection } from '@/features/coach/client';
+import { testConnection } from '@/features/coach/client';
 import { DEFAULT_SYSTEM } from '@/features/coach/prompts';
 import { copyText } from '@/platform/clipboard';
 import { downloadJSON, pickTextFile } from '@/platform/files';
@@ -1544,22 +1544,17 @@ function ExerciseRow({
 function SecCoach() {
   const ai = settings.value.ai;
   const [showKey, setShowKey] = useState(false);
-  /* Lista de `GET /models`: vacía (o caída) ⇒ manda el catálogo `AI_MODELS` */
-  const [remote, setRemote] = useState<ModelOption[]>([]);
-  const [busy, setBusy] = useState<'' | 'test' | 'models'>('');
+  const [busy, setBusy] = useState<'' | 'test'>('');
   const [connErr, setConnErr] = useState<{ auth: boolean; detail: string } | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const key = ai.apiKey ?? '';
   const masked = key ? `${key.slice(0, 6)}…${key.slice(-4)}` : '';
 
-  /* Decisión híbrida  (`V.models`): catálogo remoto si lo hay, si no el
-     estático; el modelo actual entra aunque no esté en ninguno («personalizado»)
-     y todo ordenado por id. */
-  const models: ModelOption[] = [...(remote.length ? remote : AI_MODELS)];
-  if (!models.some((m) => m.id === ai.model)) {
-    models.push({ id: ai.model, label: ai.model, hint: 'personalizado' });
-  }
-  models.sort((a, b) => (a.id < b.id ? -1 : 1));
+  /* La app solo soporta los dos modelos de `AI_MODELS` (Gemini 3). El selector
+     ya no consulta `GET /models`: la lista es corta y fija, y un modelo fuera de
+     ella (un 2.5, un alias) no habla el `thinkingLevel` que manda el coach. Si
+     alguien tenía guardado otro, la migración v4 lo devuelve al de fábrica. */
+  const models: ModelOption[] = [...AI_MODELS];
 
   /* «Probar conexión»: spinner mientras va y, si falla, el modal con las
      pistas  — con la key mala el título es el de `kind === 'auth'`. */
@@ -1584,29 +1579,8 @@ function SecCoach() {
     setConnErr({ auth: res.kind === 'auth', detail: res.detail });
   };
 
-  /* «Cargar modelos»: si falla (sin red, 403, 429…) se queda el catálogo. */
-  const runListModels = async (): Promise<void> => {
-    if (busy) return;
-    if (!key) {
-      toast('Añade primero la API key', { kind: 'warn' });
-      return;
-    }
-    setBusy('models');
-    const spin = toast('Consultando modelos disponibles…', { loading: true, sticky: true });
-    try {
-      const list = await listModels(key);
-      setRemote(list);
-      toast(`${list.length} modelos con generateContent`, { kind: 'ok' });
-    } catch (err) {
-      toast(`No se pudieron cargar: ${err instanceof Error ? err.message : String(err)}`, {
-        kind: 'err',
-        ms: 7000,
-      });
-    } finally {
-      spin.close();
-      setBusy('');
-    }
-  };
+  /* «Cargar modelos» ya no existe: la app solo soporta los dos modelos de
+     `AI_MODELS`, así que no hay nada remoto que cargar. */
 
   /* Lo que se manda de verdad: el guardado o, vacío, el de fábrica. */
   const activePrompt = (): string => (ai.systemPrompt ?? '').trim() || DEFAULT_SYSTEM;
@@ -1668,15 +1642,6 @@ function SecCoach() {
             <Icon name="zap" />
             {busy === 'test' ? 'Probando…' : 'Probar conexión'}
           </button>
-          <button
-            type="button"
-            class="btn sm ghost"
-            disabled={busy !== ''}
-            onClick={() => void runListModels()}
-          >
-            <Icon name="refresh" />
-            {busy === 'models' ? 'Cargando…' : 'Cargar modelos'}
-          </button>
           <a
             class="btn sm quiet"
             href="https://aistudio.google.com/apikey"
@@ -1714,32 +1679,12 @@ function SecCoach() {
           }))}
           onChange={(v) => setSettingsPath('ai.thinkingLevel', v)}
         />
-        <NumRow
-          label="Presupuesto de pensamiento (thinkingBudget)"
-          hint="Solo modelos 2.5 · 0 lo desactiva, -1 es dinámico. Se ignora si eliges un nivel"
-          help="opt.thinkingBudget"
-          value={Number(ai.thinkingBudget) || 0}
-          step={1}
-          min={-1}
-          max={32768}
-          onChange={(v) => setSettingsPath('ai.thinkingBudget', v)}
-        />
         <SwitchRow
           label="Mostrar razonamiento del modelo"
           hint="includeThoughts: muestra el resumen interno de Gemini"
           help="opt.includeThoughts"
           value={ai.includeThoughts}
           onChange={(v) => setSettingsPath('ai.includeThoughts', v)}
-        />
-        <NumRow
-          label="Temperature"
-          hint="0 = determinista, 1 = creativo"
-          help="opt.temperature"
-          value={ai.temperature}
-          step={0.1}
-          min={0}
-          max={2}
-          onChange={(v) => setSettingsPath('ai.temperature', v)}
         />
         <NumRow
           label="Máximo de tokens de salida"
