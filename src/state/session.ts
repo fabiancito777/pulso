@@ -115,6 +115,10 @@ function setActive(next: ActiveSession | null, stamp = true): void {
      fusionada: no debe parecer recién editada aquí. */
   const stamped =
     next && stamp ? { ...next, updatedAt: new Date(NOW()).toISOString() } : next;
+  /* al empezar (o editar) una sesión, el resumen de la anterior deja de aplicar:
+     si no se limpiara, el aviso de «sesión guardada» podría reaparecer encima de
+     un entreno nuevo */
+  if (stamped) lastFinished.value = null;
   writeActive(stamped); /* ya actualiza la signal `active` */
   sessionSeconds.value = stamped ? elapsed(stamped) : 0;
 }
@@ -433,6 +437,17 @@ export function toggleSetAt(index: number, setIndex: number, on?: boolean): void
 export type FinishResult = { ok: true; session: Session } | { ok: false; reason: 'empty' | 'save' };
 
 /**
+ * La sesión que se acaba de guardar, para la hoja de fin de sesión.
+ *
+ * Vive en una signal y NO en el estado del componente `SessionCard` porque esa
+ * tarjeta se desmonta al terminar cuando cierras desde Hoy
+ * (`sessionDockMode` en `app/App.tsx`): un mensaje local desaparecía con ella.
+ * Aquí solo se publica la sesión; el resumen (récords, delta, racha) lo calcula
+ * la capa de UI con `sessionDoneSummary`, que es donde vive esa aritmética.
+ */
+export const lastFinished = signal<Session | null>(null);
+
+/**
  * Cierra la sesión: la apila en el historial, marca el día como hecho y limpia el
  * estado. Devuelve `empty` si no hay sesión o ninguna serie marcada, y `save` si
  * no se pudo persistir (entonces la sesión sigue activa y el descanso intacto).
@@ -446,6 +461,7 @@ export function finishSession(notes?: string): FinishResult {
   /* apila la sesión y marca el día: dos cosas que  hacía el store
      (`commitSession` también limpia `active`, la signal única) */
   if (!commitSession(done)) return { ok: false, reason: 'save' };
+  lastFinished.value = done;
   sessionSeconds.value = 0;
   stopRestTimer();
   beep('done', settings.value);
@@ -513,6 +529,7 @@ export function finishEntryAt(index: number): FinishEntryResult {
   }
 
   /* era el último ejercicio: se cierra como una sesión normal */
+  lastFinished.value = result.session;
   keepAliveOff();
   wakeLockOff();
   return { ok: true, session: result.session, remaining: 0 };

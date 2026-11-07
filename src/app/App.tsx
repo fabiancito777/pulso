@@ -7,10 +7,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { go, route, startRouter, TABS, type Tab } from '@/app/router';
 import { totals } from '@/domain/analytics';
 import { TEMPLATES } from '@/domain/data';
+import { today } from '@/domain/dates';
 import { fmtClock } from '@/domain/format';
 import { progress as sessionProgress } from '@/domain/session';
 import { applyTheme } from '@/platform/theme';
-import { active, rest, sessionSeconds, startLoop } from '@/state/session';
+import { active, lastFinished, rest, sessionSeconds, startFromPlan, startLoop } from '@/state/session';
 import { startSyncAuto } from '@/state/sync';
 import { activeProfile, profileInitial } from '@/state/profiles';
 import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
@@ -23,8 +24,48 @@ import { Onboarding } from '@/ui/Onboarding';
 import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
+import { repeatItems } from '@/ui/hoy-helpers';
 import { RestDock, SessionCard, SessionDock } from '@/ui/SessionCard';
+import { SessionDoneSheet } from '@/ui/SessionDoneSheet';
+import { sessionDoneSummary } from '@/ui/session-done-helpers';
 import { SettingsView } from '@/ui/SettingsView';
+
+/**
+ * Hoja de fin de sesión. Se monta en el SHELL, no en `SessionCard`, porque esa
+ * tarjeta se desmonta al terminar si cierras desde Hoy: el acuse tiene que vivir
+ * por encima de la pestaña y de la propia sesión.
+ *
+ * El resumen (récords, comparación con la anterior, racha) se calcula aquí a
+ * partir de `lastFinished` y del historial ya guardado; el estado solo publica
+ * la sesión cerrada.
+ */
+function FinishedSheet() {
+  const done = lastFinished.value;
+  if (!done) return null;
+  return (
+    <SessionDoneSheet
+      summary={sessionDoneSummary(done, sessions.value, today())}
+      onClose={() => {
+        lastFinished.value = null;
+      }}
+      onProgress={() => {
+        lastFinished.value = null;
+        go('progreso');
+      }}
+      onCalendar={() => {
+        lastFinished.value = null;
+        go('calendario');
+      }}
+      onRepeat={(session) => {
+        startFromPlan(repeatItems(session), {
+          name: session.name || 'Entrenamiento',
+          dayIso: today(),
+        });
+        go('entrenar');
+      }}
+    />
+  );
+}
 
 /**
  * Reloj de la sesión en la barra. Es un componente aparte A PROPÓSITO: es lo único
@@ -320,6 +361,8 @@ export function App() {
       </main>
 
       <BottomNav current={current.key} />
+
+      <FinishedSheet />
 
       {profilesOpen ? (
         <ProfileSheet

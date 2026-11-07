@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { groupLabel } from '@/domain/data';
+import { volumeOf } from '@/domain/analytics';
 import { fmtClock, fmtMmss, fmtN, fmtVol, inputNum } from '@/domain/format';
 import { num } from '@/domain/num';
 import { restView } from '@/domain/rest';
@@ -61,6 +62,7 @@ import { Modal } from './Modal';
 import { PlatesModal } from './PlatesModal';
 import { Ring } from './Ring';
 import { RoutinePickerModal } from './RoutinePickerModal';
+import { toast } from './toast';
 
 /** Reloj de la sesión. Aislado a propósito: es lo que se repinta cada segundo. */
 function Clock() {
@@ -806,11 +808,14 @@ export function SessionCard() {
     });
   };
   const finish = () => {    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
-    const volume = sessionProgress(session).volume;
     const result = finishSession();
     setNotesOpen(false);
+    /* El acuse NO se pinta aquí: `finishSession` publica la sesión en
+       `lastFinished` y el shell monta `SessionDoneSheet`, que sobrevive a esta
+       tarjeta (se desmonta al terminar desde Hoy). Aquí solo queda el aviso
+       rápido, que sí puede morir con el componente. */
     if (result.ok) {
-      setMessage({ text: `Sesión guardada · ${fmtVol(volume)} kg de volumen.`, tone: 'ok' });
+      toast(`Sesión guardada · ${fmtVol(volumeOf(result.session))} kg`, { kind: 'ok' });
     } else if (result.reason === 'empty') {
       setMessage({
         text: 'No marcaste ninguna serie: la sesión no se guardó.',
