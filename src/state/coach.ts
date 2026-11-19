@@ -85,6 +85,7 @@ import {
 } from '@/features/coach/prompts';
 import type { BuildRequestOpts, CoachRequest, CoachTask } from '@/features/coach/types';
 import {
+  active,
   addRoutine,
   equipment,
   exercises,
@@ -199,7 +200,7 @@ const SESSIONS_BY_TASK: Record<CoachTask, number> = {
 };
 
 /** Niveles que entiende `GenOpts.thinkingLevel` (`AiSettings.thinkingLevel` es un string libre). */
-const THINKING_LEVELS: readonly string[] = ['minimal', 'low', 'medium', 'high', 'auto'];
+const THINKING_LEVELS: readonly string[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'auto'];
 
 /** Tipos de día válidos del calendario (los mismos que `DAY_TYPES` del catálogo). */
 const DAY_KEYS: readonly string[] = ['entreno', 'cardio', 'movilidad', 'descanso'];
@@ -625,6 +626,7 @@ export async function runCoachTask(
     schedule: schedule.value,
     equipment: snap.equipment,
     exercises: snap.exercises,
+    active: active.value,
     opts: {
       todayIso,
       maxSessions: opts.maxSessions ?? SESSIONS_BY_TASK[task],

@@ -8,7 +8,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
-import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
+import type {
+  ActiveSession,
+  ActiveSet,
+  Exercise,
+  RoutineItem,
+  Session,
+  Settings,
+} from '@/domain/types';
 import { buildContext } from './context';
 import type { BuildContextParams, CoachRoutine } from './types';
 
@@ -68,6 +75,35 @@ const SESION: Session = {
         { weight: 75, reps: 6, done: true },
         { weight: 75, reps: 6, done: true },
       ],
+    },
+  ],
+};
+
+const activeSet = (done: boolean): ActiveSet => ({
+  weight: 60,
+  reps: 8,
+  done,
+  ts: null,
+  rpe: null,
+});
+
+const ACTIVA: ActiveSession = {
+  id: 'a1',
+  routineId: 'rt1',
+  name: 'Empuje A',
+  startedAt: '2026-09-24T10:00:00.000Z',
+  unit: 'kg',
+  dayIso: HOY,
+  source: 'manual',
+  notes: '',
+  entries: [
+    {
+      exId: 'ex-press',
+      name: 'Press de banca',
+      repMin: 8,
+      repMax: 12,
+      notes: '',
+      sets: [activeSet(true), activeSet(true), activeSet(false), activeSet(false)],
     },
   ],
 };
@@ -342,5 +378,110 @@ describe('favoritos (★) en el contexto', () => {
     const text = context({ exercises: marcar('ex-maquina') });
     expect(text).not.toContain('FAVORITOS');
     expect(text).not.toContain('★ Curl de bíceps en máquina');
+  });
+});
+
+describe('detalle extra que ve el coach', () => {
+  it('muestra peso base, [SS A] y notas de los items de una rutina', () => {
+    const rutinaSS: CoachRoutine = {
+      id: 'rt-ss',
+      name: 'Empuje SS',
+      source: 'manual',
+      focus: 'Pecho',
+      notes: 'Rutina de prueba con superserie',
+      items: [
+        {
+          exId: 'ex-press',
+          sets: 3,
+          repMin: 8,
+          repMax: 10,
+          rest: 90,
+          weight: 85,
+          superset: 'ss-1',
+          notes: 'primer ejercicio',
+        },
+        {
+          exId: 'ex-dominadas',
+          sets: 3,
+          repMin: 6,
+          repMax: 8,
+          rest: 90,
+          weight: null,
+          superset: 'ss-1',
+          notes: 'sin descanso entre ambos',
+        },
+      ],
+    };
+    const text = context({ routines: [rutinaSS], sessions: [] });
+    expect(text).toContain('@ 85 kg');
+    expect(text).toContain('[SS A]');
+    expect(text).toContain('(primer ejercicio)');
+    expect(text).toContain('(sin descanso entre ambos)');
+    expect(text).toContain('· foco: Pecho');
+    expect(text).toContain('· notas: Rutina de prueba con superserie');
+  });
+
+  it('muestra el RPE de la sesión y de sus series en el HISTORIAL', () => {
+    const sesionRpe: Session = {
+      ...SESION,
+      id: 's-rpe',
+      rpe: 8,
+      entries: [
+        {
+          exId: 'ex-press',
+          name: 'Press de banca',
+          sets: [{ weight: 75, reps: 6, done: true, rpe: 7 }],
+        },
+      ],
+    };
+    const text = context({ sessions: [sesionRpe] });
+    expect(text).toContain('RPE 8');
+    expect(text).toContain('Press de banca: 75x6@7');
+  });
+
+  it('marca la sesión parcial y muestra la sesión en curso con sus pendientes', () => {
+    const parcial: Session = {
+      ...SESION,
+      id: 's-parcial',
+      partial: true,
+      rpe: 6,
+      notes: 'Me quedé a medias',
+    };
+    const text = context({ sessions: [parcial], active: ACTIVA });
+    expect(text).toContain('[PARCIAL · bloque suelto]');
+    expect(text).toContain('RPE 6');
+    expect(text).toContain('notas: Me quedé a medias');
+    expect(text).toContain('=== SESIÓN EN CURSO');
+    expect(text).toContain('Empuje A · 2026-09-24');
+    expect(text).toContain('Press de banca: 2/4 hechas (2 pendientes)');
+    expect(text.indexOf('=== SESIÓN EN CURSO')).toBeLessThan(text.indexOf('=== HISTORIAL'));
+  });
+
+  it('resuelve el nombre del catálogo amplio en vez de mandar el slug crudo', () => {
+    const exId = 'press-de-banca-con-barra';
+    const sesion: Session = {
+      ...SESION,
+      id: 's-cat',
+      entries: [{ exId, sets: [{ weight: 60, reps: 8, done: true }] }],
+    };
+    const rutina: CoachRoutine = {
+      id: 'rt-cat',
+      name: 'Del catálogo',
+      source: 'manual',
+      items: [{ exId, sets: 3, repMin: 8, repMax: 10 }],
+    };
+    const text = context({ sessions: [sesion], routines: [rutina] });
+    const historial = text.slice(
+      text.indexOf('=== HISTORIAL'),
+      text.indexOf('=== ESTADO ACTUAL ==='),
+    );
+    const rutinas = text.slice(
+      text.indexOf('=== RUTINAS GUARDADAS'),
+      text.indexOf('=== VOLUMEN POR SEMANA'),
+    );
+    expect(historial).toContain('Press de banca con barra: 60x8');
+    expect(historial).not.toContain(exId);
+    expect(rutinas).toContain('Press de banca con barra');
+    expect(rutinas).not.toContain(exId);
   });
 });

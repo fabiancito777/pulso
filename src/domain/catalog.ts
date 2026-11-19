@@ -361,23 +361,24 @@ export const THEMES: readonly OptionItem[] = [
 
 /* ---------- modelos del coach ---------- */
 /**
- * Los DOS modelos que soporta la app. Se recortó a propósito: los 3.6/3.7 no
- * aportan nada sobre el 3.8 y los 2.5 usan `thinkingBudget` en vez de
- * `thinkingLevel`, lo que obligaba a mantener dos configuraciones de pensamiento
- * y a un campo de Ajustes que solo servía en esos dos modelos.
+ * Modelos que soporta la app: `gemini-4-hydrogen` es el recomendado y los dos
+ * Gemini 3 se conservan como respaldo. Los 2.5 quedan fuera porque usaban
+ * `thinkingBudget` en vez de `thinkingLevel`.
  */
 export const AI_MODELS: readonly ModelOption[] = [
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', hint: 'más inteligente · recomendado' },
+  { id: 'gemini-4-hydrogen', label: 'Gemini 4 Hydrogen', hint: 'más capaz y rápido · recomendado' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', hint: 'respaldo estable' },
   { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', hint: 'rápido y económico' },
 ];
 
 /* ---------- niveles de razonamiento del coach ---------- */
 export const THINKING_LEVELS: readonly OptionItem[] = [
   { key: 'auto', label: 'Auto', hint: 'deja el valor por defecto del modelo' },
-  { key: 'minimal', label: 'Mínimo', hint: 'respuestas rápidas' },
+  { key: 'minimal', label: 'Mínimo', hint: 'respuestas rápidas (en Hydrogen usa bajo)' },
   { key: 'low', label: 'Bajo', hint: 'tareas simples' },
   { key: 'medium', label: 'Medio', hint: 'equilibrado' },
   { key: 'high', label: 'Alto', hint: 'planificación compleja' },
+  { key: 'xhigh', label: 'Máximo', hint: 'razonamiento profundo' },
 ];
 
 /* ---------- base de datos de ejercicios ---------- */

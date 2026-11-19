@@ -110,14 +110,18 @@ describe('client (196–206)', () => {
     expect(called).toBe(false);
   });
 
-  it('203 · el catálogo tiene exactamente los dos modelos soportados', () => {
-    /* La app recortó el soporte a Gemini 3 (thinkingLevel): un 2.5 o un alias
-       rompería el `thinkingConfig` y ya no aparece en el selector. */
-    expect(AI_MODELS.map((m) => m.id)).toEqual(['gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+  it('203 · el catálogo tiene exactamente los tres modelos soportados', () => {
+    /* Hydrogen es el recomendado y los dos Gemini 3 quedan como respaldo: un
+       2.5 o un alias rompería el `thinkingConfig` y no aparece en el selector. */
+    expect(AI_MODELS.map((m) => m.id)).toEqual([
+      'gemini-4-hydrogen',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+    ]);
   });
 
-  it('204 · El modelo por defecto es gemini-3.8-flash', () => {
-    expect(DEFAULT_MODEL).toBe('gemini-3.8-flash');
+  it('204 · El modelo por defecto es gemini-4-hydrogen', () => {
+    expect(DEFAULT_MODEL).toBe('gemini-4-hydrogen');
   });
 
   it('205 · Los tipos del esquema van en MAYÚSCULAS', () => {

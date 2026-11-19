@@ -34,7 +34,7 @@ import { fmtN, inputNum } from '@/domain/format';
 import { matchExercise, unresolvedNames } from '@/domain/match';
 import { clamp, int } from '@/domain/num';
 import { findTemplate } from '@/domain/plan';
-import { linkAt, newSupersetId, supersetPosition, unlinkAt } from '@/domain/supersets';
+import { linkAt, newSupersetId, pruneSupersets, supersetPosition, unlinkAt } from '@/domain/supersets';
 import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
@@ -569,7 +569,7 @@ function RoutineEditor({
     if (!a || !b) return;
     next[index] = b;
     next[target] = a;
-    setItems(next);
+    setItems(pruneSupersets(next));
   }
 
   /**
@@ -689,7 +689,7 @@ function RoutineEditor({
               type="button"
               class="icon-btn"
               aria-label="Quitar ejercicio"
-              onClick={() => setItems(items.filter((_, i) => i !== index))}
+              onClick={() => setItems(pruneSupersets(items.filter((_, i) => i !== index)))}
             >
               <Icon name="trash" />
             </button>

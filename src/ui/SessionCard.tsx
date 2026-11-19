@@ -496,6 +496,7 @@ function EntryCard(props: {
             </div>
           ) : null}
           <ExName name={en.name} />
+          {ex?.tips ? <div class="tiny muted">{ex.tips}</div> : null}
           <div class="ex-meta">
             {ex ? `${groupLabel(ex.group)} · ${ex.type} · ` : ''}
             {doneSets}/{en.sets.length} series{volume ? ` · ${fmtVol(volume)} kg` : ''}

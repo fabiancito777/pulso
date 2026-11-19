@@ -94,6 +94,18 @@ describe('matchExercises', () => {
     expect(matchExercises('zzzqqq sin sentido', LIBRARY)).toEqual([]);
   });
 
+  it('no devuelve ejercicios ocultos (hidden: true)', () => {
+    const target = LIBRARY[0];
+    const hidden = LIBRARY.map((ex) => (ex.id === target.id ? { ...ex, hidden: true } : ex));
+    /* con la consulta vacía y con su propio nombre, el oculto nunca aparece */
+    expect(matchExercises('', hidden, [], hidden.length).map((ex) => ex.id)).not.toContain(
+      target.id,
+    );
+    expect(
+      matchExercises(target.name, hidden, [], hidden.length).map((ex) => ex.id),
+    ).not.toContain(target.id);
+  });
+
   it('con la consulta vacía los ★ salen primero sin mover el resto', () => {
     const tercero = LIBRARY[3];
     const conFav = LIBRARY.map((ex, i) => (i === 3 ? { ...ex, fav: true } : ex));

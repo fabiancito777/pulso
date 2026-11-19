@@ -1252,6 +1252,7 @@ function SecEjercicios() {
 function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClose: () => void }) {
   const [draft, setDraft] = useState<ExerciseDraft>(() => draftFrom(current));
   const [error, setError] = useState('');
+  const [tips, setTips] = useState(current?.tips ?? '');
 
   function set<K extends keyof ExerciseDraft>(key: K, value: ExerciseDraft[K]): void {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -1276,7 +1277,13 @@ function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClos
       setError(built.error);
       return;
     }
-    saveExercise(built.value);
+    saveExercise({
+      ...built.value,
+      tags: current?.tags ?? built.value.tags,
+      tips: tips.trim(),
+      ...(current?.fav !== undefined ? { fav: current.fav } : {}),
+      ...(current?.hidden !== undefined ? { hidden: current.hidden } : {}),
+    });
     toast(current ? 'Ejercicio actualizado' : 'Ejercicio añadido', { kind: 'ok' });
     onClose();
   };
@@ -1380,6 +1387,16 @@ function ExerciseEditor({ current, onClose }: { current: Exercise | null; onClos
           {numRow('Rep min', 'repMin', { min: 1, max: 100 })}
           {numRow('Rep max', 'repMax', { min: 1, max: 100 })}
         </div>
+        <label class="field">
+          <span class="label">Notas técnicas / ejecución</span>
+          <textarea
+            class="input"
+            rows={2}
+            placeholder="Claves de ejecución, postura, tempo…"
+            value={tips}
+            onChange={(e) => setTips(e.currentTarget.value)}
+          />
+        </label>
         <label class="switch" style="justify-content:space-between">
           <span>Permitido en sugerencias</span>
           <input
@@ -1550,10 +1567,11 @@ function SecCoach() {
   const key = ai.apiKey ?? '';
   const masked = key ? `${key.slice(0, 6)}…${key.slice(-4)}` : '';
 
-  /* La app solo soporta los dos modelos de `AI_MODELS` (Gemini 3). El selector
-     ya no consulta `GET /models`: la lista es corta y fija, y un modelo fuera de
-     ella (un 2.5, un alias) no habla el `thinkingLevel` que manda el coach. Si
-     alguien tenía guardado otro, la migración v4 lo devuelve al de fábrica. */
+  /* La app solo soporta los modelos de `AI_MODELS` (Hydrogen y dos Gemini 3 de
+     respaldo). El selector ya no consulta `GET /models`: la lista es corta y
+     fija, y un modelo fuera de ella (un 2.5, un alias) no habla el
+     `thinkingLevel` que manda el coach. Si alguien tenía guardado otro, la
+     migración lo devuelve al de fábrica. */
   const models: ModelOption[] = [...AI_MODELS];
 
   /* «Probar conexión»: spinner mientras va y, si falla, el modal con las
@@ -1579,7 +1597,7 @@ function SecCoach() {
     setConnErr({ auth: res.kind === 'auth', detail: res.detail });
   };
 
-  /* «Cargar modelos» ya no existe: la app solo soporta los dos modelos de
+  /* «Cargar modelos» ya no existe: la app solo soporta los modelos de
      `AI_MODELS`, así que no hay nada remoto que cargar. */
 
   /* Lo que se manda de verdad: el guardado o, vacío, el de fábrica. */

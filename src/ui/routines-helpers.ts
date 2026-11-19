@@ -64,7 +64,7 @@ export function matchExercises(
 ): Exercise[] {
   const q = norm(query);
   const skip = new Set(exclude);
-  const pool = library.filter((ex) => !skip.has(ex.id));
+  const pool = library.filter((ex) => ex.hidden !== true && !skip.has(ex.id));
   /* estable: sin ★ el orden de la semilla se conserva tal cual */
   const byFav = (a: Exercise, b: Exercise): number =>
     (b.fav === true ? 1 : 0) - (a.fav === true ? 1 : 0);

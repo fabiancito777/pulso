@@ -14,12 +14,11 @@ import type { ResponseSchema } from './types';
 /**
  * Modelo por defecto de la app.
  *
- * La app da soporte a DOS modelos (ver `AI_MODELS`): `gemini-3.8-flash` y
- * `gemini-3.5-flash-lite`. Los 2.5 quedan fuera porque usan `thinkingBudget` en
- * vez de `thinkingLevel`, y los 3.6/3.7 porque su serie ya no aporta nada sobre
- * el 3.8 (mismo thinking, peor calidad y precio).
+ * La app da soporte a tres modelos (ver `AI_MODELS`): `gemini-4-hydrogen` (el
+ * recomendado) y los Gemini 3 como respaldo. Los 2.5 quedan fuera porque usan
+ * `thinkingBudget` en vez de `thinkingLevel`.
  */
-export const DEFAULT_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_MODEL = 'gemini-4-hydrogen';
 
 /** Mensaje ya mantenido con el modelo. El rol de Gemini es `model`, no `assistant`. */
 export interface ChatMsg {
@@ -47,7 +46,7 @@ export interface GenOpts {
   /** Conversación anterior, en orden; el rol ya es el de Gemini (`user`/`model`). */
   history?: ChatMsg[];
   /** Nivel de razonamiento; `'auto'` deja que elija el modelo. */
-  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'auto';
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
   /** Pide los pensamientos como partes con `thought: true` en la respuesta. */
   includeThoughts?: boolean;
   /** Tope de tokens de respuesta (4096 por defecto). */
@@ -127,6 +126,7 @@ const THINKING_TIMEOUT_MS: Record<string, number> = {
   low: 60_000,
   medium: 120_000,
   high: 240_000,
+  xhigh: 300_000,
 };
 
 /**
@@ -254,7 +254,7 @@ interface LooseResponse {
 }
 
 interface ThinkingConfig {
-  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
   includeThoughts?: boolean;
 }
 
@@ -266,14 +266,18 @@ interface GenerationConfig {
 }
 
 /**
- * `generationConfig.thinkingConfig`: `thinkingLevel` (los dos modelos soportados
- * son Gemini 3, así que `thinkingBudget` ya no aplica) más `includeThoughts`.
- * `'auto'` cuenta como "sin nivel" y deja decidir al modelo. Si no hay nada que
+ * `generationConfig.thinkingConfig`: `thinkingLevel` más `includeThoughts`.
+ * `'auto'` cuenta como "sin nivel" y deja decidir al modelo. Gemini 4 Hydrogen
+ * rechaza `minimal` con HTTP 400, así que ahí se manda `low`. Si no hay nada que
  * configurar no se manda la clave.
  */
 function thinkingConfig(o: GenOpts): ThinkingConfig | undefined {
   const tc: ThinkingConfig = {};
-  if (o.thinkingLevel && o.thinkingLevel !== 'auto') tc.thinkingLevel = o.thinkingLevel;
+  const model = String(o.model ?? '').trim() || DEFAULT_MODEL;
+  if (o.thinkingLevel && o.thinkingLevel !== 'auto') {
+    tc.thinkingLevel =
+      model === 'gemini-4-hydrogen' && o.thinkingLevel === 'minimal' ? 'low' : o.thinkingLevel;
+  }
   if (o.includeThoughts) tc.includeThoughts = true;
   return Object.keys(tc).length ? tc : undefined;
 }

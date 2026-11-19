@@ -34,11 +34,13 @@ import {
   equipLabel,
   goalLabel,
   isAvailable,
+  resolveExercise,
 } from '@/domain/data';
 import { dow, dowLong, label as dateLabel, today, weekDates } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { int, num, sum } from '@/domain/num';
 import { maxLoadable } from '@/domain/plates';
+import { supersetPosition } from '@/domain/supersets';
 import { toKg, unitLabel } from '@/domain/units';
 import type { Exercise, Session } from '@/domain/types';
 import { consolidatedHistory } from './history';
@@ -47,6 +49,19 @@ import type { BuildContextParams, CoachRoutine } from './types';
 
 /** Si una sesión no tiene `endedAt`, `durationOf` recibe 0: no se inventa duración. */
 const OPEN_SESSION_NOW = 0;
+
+type NameOf = (exId: string, fallback?: unknown) => string;
+
+/**
+ * Nombre legible de un ejercicio: manda el `fallback` (el nombre que viaja con la
+ * sesión), luego la biblioteca o el catálogo COMPLETO (`resolveExercise`) y, como
+ * último recurso, el `exId` crudo. Sin esto el prompt se llenaba de slugs del
+ * catálogo de 136 que no están en la semilla de 24.
+ */
+const nameOfFor =
+  (exercises: readonly Exercise[]): NameOf =>
+  (exId, fallback) =>
+    String((fallback as string | undefined) ?? resolveExercise(exercises, exId)?.name ?? exId);
 
 /**
  * Línea de una sesión con los datos REALES serie a serie y, si salió de una
@@ -62,7 +77,7 @@ const OPEN_SESSION_NOW = 0;
 function sessionLine(
   session: Session,
   routines: readonly CoachRoutine[],
-  byId: ReadonlyMap<string, Exercise>,
+  nameOf: NameOf,
   goalRange: readonly [number, number],
 ): string {
   const routine = session.routineId
@@ -72,7 +87,13 @@ function sessionLine(
   session.entries.forEach((entry) => {
     const done = entry.sets.filter((set) => set.done);
     if (!done.length) return;
-    const detail = done.map((set) => `${fmtN(set.weight)}x${fmtN(set.reps)}`).join(', ');
+    const detail = done
+      .map(
+        (set) =>
+          `${fmtN(set.weight)}x${fmtN(set.reps)}` +
+          (set.rpe != null ? `@${fmtN(set.rpe, 1)}` : ''),
+      )
+      .join(', ');
     let target = '';
     const item =
       session.plan?.find((candidate) => candidate.exId === entry.exId) ??
@@ -88,12 +109,17 @@ function sessionLine(
         ` [objetivo plantilla: ${int(item.sets, 3)}x${repMin}-${repMax}` +
         ` · descanso ${int(item.rest, 90)}s · cumple ${cumplidas}/${done.length}]`;
     }
-    const name = String(entry.name ?? byId.get(entry.exId)?.name ?? entry.exId);
-    parts.push(`${name}: ${detail}${target}`);
+    const notes = entry.notes?.trim() ? ` (${entry.notes.trim()})` : '';
+    parts.push(`${nameOf(entry.exId, entry.name)}: ${detail}${notes}${target}`);
   });
   if (!parts.length) return '';
+  const flags: string[] = [];
+  if (session.partial === true) flags.push('[PARCIAL · bloque suelto]');
+  if (session.rpe != null) flags.push(`RPE ${fmtN(session.rpe, 1)}`);
+  if (session.notes?.trim()) flags.push(`notas: ${session.notes.trim()}`);
   return (
     `${dateLabel(sessionDate(session), 'medium')} · ${session.name || 'Sesión'}` +
+    (flags.length ? ` ${flags.join(' · ')}` : '') +
     ` (${fmtVol(volumeOf(session))} kg, ${setsOf(session)} series,` +
     ` ${fmtDur(durationOf(session, OPEN_SESSION_NOW))}): ${parts.join(' | ')}`
   );
@@ -105,10 +131,10 @@ function sessionLine(
  * HISTORIAL (por defecto 10, como ).
  */
 export function buildContext(params: BuildContextParams): string {
-  const { settings, sessions, routines, schedule, equipment, exercises, opts = {} } = params;
+  const { settings, sessions, routines, schedule, equipment, exercises, active, opts = {} } = params;
   const todayIso = opts.todayIso ?? today();
   const lim = Math.max(1, int(opts.maxSessions, 10));
-  const byId = new Map(exercises.map((ex) => [ex.id, ex]));
+  const nameOf = nameOfFor(exercises);
   const out: string[] = [];
 
   /* ---------- perfil ---------- */
@@ -184,6 +210,24 @@ export function buildContext(params: BuildContextParams): string {
   }
   out.push('');
 
+  /* ---------- sesión en curso (rutina abierta sin cerrar) ---------- */
+  if (active && active.entries.length) {
+    out.push('=== SESIÓN EN CURSO (rutina abierta sin cerrar) ===');
+    out.push(
+      `${active.name || 'Sesión'} · ${active.dayIso}` +
+        (active.notes?.trim() ? ` · notas: ${active.notes.trim()}` : ''),
+    );
+    for (const entry of active.entries) {
+      const done = entry.sets.filter((set) => set.done).length;
+      const total = entry.sets.length;
+      out.push(
+        `- ${nameOf(entry.exId, entry.name)}: ${done}/${total} hechas` +
+          (done < total ? ` (${total - done} pendientes)` : ''),
+      );
+    }
+    out.push('');
+  }
+
   /* ---------- historial ---------- */
   out.push(
     '=== HISTORIAL (datos REALES registrados serie a serie, más reciente primero;' +
@@ -194,7 +238,7 @@ export function buildContext(params: BuildContextParams): string {
     .slice(0, lim);
   if (!recent.length) out.push('Sin sesiones registradas todavía.');
   for (const session of recent) {
-    const line = sessionLine(session, routines, byId, goalReps);
+    const line = sessionLine(session, routines, nameOf, goalReps);
     if (line) out.push(line);
   }
   out.push('');
@@ -223,7 +267,7 @@ export function buildContext(params: BuildContextParams): string {
     .slice(0, 15)
     .map(
       ({ exId, pr }) =>
-        `${byId.get(exId)?.name ?? exId}: 1RM est. ${fmtN(pr.e1rm)} kg` +
+        `${nameOf(exId)}: 1RM est. ${fmtN(pr.e1rm)} kg` +
         ` (${fmtN(pr.weight)}x${fmtN(pr.reps)} el ${pr.date})`,
     );
   if (prLines.length) out.push(`Récords (1RM estimado): ${prLines.join(' | ')}`);
@@ -255,22 +299,56 @@ export function buildContext(params: BuildContextParams): string {
       ' NO es lo realizado, eso está en HISTORIAL) ===',
   );
   if (!routines.length) out.push('Sin rutinas guardadas todavía.');
-  for (const routine of routines.slice(0, 12)) {
-    let lastUsed: string | null = null;
+  const lastUsedOf = (routine: CoachRoutine): string | null => {
+    let last: string | null = null;
     for (const session of sessions) {
       const iso = sessionDate(session);
-      if (session.routineId === routine.id && (!lastUsed || iso > lastUsed)) lastUsed = iso;
+      if (session.routineId === routine.id && (!last || iso > last)) last = iso;
     }
+    return last;
+  };
+  /* Las rutinas del plan semanal se generan solas y pueden ser muchas: sin
+     priorizar, empujaban las rutinas MANUALES (las del usuario) fuera del tope. */
+  const recencyOf = (routine: CoachRoutine): string => {
+    const stamps = [
+      lastUsedOf(routine),
+      typeof routine.updatedAt === 'string' ? routine.updatedAt : '',
+      typeof routine.createdAt === 'string' ? routine.createdAt : '',
+    ].filter((stamp): stamp is string => !!stamp);
+    return stamps.sort().pop() ?? '';
+  };
+  const sortedRoutines = [...routines].sort((a, b) => {
+    const manual = (a.source === 'manual' ? 0 : 1) - (b.source === 'manual' ? 0 : 1);
+    if (manual) return manual;
+    const ra = recencyOf(a);
+    const rb = recencyOf(b);
+    return ra === rb ? 0 : ra > rb ? -1 : 1;
+  });
+  for (const routine of sortedRoutines.slice(0, 12)) {
+    const lastUsed = lastUsedOf(routine);
     const items = routine.items
-      .map(
-        (item) =>
-          `${byId.get(item.exId)?.name ?? item.exId} ${int(item.sets, 3)}x` +
+      .map((item, idx) => {
+        const ss = supersetPosition(routine.items, idx);
+        const weight =
+          item.weight !== null && item.weight !== undefined
+            ? ` @ ${fmtN(item.weight)} ${unitLabel(settings.units)}`
+            : '';
+        const note = item.notes?.trim() ? ` (${item.notes.trim()})` : '';
+        return (
+          `${nameOf(item.exId)} ${int(item.sets, 3)}x` +
           `${int(item.repMin, goalReps[0])}-${int(item.repMax, goalReps[1])}` +
-          `${item.rest ? `@${item.rest}s` : ''}`,
-      )
+          `${item.rest ? `@${item.rest}s` : ''}${weight}` +
+          `${ss ? ` [SS ${ss.letter}]` : ''}${note}`
+        );
+      })
       .join(', ');
+    const focus = routine.focus?.trim() ? ` · foco: ${routine.focus.trim().slice(0, 140)}` : '';
+    const notes =
+      typeof routine.notes === 'string' && routine.notes.trim()
+        ? ` · notas: ${routine.notes.trim().slice(0, 140)}`
+        : '';
     out.push(
-      `- ${routine.name} [${routine.source ?? 'manual'}]` +
+      `- ${routine.name} [${routine.source ?? 'manual'}]${focus}${notes}` +
         `${lastUsed ? ` · última vez ${dateLabel(lastUsed, 'medium')}` : ' · sin usar'}: ${items}`,
     );
   }
@@ -303,7 +381,7 @@ export function buildContext(params: BuildContextParams): string {
           ...new Set(
             daySessions.flatMap((session) =>
               session.entries.map((entry) =>
-                String(entry.name ?? byId.get(entry.exId)?.name ?? entry.exId),
+                nameOf(entry.exId, entry.name),
               ),
             ),
           ),

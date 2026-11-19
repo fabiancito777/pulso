@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   plateModes: {},
   ai: {
     apiKey: '',
-    model: 'gemini-3.8-flash',
+    model: 'gemini-4-hydrogen',
     thinkingLevel: 'low',
     includeThoughts: true,
     maxTokens: 4096,

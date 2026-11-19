@@ -43,12 +43,14 @@ export const STATE_KEY = 'pulso.state';
  * v3: `ai.temperature` pasa de 0,7 (default viejo) a 1 (el default de Gemini).
  * Solo migra el 0,7 que era el default; un valor elegido a mano se respeta.
  *
- * v4: la app solo soporta `gemini-3.8-flash` y `gemini-3.5-flash-lite`, así que
- * se quitan `ai.temperature` y `ai.thinkingBudget` (el primero lo ignora la API
- * desde Gemini 3.6 y el segundo solo existía para los 2.5) y un modelo que ya no
- * está soportado vuelve al de fábrica.
+ * v4: se quitan `ai.temperature` y `ai.thinkingBudget` (el primero lo ignora la
+ * API desde Gemini 3.6 y el segundo solo existía para los 2.5) y un modelo que ya
+ * no está soportado vuelve al de fábrica.
+ *
+ * v5: `gemini-4-hydrogen` pasa a ser el modelo por defecto; quien tenía guardado
+ * `gemini-3.8-flash` se migra automáticamente al nuevo recomendado.
  */
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 
 /** Claves del perfil activo (el principal conserva las históricas). */
 export const currentRestKey = (): string => restKeyFor(activeProfileId.value);
@@ -132,28 +134,31 @@ export function readProfileState(profileId: string): AppState {
     }
     const storedSettings = withDefaults(parsed.settings, DEFAULT_SETTINGS);
     const version = typeof parsed.version === 'number' ? parsed.version : 0;
-    /* v4: fuera `temperature` y `thinkingBudget` (la app solo soporta modelos
-       Gemini 3 y ninguno de los dos parámetros les sirve) y un modelo que ya no
-       está en `AI_MODELS` vuelve al de fábrica, para que el selector nunca
-       quede apuntando a algo que la app no ofrece.
-       Se hace con `delete` sobre una copia porque ambos campos sobraban ya del
-       tipo `AiSettings`: `withDefaults` los deja en el objeto crudo y hay que
-       quitarlos para que no viajen al export ni a la sincronización. */
-    const aiV4: Record<string, unknown> = { ...storedSettings.ai };
-    delete aiV4['temperature'];
-    delete aiV4['thinkingBudget'];
-    if (!AI_MODELS.some((option) => option.id === aiV4['model'])) {
-      aiV4['model'] = DEFAULT_SETTINGS.ai.model;
+    /* v4: fuera `temperature` y `thinkingBudget`; v5: `gemini-3.8-flash` pasa a
+       `gemini-4-hydrogen`. Un modelo que ya no está en `AI_MODELS` vuelve al de
+       fábrica, para que el selector nunca quede apuntando a algo que la app no
+       ofrece. Se hace con `delete` sobre una copia porque ambos campos sobraban
+       ya del tipo `AiSettings`: `withDefaults` los deja en el objeto crudo y hay
+       que quitarlos para que no viajen al export ni a la sincronización. */
+    const aiMigrated: Record<string, unknown> = { ...storedSettings.ai };
+    if (version < 4) {
+      delete aiMigrated['temperature'];
+      delete aiMigrated['thinkingBudget'];
     }
-    const settingsV4 =
-      version < 4
-        ? { ...storedSettings, ai: aiV4 as unknown as Settings['ai'] }
+    if (!AI_MODELS.some((option) => option.id === aiMigrated['model'])) {
+      aiMigrated['model'] = DEFAULT_SETTINGS.ai.model;
+    } else if (version < 5 && aiMigrated['model'] === 'gemini-3.8-flash') {
+      aiMigrated['model'] = DEFAULT_SETTINGS.ai.model;
+    }
+    const settingsMigrated =
+      version < 5
+        ? { ...storedSettings, ai: aiMigrated as unknown as Settings['ai'] }
         : storedSettings;
     /* la key del coach es compartida: si existe, manda sobre la copia del perfil */
     const sharedKey = readSharedApiKey();
     const settings = sharedKey
-      ? { ...settingsV4, ai: { ...settingsV4.ai, apiKey: sharedKey } }
-      : settingsV4;
+      ? { ...settingsMigrated, ai: { ...settingsMigrated.ai, apiKey: sharedKey } }
+      : settingsMigrated;
     return {
       ...(parsed as AppState),
       version: Math.max(version, STATE_VERSION),

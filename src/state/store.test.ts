@@ -965,9 +965,9 @@ describe('inventario en unidades', () => {
   });
 });
 
-/* ---------- migración de los ajustes de IA retirados (v4) ---------- */
+/* ---------- migración de los ajustes de IA retirados (v4) y del modelo (v5) ---------- */
 
-describe('migración v4 de ai', () => {
+describe('migración v4/v5 de ai', () => {
   const rawState = (version: number, ai: Record<string, unknown>): void => {
     const state = store.defaultState();
     state.version = version;
@@ -987,11 +987,21 @@ describe('migración v4 de ai', () => {
 
   it('un modelo que ya no está soportado vuelve al de fábrica', () => {
     rawState(3, { model: 'gemini-2.5-pro' });
-    expect(store.readState().settings.ai.model).toBe('gemini-3.8-flash');
+    expect(store.readState().settings.ai.model).toBe('gemini-4-hydrogen');
   });
 
   it('un modelo soportado se respeta', () => {
     rawState(3, { model: 'gemini-3.5-flash-lite' });
     expect(store.readState().settings.ai.model).toBe('gemini-3.5-flash-lite');
+  });
+
+  it('v5 migra gemini-3.8-flash a gemini-4-hydrogen', () => {
+    rawState(4, { model: 'gemini-3.8-flash' });
+    expect(store.readState().settings.ai.model).toBe('gemini-4-hydrogen');
+  });
+
+  it('un estado ya en v5 conserva el modelo elegido a mano', () => {
+    rawState(5, { model: 'gemini-3.8-flash' });
+    expect(store.readState().settings.ai.model).toBe('gemini-3.8-flash');
   });
 });

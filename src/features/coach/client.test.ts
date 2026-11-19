@@ -160,13 +160,28 @@ describe('buildBody', () => {
     expect('responseMimeType' in sinJson.generationConfig).toBe(false);
   });
 
-  it('thinkingConfig: manda el level y nunca el budget (los dos modelos son Gemini 3)', () => {
+  it('thinkingConfig: manda el level y nunca el budget', () => {
     expect(thinkingOf(opts({ thinkingLevel: 'medium' }))).toEqual({ thinkingLevel: 'medium' });
     expect(thinkingOf(opts({ thinkingLevel: 'high' }))).toEqual({ thinkingLevel: 'high' });
+    expect(thinkingOf(opts({ thinkingLevel: 'xhigh' }))).toEqual({ thinkingLevel: 'xhigh' });
     /* 'auto' cuenta como "sin level": con includeThoughts no se manda tampoco */
     expect(thinkingOf(opts({ thinkingLevel: 'auto' }))).toBeUndefined();
     /* la app ya no tiene el ajuste: un budget suelto no puede colarse */
     expect('thinkingBudget' in (buildBody(opts()) as SentBody).generationConfig).toBe(false);
+  });
+
+  it('Hydrogen convierte minimal en low: con minimal la API devuelve HTTP 400', () => {
+    expect(
+      thinkingOf(opts({ model: 'gemini-4-hydrogen', thinkingLevel: 'minimal' })),
+    ).toEqual({ thinkingLevel: 'low' });
+    /* sin modelo explícito se aplica el por defecto, que también es Hydrogen */
+    expect(thinkingOf(opts({ model: undefined, thinkingLevel: 'minimal' }))).toEqual({
+      thinkingLevel: 'low',
+    });
+    /* los modelos de respaldo sí aceptan minimal */
+    expect(thinkingOf(opts({ model: 'gemini-3.8-flash', thinkingLevel: 'minimal' }))).toEqual({
+      thinkingLevel: 'minimal',
+    });
   });
 
   it('thinkingConfig: includeThoughts solo, y la clave no aparece si no se pide nada', () => {

@@ -122,10 +122,11 @@ pantalla completa y funciona offline).
   plan para romper un récord.
 - Propone el **descanso por ejercicio** (compuestos 180-240 s, auxiliares 90-120 s, aislamientos
   60-75 s), que puedes ajustar a mano durante la sesión, en la rutina o en tus ejercicios.
-- Configurable desde la app: **API key**, **modelo** (`gemini-3.8-flash` o `gemini-3.5-flash-lite`),
-  **thinking level** (`auto|minimal|low|medium|high`), mostrar u ocultar el resumen de razonamiento
+- Configurable desde la app: **API key**, **modelo** (`gemini-4-hydrogen`, recomendado, o
+  `gemini-3.8-flash` y `gemini-3.5-flash-lite` como respaldo), **thinking level**
+  (`auto|minimal|low|medium|high|xhigh`), mostrar u ocultar el resumen de razonamiento
   (`includeThoughts`), máximo de tokens y system prompt. No hay `temperature` ni `thinkingBudget`:
-  Gemini 3 las ignora o no las usa.
+  Gemini 3 las ignora o no las usa. Hydrogen convierte `minimal` en `low` porque rechaza ese nivel.
 - **Espera máxima de respuesta**, automática según el thinking (60/120/240 s) o fijada a mano en
   segundos; mientras se espera la app dice cuánto lleva y deja cancelar sin cortar la app.
 - Botón de prueba de conexión con diagnóstico de errores.
@@ -182,9 +183,10 @@ pantalla completa y funciona offline).
 
 - Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent`
   (la key va en la cabecera `x-goog-api-key`, nunca en la URL).
-- Modelos soportados: `gemini-3.8-flash` (recomendado) y `gemini-3.5-flash-lite`. No hay descubrimiento
-  remoto de modelos ni soporte para los 2.5 (usaban `thinkingBudget`).
-- `generationConfig.thinkingConfig.thinkingLevel`: `auto | minimal | low | medium | high`.
+- Modelos soportados: `gemini-4-hydrogen` (recomendado), `gemini-3.8-flash` y `gemini-3.5-flash-lite`
+  (respaldo). No hay descubrimiento remoto de modelos ni soporte para los 2.5 (usaban `thinkingBudget`).
+- `generationConfig.thinkingConfig.thinkingLevel`: `auto | minimal | low | medium | high | xhigh`.
+  Hydrogen no acepta `minimal` (HTTP 400): se envía `low` en su lugar.
 - `thinkingConfig.includeThoughts: true` devuelve el resumen de razonamiento (se muestra plegable en el chat).
 - No se envía `temperature` (Gemini 3 la ignora) ni `thinkingBudget` (es de los modelos 2.5).
 

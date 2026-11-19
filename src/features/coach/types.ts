@@ -7,7 +7,14 @@
  * el resto del dominio: ni DOM, ni estado global, ni `fetch`.
  */
 import type { EquipmentMap } from '@/domain/data';
-import type { Exercise, RoutineItem, Session, Settings, Unit } from '@/domain/types';
+import type {
+  ActiveSession,
+  Exercise,
+  RoutineItem,
+  Session,
+  Settings,
+  Unit,
+} from '@/domain/types';
 
 /* ---------- aprendizaje: qué te fue bien y qué te fue mal ---------- */
 
@@ -177,6 +184,8 @@ export interface BuildContextParams {
   schedule: Record<string, CoachScheduleDay>;
   equipment: EquipmentMap;
   exercises: readonly Exercise[];
+  /** sesión en curso (rutina abierta sin cerrar); el Coach ve qué falta hacer */
+  active?: ActiveSession | null;
   opts?: ContextOptions;
 }
 

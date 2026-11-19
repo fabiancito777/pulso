@@ -145,7 +145,7 @@ describe('runCoachTask', () => {
     expect(gen).toHaveBeenCalledTimes(1);
     const arg = gen.mock.calls[0]?.[0];
     expect(arg?.apiKey).toBe('test-key');
-    expect(arg?.model).toBe('gemini-3.8-flash');
+    expect(arg?.model).toBe('gemini-4-hydrogen');
     expect(arg?.json).toBe(false);
     /* sin esquema: la conversación libre no tiene forma cerrada */
     expect(arg?.responseSchema).toBeUndefined();
