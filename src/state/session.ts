@@ -261,27 +261,9 @@ export function startFromPlan(
 }
 
 /**
- * Retoma una sesión que llega de OTRO dispositivo (no la crea ni la reinicia:
- * entra tal cual, con las series ya marcadas y el cronómetro corriendo desde su
- * `startedAt`) y enciende las capas de «móvil bloqueado».
- *
- * La fusión de `state/sync.ts` ya escribe la sesión en `active`; esta función es
- * para cuando la UI quiera adoptarla a mano.
- */
-export function resumeSession(session: ActiveSession): void {
-  if (active.value) return;
-  ensureAudio();
-  /* sin re-sellar: la sesión ya trae su `updatedAt` del dispositivo donde se
-     escribió, y cambiarlo aquí la haría ganar todos los fusiones siguientes */
-  setActive(session, false);
-  startSessionEffects();
-}
-
-/**
  * Enciende las capas de «móvil bloqueado» (permiso de avisos y wake lock) para la
- * sesión que ya está en `active`. Es lo que hace `resumeSession` cuando la sesión
- * llega de fuera, pero aquí la sesión ya la escribió la fusión (`refresh`), así
- * que no hay que volver a ponerla.
+ * sesión que ya está en `active`. La fusión de `state/sync.ts` escribe la sesión
+ * y llama directamente a esta función, así que no hay que volver a ponerla.
  */
 export function armSession(): void {
   if (!active.value) return;

@@ -72,17 +72,18 @@ pantalla completa y funciona offline).
 - **Editar una serie se aplica hacia abajo**: cambiar el peso (o las reps) de la serie 2 lo copia a las
   siguientes de ese ejercicio; nunca a las de arriba ni a las ya marcadas (esas ya se hicieron). Así no
   repites el mismo peso cuatro veces.
-- **El descanso no se configura a mano**: lo define cada ejercicio en la biblioteca (compuestos grandes
-  ~180-240 s, auxiliares ~90-120 s, aislamientos ~60-75 s) y el coach IA puede ajustarlo por sesión.
-  En la pantalla de sesión solo se muestra el tiempo sugerido.
+- **Descanso editable**: cada ejercicio de la biblioteca trae un tiempo sugerido (compuestos grandes
+  ~180-240 s, auxiliares ~90-120 s, aislamientos ~60-75 s) que el coach IA puede ajustar, pero puedes
+  cambiarlo **por ejercicio durante la sesión**, en el editor de rutinas y al crear/editar ejercicios
+  propios.
 - **Aviso de fin aunque no estés mirando la app**: al terminar suena el pitido, vibra y lanza una
   **notificación del sistema**; con la app en segundo plano la lanza el *service worker*
   (`public/sw.js`), y con el
   móvil bloqueado la recibes si instalas la app como PWA (Añadir a pantalla de inicio; en iOS es
-  requisito, 16.4+). El aviso es un **pitido largo (~3,5 s) + vibración + notificación**: mientras hay
-  sesión activa la app mantiene su audio en segundo plano (un audio en silencio en bucle) para que el
-  navegador no la congele con el móvil bloqueado, y además el aviso queda **programado en el service
-  worker** desde que empieza el descanso, de modo que salta aunque la app quede congelada o cerrada.
+  requisito, 16.4+). El aviso es un **pitido largo (~3,5 s) + vibración + notificación**: el aviso queda
+  **programado en el service worker** desde que empieza el descanso, de modo que salta aunque la app
+  quede congelada o cerrada. Como último recurso (iOS o navegadores sin service worker), el audio en
+  silencio se activa **solo durante el descanso**, para no atenuar otras apps, y se apaga al terminar.
   Durante la sesión la pantalla se mantiene encendida (Wake Lock) y se recupera al volver a la app.
 - **Autollenado progresivo**: cada serie se rellena con el peso sugerido a partir de tu última sesión
   del mismo ejercicio (fórmula de Epley) + tu incremento configurado. Si no tienes historial el campo
@@ -103,8 +104,8 @@ pantalla completa y funciona offline).
 ### Rutinas
 - Biblioteca de rutinas propias (crear, editar, duplicar, borrar, agendar, empezar).
 - Editor con series, rango de repeticiones y descanso por ejercicio.
-- **9 plantillas** (full body, push/pull/legs, torso, pierna, cardio, movilidad) que se materializan
-  usando solo ejercicios permitidos y disponibles con tu equipamiento.
+- **7 plantillas** (Full body A/B, empuje, tirón, pierna, torso completo y pierna + core) que se
+  materializan usando solo ejercicios permitidos y disponibles con tu equipamiento.
 - Generador automático (rotando ejercicios que ya hiciste recientemente) y generador con IA.
 
 ### Plan (calendario)
@@ -119,11 +120,12 @@ pantalla completa y funciona offline).
   prohibidos, historial reciente, días desde el último estímulo por grupo, récords y plan de la semana.
 - Acciones rápidas: sesión de hoy, plan de la semana, análisis de progreso, revisión de volumen,
   plan para romper un récord.
-- Decide el **descanso óptimo por ejercicio** (compuestos 180-240 s, auxiliares 90-120 s, aislamientos
-  60-75 s): el usuario no configura descansos, la plantilla o el coach los proponen.
-- Configurable desde la app: **API key**, **modelo** (lista curada + carga de modelos reales de tu cuenta),
-  **thinking level** (`minimal|low|medium|high` o auto), **thinking budget** (modelos 2.5), mostrar u
-  ocultar el resumen de razonamiento (`includeThoughts`), temperature, máximo de tokens y system prompt.
+- Propone el **descanso por ejercicio** (compuestos 180-240 s, auxiliares 90-120 s, aislamientos
+  60-75 s), que puedes ajustar a mano durante la sesión, en la rutina o en tus ejercicios.
+- Configurable desde la app: **API key**, **modelo** (`gemini-3.8-flash` o `gemini-3.5-flash-lite`),
+  **thinking level** (`auto|minimal|low|medium|high`), mostrar u ocultar el resumen de razonamiento
+  (`includeThoughts`), máximo de tokens y system prompt. No hay `temperature` ni `thinkingBudget`:
+  Gemini 3 las ignora o no las usa.
 - **Espera máxima de respuesta**, automática según el thinking (60/120/240 s) o fijada a mano en
   segundos; mientras se espera la app dice cuánto lleva y deja cancelar sin cortar la app.
 - Botón de prueba de conexión con diagnóstico de errores.
@@ -158,10 +160,11 @@ pantalla completa y funciona offline).
 - **Discos**: inventario editable (medida × **discos** × disponible; se cuenta en unidades sueltas y se
   reparten entre los huecos, así que **con un número impar sobra uno**), peso de barra/barra EZ/mango
   (**0 kg si es de plástico**), máximo cargable en barra y por mancuerna, y gráfico del inventario.
-- **Ejercicios**: biblioteca por defecto de **24 ejercicios** con buscador y filtros (grupo, permitidos,
-  prohibidos, sin material, propios). Permite **permitir/prohibir** individualmente o en bloque todo lo
-  filtrado, y crear/editar/borrar ejercicios propios (el catálogo base de 136 sigue detrás como
-  fuente de datos del matcher y de los ejercicios de ejemplo).
+- **Ejercicios**: biblioteca por defecto de **24 ejercicios** con buscador y cuatro segmentos
+  (★ Favoritos, Catálogo, Propios, Ocultos), además de acordeones por grupo muscular. Permite
+  **permitir/prohibir** y marcar como favorito u oculto, individualmente o en bloque, y crear/editar/borrar
+  ejercicios propios (el catálogo base de 136 sigue detrás como fuente de datos del matcher y de los
+  ejercicios de ejemplo).
 - **Coach AI**: toda la configuración descrita arriba.
 - **Datos**: exportar/importar copia JSON, cargar 8 semanas de ejemplo para ver las gráficas,
   quitarlas, borrar todo y ver el espacio usado.
@@ -175,15 +178,15 @@ pantalla completa y funciona offline).
   (`generativelanguage.googleapis.com`) cuando usas el coach, con la key que tú pegas.
 - Exporta una copia desde *Ajustes → Datos* de vez en cuando: borrar los datos del navegador borra la app.
 
-## Modelos y thinking (comprobado a sep-2026)
+## Modelos y thinking
 
-- Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key=…`
-- `generationConfig.thinkingConfig.thinkingLevel`: `minimal | low | medium | high` (modelos Gemini 3).
-- `generationConfig.thinkingConfig.thinkingBudget`: modelos 2.5 (`0` lo desactiva, `-1` dinámico).
-  Es mutuamente excluyente con `thinkingLevel`: en la app, si eliges un nivel se ignora el budget.
+- Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent`
+  (la key va en la cabecera `x-goog-api-key`, nunca en la URL).
+- Modelos soportados: `gemini-3.8-flash` (recomendado) y `gemini-3.5-flash-lite`. No hay descubrimiento
+  remoto de modelos ni soporte para los 2.5 (usaban `thinkingBudget`).
+- `generationConfig.thinkingConfig.thinkingLevel`: `auto | minimal | low | medium | high`.
 - `thinkingConfig.includeThoughts: true` devuelve el resumen de razonamiento (se muestra plegable en el chat).
-- Modelos sugeridos por defecto: `gemini-3.8-flash` (recomendado), `3.7`, `3.6`, `3.5`, `3.5-flash-lite`,
-  `3.1-flash-lite`, `2.5-flash`, `2.5-pro`. Puedes cargar la lista real de tu cuenta con *Cargar modelos*.
+- No se envía `temperature` (Gemini 3 la ignora) ni `thinkingBudget` (es de los modelos 2.5).
 
 ### Qué recibe exactamente el coach (transparencia del contexto)
 
@@ -248,7 +251,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1354 tests**). |
+| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1460 tests**). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre el proyecto. |
 
@@ -277,22 +280,19 @@ Mejoras que encajan de forma natural si quieres seguir:
 
 1. **Wearables / salud**: importar pasos, sueño y pulso (Apple Health / Google Fit) para correlacionar
    volumen, recuperación y ritmo cardíaco.
-3. **Series de aproximación y RIR** con plantillas por ejercicio (calentamiento automático al 40/60/80 %).
-4. **Supersets y circuitos**: agrupar ejercicios en bloques con descanso compartido y temporizador encadenado.
-5. **Autorregulación**: sugerir el peso de la próxima sesión con doble progresión real (si completas el tope
+2. **Series de aproximación y RIR** con plantillas por ejercicio (calentamiento automático al 40/60/80 %).
+3. **Autorregulación**: sugerir el peso de la próxima sesión con doble progresión real (si completas el tope
    de reps en todas las series, sube; si no, mantén) y avisar de estancamientos por ejercicio.
-6. **Métricas corporales**: peso, medidas y fotos, con gráficos sobre las mismas líneas temporales.
-7. **Sync opcional multicuenta**: hoy todo es local; si quieres compartir entre móvil y PC, lo más simple es
-   exportar/importar JSON o montar un backend pequeño (Supabase/Firebase) sin cambiar la arquitectura.
-8. **Stack**: si más adelante quieres migrar, el código está separado por responsabilidades (store, planner,
+4. **Métricas corporales**: peso, medidas y fotos, con gráficos sobre las mismas líneas temporales.
+5. **Stack**: si más adelante quieres migrar, el código está separado por responsabilidades (store, planner,
    charts, vistas), así que portar a React/Svelte/Vue o a React Native/Expo sería directo manteniendo el modelo de datos.
-9. **i18n**: los textos están en español dentro de los módulos; extraerlos a un diccionario es sencillo.
-10. **Más estadísticas**: volumen efectivo por serie, distribución de RPE, tiempo bajo tensión y comparativas
-    entre bloques de 4 semanas (mesociclos).
+6. **i18n**: los textos están en español dentro de los módulos; extraerlos a un diccionario es sencillo.
+7. **Más estadísticas**: volumen efectivo por serie, distribución de RPE, tiempo bajo tensión y comparativas
+   entre bloques de 4 semanas (mesociclos).
 
 ## Limitaciones conocidas
 
-- El almacenamiento es por navegador y dispositivo: no se sincroniza solo.
+- El almacenamiento es por navegador y dispositivo: sin el código de pareja no se sincroniza nada entre dispositivos.
 - El 1RM es **estimado** (Epley); sirve para ver tendencias, no es un test real.
 - Si cambias de unidad (`kg`/`lb`) los pesos del historial se convierten al mostrarse, pero el inventario
   de discos se interpreta en la unidad activa (avisa la app al cambiarla).

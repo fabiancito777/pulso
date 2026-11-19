@@ -2,8 +2,8 @@
  * `ui/progress-helpers.ts`: lo que hay que comprobar de la pestaña Progreso sin
  * abrir un navegador.
  *
- * Las reglas que se fijan aquí son las que antes solo se podía comprobar
- * entrenando o con `?selftest=1`:
+ * Las reglas que se fijan aquí son las que antes solo se podían comprobar
+ * entrenando:
  *
  * - el resumen de cada fila del historial (volumen en kg aunque la sesión esté
  *   en lb, series hechas, duración y grupos sin repetir);

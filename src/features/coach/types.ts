@@ -107,12 +107,6 @@ export interface MemoryUpdate {
   added: string[];
 }
 
-/** Lo que devuelve `extractMemoryBlock`: el texto sin el bloque y su contenido. */
-export interface MemoryExtraction {
-  rest: string;
-  block: string | null;
-}
-
 /** Semilla opcional de `defaultMemory` (líneas sin el `- ` inicial). */
 export interface MemorySeed {
   profile?: string[];

@@ -79,8 +79,6 @@ export function defaultEquipment(): EquipmentMap {
   return out;
 }
 
-export type EquipPresetKind = 'todo' | 'gym' | 'kit' | 'basico' | 'ninguno';
-
 /**
  * Presets que NO salen del catálogo. Viven aquí y no en `catalog.ts`
  * porque ese fichero es generado (históricamente con `tools/port-catalog.mjs`) y
