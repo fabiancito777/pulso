@@ -134,6 +134,10 @@ describe('conversión de series', () => {
     expect(setVolumeKg({ weight: null, reps: 5, done: true })).toBe(0);
   });
 
+  it('un peso NaN no contamina el volumen', () => {
+    expect(setVolumeKg({ weight: Number.NaN, reps: 10, done: true })).toBe(0);
+  });
+
   it('la fecha de la sesión sale del campo `date` o del arranque (en local)', () => {
     expect(sessionDate(sesion(HOY, []))).toBe(HOY);
     const local = new Date(2026, 8, 20, 8, 0, 0);
@@ -162,6 +166,13 @@ describe('1RM estimado (Epley)', () => {
     expect(e1rm(100, 0)).toBe(0);
     expect(e1rm(100, -3)).toBe(0);
     expect(e1rm('', '')).toBe(0);
+  });
+
+  it('peso NaN o reps Infinity no rompen el 1RM', () => {
+    expect(e1rm(Number.NaN, 10)).toBe(0);
+    const out = e1rm(100, Number.POSITIVE_INFINITY);
+    expect(Number.isFinite(out)).toBe(true);
+    expect(out).toBe(0);
   });
 });
 

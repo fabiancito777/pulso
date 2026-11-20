@@ -128,7 +128,6 @@ export interface AiSettings {
    * nivel de pensamiento: 60/120/240 s). Un modelo lento necesita más.
    */
   timeoutSec?: number;
-  autoApply: boolean;
   systemPrompt: string;
   /** Memoria editable del coach IA (markdown). La lógica vive en `features/coach`. */
   memory?: string;
@@ -153,10 +152,8 @@ export interface Settings {
   notify: boolean;
   keepAwake: boolean;
   increment: number;
-  countWarmups: boolean;
   showRpe: boolean;
   countdownTick: boolean;
-  quickFinish: boolean;
   plates: PlateStock[];
   bars: BarWeights;
   /** modo de carga recordado por ejercicio (clave `__tool__` para la calculadora suelta) */

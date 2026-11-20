@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { idFor } from './exercise-draft';
 import { norm, similarity, slug, trunc } from './text';
 
 describe('texto', () => {
@@ -14,6 +15,21 @@ describe('texto', () => {
       'extension-sobre-la-cabeza-con-mancuerna',
     );
     expect(slug('Fondos en paralelas (pecho)')).toBe('fondos-en-paralelas-pecho');
+  });
+
+  it('un nombre con HTML no inyecta etiquetas en el id', () => {
+    const name = '<img src=x onerror=alert(1)>';
+    const s = slug(name);
+    expect(s).not.toContain('<');
+    expect(s).not.toContain('>');
+    expect(s).toMatch(/^[a-z0-9-]+$/);
+    expect(idFor(name, [])).toBe(s);
+  });
+
+  it('los emojis no rompen el id (y uno solo cae a un id genérico)', () => {
+    expect(slug('Curl 💪 de bíceps')).toBe('curl-de-biceps');
+    expect(idFor('Curl 💪 de bíceps', [])).toBe('curl-de-biceps');
+    expect(idFor('💪', [])).toMatch(/^ex_/);
   });
 
   it('mide el parecido entre dos nombres', () => {

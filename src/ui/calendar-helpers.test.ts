@@ -15,8 +15,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { addDays, today } from '@/domain/dates';
 
 import {
-  autoPlanEngine,
-  autoPlanRequest,
   clearDayPatch,
   dayState,
   dayTitle,
@@ -30,9 +28,7 @@ import {
   planEngine,
   planFromJson,
   planOrigin,
-  requestAutoPlan,
   restDayPatch,
-  takeAutoPlanRequest,
   weekCounts,
   weekSubtitle,
 } from './calendar-helpers';
@@ -246,11 +242,6 @@ describe('propuesta: local vs IA', () => {
     expect(planEngine('')).toBe('local');
   });
 
-  it('el motor del auto-plan es la IA solo si hay key', () => {
-    expect(autoPlanEngine(true)).toBe('ia');
-    expect(autoPlanEngine(false)).toBe('local');
-  });
-
   it('sin key la opción IA se oculta y deja el pie; con key se ofrece', () => {
     expect(planControls(false)).toEqual({ ai: false, foot: 'sin API key: plan local' });
     expect(planControls(true)).toEqual({ ai: true, foot: '' });
@@ -296,17 +287,6 @@ describe('propuesta: local vs IA', () => {
     });
     expect(planFromJson({ days: [] })).toBeNull();
     expect(planFromJson(undefined)).toBeNull();
-  });
-
-  it('la petición de auto-plan se consume UNA sola vez', () => {
-    expect(takeAutoPlanRequest()).toBeNull();
-    requestAutoPlan('ia');
-    expect(autoPlanRequest.value).toBe('ia');
-    expect(takeAutoPlanRequest()).toBe('ia');
-    expect(takeAutoPlanRequest()).toBeNull();
-    requestAutoPlan('local');
-    expect(takeAutoPlanRequest()).toBe('local');
-    expect(autoPlanRequest.value).toBeNull();
   });
 });
 

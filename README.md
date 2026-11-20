@@ -253,7 +253,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest offline (dominio, estado y UI; ≈ **1460 tests**). |
+| `npm run test` | Vitest offline (dominio, estado y UI; **1182 tests**). |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre el proyecto. |
 

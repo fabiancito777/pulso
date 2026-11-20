@@ -49,20 +49,13 @@ describe('tabSub (el subtítulo de pestaña)', () => {
   });
 
   it('las demás pestañas lo pinta SU vista, así que el shell no dice nada', () => {
-    for (const tab of ['hoy', 'entrenar', 'calendario', 'coach', 'progreso']) {
+    for (const tab of ['hoy', 'calendario', 'coach', 'progreso']) {
       expect(tabSub(tab)).toBe('');
     }
   });
 });
 
 describe('sessionDockMode (dónde vive la sesión)', () => {
-  it('Entrenar siempre lleva la tarjeta completa', () => {
-    expect(sessionDockMode('entrenar', false, false)).toEqual({
-      showSession: true,
-      floatingDock: false,
-    });
-  });
-
   it('Hoy la lleva solo con sesión o descanso', () => {
     expect(sessionDockMode('hoy', false, false)).toEqual({
       showSession: false,

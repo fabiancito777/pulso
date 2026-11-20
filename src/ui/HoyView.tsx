@@ -2,8 +2,7 @@
  * Pestaña **Hoy**: el panel diario  ( →
  * `V.render` sin sesión activa) con el mismo orden de bloques:
  *
- * saludo → hero del día → semana → Recomendado → KPIs 7d → Herramientas →
- * Libre/Elegir rutina → Últimas sesiones.
+ * saludo → hero del día → semana → Herramientas → Últimas sesiones.
  *
  * Decisiones que no se pueden romper sin querer:
  *
@@ -19,31 +18,18 @@
  * - **Sin modales propios**: el detalle de sesión y el selector de rutina son
  *   paneles en línea; el de ejercicios reutiliza el modal que ya usa
  *   `SessionCard` (`ExercisePickerModal`).
- * - **Sin API key nada falla en silencio**: «Mejorar con IA» avisa y te lleva a
- *   Ajustes (spec `hoy.md`, decisión 9). El caso contrario — «Plan
- *   automático» — NUNCA exige key: pide el plan al Calendario y, si no la hay,
- *   ese plan sale del dispositivo (antes `coach:quick` → `autoPlan`, que sin key
- *   resolvía en local).
  */
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
-import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import { durationOf, sessionDate, setsOf, totals, volumeOf } from '@/domain/analytics';
-import { groupColor, groupLabel, resolveExercise } from '@/domain/data';
+import { groupLabel, resolveExercise } from '@/domain/data';
 import { label as dateLabel, dowLong, today } from '@/domain/dates';
 import { fmtDur, fmtMmss, fmtN, fmtVol, fmtW } from '@/domain/format';
-import { matchExercise, unresolvedName, unresolvedNames } from '@/domain/match';
-import type { UnresolvedName } from '@/domain/match';
 import { maxLoadable } from '@/domain/plates';
 import { clamp, int } from '@/domain/num';
 import { unitLabel } from '@/domain/units';
 import type { Session } from '@/domain/types';
-import { localSuggest } from '@/features/coach/local';
-import { parseJSON } from '@/features/coach/parse';
-import { promptHistory } from '@/state/chat';
-import { applySuggestionAsRoutine, hasApiKey, partitionUnresolved, runCoachTask } from '@/state/coach';
-import { createExerciseFromAI } from '@/state/exercise-create';
 import {
   active,
   rest,
@@ -53,38 +39,16 @@ import {
   startRestTimer,
   stopRestTimer,
 } from '@/state/session';
-import {
-  equipment,
-  exercises,
-  routines,
-  schedule,
-  sessions,
-  setDay,
-  settings,
-} from '@/state/store';
-import { autoPlanEngine, requestAutoPlan, restDayPatch } from './calendar-helpers';
+import { exercises, routines, schedule, sessions, setDay, settings } from '@/state/store';
+import { restDayPatch } from './calendar-helpers';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { HelpBtn } from './HelpModal';
-import {
-  greeting,
-  lastSessions,
-  planRows,
-  repeatItems,
-  suggestionPlan,
-  suggestionRows,
-  suggestionSource,
-  todayPlan,
-  weekCells,
-  weekKpis,
-} from './hoy-helpers';
+import { greeting, lastSessions, planRows, repeatItems, todayPlan, weekCells } from './hoy-helpers';
 import type { TodayPlan } from './hoy-helpers';
-import { useCoachWait, WaitMeta } from './coach-wait';
-import type { CoachWait } from './coach-wait';
 import { Icon } from './Icon';
 import { Kpi, SectionHead } from './kit';
 import { PlatesCard } from './PlatesCard';
-import { routineSets, toSuggestion } from './routines-helpers';
-import type { RoutineSuggestion } from './routines-helpers';
+import { routineSets } from './routines-helpers';
 import { toast } from './toast';
 
 import '../styles/hoy.css';
@@ -100,12 +64,6 @@ const CELL_CLASS: Record<string, string> = {
   skipped: 'st-skip',
   free: '',
 };
-
-/** Aviso de la vista (error del coach, rutina creada…) ya con su tono. */
-interface Notice {
-  kind: 'ok' | 'warn' | 'err';
-  text: string;
-}
 
 /* ---------- saludo ---------- */
 
@@ -130,14 +88,17 @@ function Hero({
   onStart,
   onSkip,
   onExtra,
-  onAutoPlan,
+  onFree,
+  onPickRoutine,
 }: {
   plan: TodayPlan;
   onStart: () => void;
   onSkip: () => void;
   onExtra: () => void;
-  /** «Plan automático»: pide la semana al Calendario (antes `coach:quick`) */
-  onAutoPlan: () => void;
+  /** «Entrenar libre»: abre el selector de ejercicios. */
+  onFree: () => void;
+  /** «Elegir rutina»: despliega `RoutinePick` justo debajo del hero. */
+  onPickRoutine: () => void;
 }) {
   const now = today();
 
@@ -214,7 +175,7 @@ function Hero({
         <div>
           <div class="tiny muted hy-kicker">Hoy · {dowLong(now)}</div>
           <div class="h2">Sin plan para hoy</div>
-          <div class="sub">Programa la semana o entrena libremente</div>
+          <div class="sub">Entrena libre o elige una de tus rutinas</div>
         </div>
         <div class="row" style="gap:4px">
           <Icon name="calendar" />
@@ -222,15 +183,14 @@ function Hero({
         </div>
       </div>
       <div class="row mt" style="gap:8px;flex-wrap:wrap">
-        <button type="button" class="btn primary" onClick={() => go('calendario')}>
-          <Icon name="calendar" />
-          Planificar semana
+        <button type="button" class="btn primary" onClick={onFree}>
+          <Icon name="plus" />
+          Entrenar libre
         </button>
-        <button type="button" class="btn" onClick={onAutoPlan}>
-          <Icon name="sparkles" />
-          Plan automático
+        <button type="button" class="btn" onClick={onPickRoutine}>
+          <Icon name="list" />
+          Elegir rutina
         </button>
-        <HelpBtn id="flow.plan" title="Auto-planificar la semana" />
       </div>
     </section>
   );
@@ -268,200 +228,6 @@ function WeekStrip({ cells }: { cells: ReturnType<typeof weekCells> }) {
             <span class="dstat" />
           </button>
         ))}
-      </div>
-    </section>
-  );
-}
-
-/* ---------- recomendado ahora ---------- */
-
-function SuggestCard({
-  suggestion,
-  raw,
-  source,
-  loading,
-  wait,
-  notice,
-  onRefresh,
-  onAi,
-  onStart,
-  onSave,
-  onCreate,
-}: {
-  suggestion: RoutineSuggestion | null;
-  raw: unknown;
-  source: 'ia' | 'local';
-  loading: boolean;
-  wait: CoachWait;
-  notice: Notice | null;
-  onRefresh: () => void;
-  onAi: () => void;
-  onStart: () => void;
-  onSave: () => void;
-  onCreate: (proposal: AIExerciseProposal) => void;
-}) {
-  if (!suggestion) {
-    return (
-      <section class="mt">
-        <SectionHead title="Recomendado ahora" help="hoy.suggest" />
-        <div class="empty">
-          <Icon name="sparkles" />
-          <div>No hay ninguna sugerencia disponible todavía</div>
-          <div class="tiny">Recalcula o programa la semana para empezar</div>
-        </div>
-      </section>
-    );
-  }
-
-  const rows = suggestionRows(suggestion, exercises.value);
-  /* Los ejercicios marcados con `isNew: true` llegan sin resolver. Se parten
-     con `partitionUnresolved` sobre el JSON crudo: lo que solo falta en la
-     biblioteca se crea con un clic; lo que choca con otro ejercicio sigue siendo
-     un aviso (nunca se crea un duplicado). */
-  const unresolved: UnresolvedName[] = suggestion.exercises
-    .filter((item) => !item.matched)
-    .map((item) => unresolvedName(item.name, matchExercise(item.name, exercises.value)));
-  const { creatable } = partitionUnresolved(unresolved, raw);
-  const badge =
-    source === 'ia' ? { cls: 'badge a', label: 'IA' } : { cls: 'badge', label: 'local' };
-
-  return (
-    <section class="mt">
-      <SectionHead
-        title="Recomendado ahora"
-        help="hoy.suggest"
-        right={
-          <button type="button" class="btn quiet sm" onClick={onRefresh} disabled={loading}>
-            <Icon name="refresh" />
-            Recalcular
-          </button>
-        }
-      />
-      <div class="card accent">
-        <div class="between mb">
-          <div style="min-width:0">
-            <div class="h3">{suggestion.title}</div>
-            <div class="tiny muted ellipsis">{suggestion.focus}</div>
-          </div>
-          <span class={badge.cls}>{badge.label}</span>
-        </div>
-        <div class="col" style="gap:6px">
-          {rows.slice(0, 6).map((row, i) => {
-            const color = row.group ? groupColor(row.group) : '';
-            /* El motivo se recalcula con el matcher que usará «Empezar»/«Guardar» */
-            const match = row.matched ? null : matchExercise(row.name, exercises.value);
-            const badge = match
-              ? {
-                  label: match.conflict ? 'no encaja en tu biblioteca' : 'no está en tu biblioteca',
-                  title: match.conflict ?? 'no está en tu biblioteca',
-                }
-              : null;
-            return (
-              <div key={`${row.name}-${i}`} class="row" style="gap:8px">
-                {row.group ? (
-                  <span class="badge" style={`background:${color}22;color:${color}`}>
-                    {groupLabel(row.group)}
-                  </span>
-                ) : null}
-                <span class="grow ellipsis" style="font-size:13.5px">
-                  {row.name}
-                </span>
-                {badge ? (
-                  <span class="badge danger" title={badge.title}>
-                    {badge.label}
-                  </span>
-                ) : null}
-                <span class="tiny muted num">
-                  {row.sets}×{row.reps}
-                  {row.weight ? ` @ ${fmtN(row.weight)}` : ''}
-                </span>
-              </div>
-            );
-          })}
-          {rows.length > 6 ? <div class="tiny muted">+{rows.length - 6} ejercicios</div> : null}
-        </div>
-        {suggestion.rationale.length ? (
-          <>
-            <div class="divider" />
-            <div class="tiny muted">{suggestion.rationale.slice(0, 3).join(' · ')}</div>
-          </>
-        ) : null}
-        {creatable.length ? (
-          <div class="card tight mt-s">
-            <div class="tiny">
-              <b>Ejercicios nuevos por confirmar</b>
-            </div>
-            <div class="row wrap mt-s" style="gap:6px">
-              {creatable.map((p) => (
-                <button type="button" key={p.name} class="btn sm ghost" onClick={() => onCreate(p)}>
-                  <Icon name="plus" />
-                  Crear «{p.name}»
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {notice ? (
-          <div
-            class={`tiny ${notice.kind === 'err' ? 'danger' : notice.kind} mt-s`}
-            role={notice.kind === 'err' ? 'alert' : 'status'}
-            aria-live={notice.kind === 'err' ? 'assertive' : 'polite'}
-          >
-            {notice.text}
-          </div>
-        ) : null}
-        {loading ? (
-          <div class="mt-s">
-            <WaitMeta wait={wait} />
-          </div>
-        ) : null}
-        <div class="col mt-s" style="gap:8px">
-          <button type="button" class="btn primary block" onClick={onStart}>
-            {loading ? 'Pensando…' : 'Empezar ahora'}
-          </button>
-          <div class="grid c2" style="gap:8px">
-            <button type="button" class="btn sm block" onClick={onAi} disabled={loading}>
-              <Icon name="sparkles" />
-              Mejorar con IA
-            </button>
-            <button type="button" class="btn sm ghost block" onClick={onSave}>
-              Guardar rutina
-            </button>
-          </div>
-        </div>
-        <div class="tiny muted mt-s">
-          Origen: {source === 'ia' ? 'IA del coach' : 'cálculo local'} · «Guardar rutina» la copia a
-          Rutinas
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ---------- KPIs de 7 días ---------- */
-
-function Kpis({
-  volume,
-  sessions: count,
-  sets,
-  minutes,
-  deltaPct,
-  objective,
-}: ReturnType<typeof weekKpis>) {
-  return (
-    <section class="mt">
-      <div class="grid c3">
-        <Kpi label="Sesiones 7d" value={count} delta={`objetivo ${objective}`} help="hoy.kpis" />
-        <Kpi
-          label="Volumen 7d"
-          value={fmtVol(volume)}
-          delta={
-            deltaPct === null
-              ? 'sin comparativa'
-              : `${deltaPct > 0 ? '+' : ''}${deltaPct}% vs semana previa`
-          }
-        />
-        <Kpi label="Series 7d" value={sets} delta={`${minutes} min de entreno`} />
       </div>
     </section>
   );
@@ -730,7 +496,6 @@ export function HoyView() {
   const now = today();
   const s = settings.value;
   const list = sessions.value;
-  const library = exercises.value;
   const plan = todayPlan(schedule.value[now], routines.value, list, now);
   const stats = totals(list, now);
 
@@ -738,38 +503,6 @@ export function HoyView() {
   const [openSession, setOpenSession] = useState<string | null>(null);
   const [pickOpen, setPickOpen] = useState(false);
   const [routinePick, setRoutinePick] = useState(false);
-  const [nonce, setNonce] = useState(0);
-  const [ai, setAi] = useState<{
-    raw: unknown;
-    sug: RoutineSuggestion;
-    source: 'ia' | 'local';
-  } | null>(null);
-  const wait = useCoachWait();
-  const [notice, setNotice] = useState<Notice | null>(null);
-
-  /* La sugerencia local se recalcula cuando cambia el historial (o cuando
-     pides «Recalcular»): la IA solo entra como sustitución encima. */
-  const localRaw = useMemo(
-    () =>
-      localSuggest({
-        settings: s,
-        exercises: library,
-        equipment: equipment.value,
-        sessions: list,
-        todayIso: now,
-      }),
-    [s, library, equipment.value, list, now, nonce],
-  );
-  const localSug = useMemo(() => toSuggestion(localRaw, library), [localRaw, library]);
-
-  useEffect(() => {
-    setAi(null);
-    setNotice(null);
-  }, [list.length]);
-
-  const suggestion = ai ? ai.sug : localSug;
-  const raw = ai ? ai.raw : localRaw;
-  const source = ai ? ai.source : suggestionSource(localRaw);
 
   /* El guard de sesión activa va DESPUÉS de todos los hooks (ver cabecera). */
   if (active.value) return null;
@@ -791,18 +524,6 @@ export function HoyView() {
     toast('Día marcado como descanso', { kind: 'ok', ms: 1600 });
   }
 
-  /**
-   * «Plan automático» (`coach:quick` con `kind="week"` ): va al
-   * Calendario y le pide la propuesta — IA si hay key, dispositivo si no, que
-   * es lo que hacía `autoPlan(C.hasKey())`—. La petición viaja en
-   * `autoPlanRequest` y la consume la propia vista, que pinta el preview y deja
-   * que decidas con «Aplicar»: aquí no se escribe ningún día.
-   */
-  function planAutomatically(): void {
-    requestAutoPlan(autoPlanEngine(hasApiKey()));
-    go('calendario');
-  }
-
   function repeat(session: Session): void {
     startFromPlan(repeatItems(session), {
       name: session.name || 'Entrenamiento',
@@ -811,128 +532,6 @@ export function HoyView() {
     toast('Sesión cargada con los pesos anteriores', { kind: 'ok' });
   }
 
-  function startSuggestion(): void {
-    if (!suggestion) return;
-    const items = suggestionPlan(suggestion);
-    /* Los que NO resolvieron (umbral 0,85 + veto de `domain/match`) no entran en
-       la sesión — `suggestionPlan` los filtra— pero tampoco desaparecen: se avisa
-       con el MISMO matcher para que el motivo sea el que daría al aplicar. */
-    const missing: UnresolvedName[] = suggestion.exercises
-      .filter((item) => !item.matched)
-      .map((item) => {
-        const match = matchExercise(item.name, exercises.value);
-        return { name: item.name, reason: match.conflict ?? 'no está en tu biblioteca' };
-      });
-    if (!items.length) {
-      toast(
-        missing.length
-          ? `Ningún ejercicio de la sugerencia está en tu biblioteca: ${unresolvedNames(missing)}`
-          : 'La sugerencia no tiene ejercicios reconocibles',
-        { kind: 'warn' },
-      );
-      return;
-    }
-    startFromPlan(items, { name: suggestion.title, dayIso: now });
-    if (missing.length) {
-      toast(`Empezado sin: ${unresolvedNames(missing)}`, { kind: 'warn' });
-    }
-  }
-
-  function saveSuggestion(): void {
-    if (!suggestion) return;
-    const { routine: created, unresolved } = applySuggestionAsRoutine(raw);
-    if (!created) {
-      setNotice({
-        kind: 'err',
-        text: unresolved.length
-          ? `No se pudo guardar: ${unresolvedNames(unresolved)} no ${
-              unresolved.length === 1 ? 'está' : 'están'
-            } en tu biblioteca.`
-          : 'No se pudo guardar: ningún ejercicio de la lista está en tu biblioteca.',
-      });
-      return;
-    }
-    const savedText = unresolved.length
-      ? `Rutina creada: ${created.name} · sin usar: ${unresolvedNames(unresolved)}`
-      : `Rutina creada: ${created.name}`;
-    setNotice({ kind: unresolved.length ? 'warn' : 'ok', text: savedText });
-    toast(savedText, { kind: unresolved.length ? 'warn' : 'ok' });
-  }
-
-  /** Crea un ejercicio nuevo propuesto por la IA y reevalúa la sugerencia. */
-  function createNewExercise(p: AIExerciseProposal): void {
-    const result = createExerciseFromAI(p);
-    if (!result.ok) {
-      toast(result.error, { kind: 'warn' });
-      return;
-    }
-    toast(`Ejercicio creado: «${result.exercise.name}»`, { kind: 'ok' });
-    setAi((prev) =>
-      prev ? { ...prev, sug: toSuggestion(prev.raw, exercises.value) ?? prev.sug } : prev,
-    );
-  }
-
-  /** `Mejorar con IA`: sin key ni se intenta (nunca un throw silencioso). */
-  async function improveWithAi(): Promise<void> {
-    if (wait.running) return;
-    if (!hasApiKey()) {
-      setNotice({
-        kind: 'warn',
-        text: 'Configura tu API key de Gemini para mejorar la sugerencia con IA.',
-      });
-      go('ajustes', 'coach');
-      return;
-    }
-    const signal = wait.start();
-    try {
-      /* El transcript del chat viaja como `contents`: «mejorar con IA» parte de
-         lo que el usuario pidió y pegó en turnos anteriores (P1), igual que los
-         chips de la vista del coach. */
-      const outcome = await runCoachTask('suggest', {
-        history: promptHistory(),
-        signal,
-        onSlow: wait.markSlow,
-      });
-      /* `payload` viene ya parseado del coach; el texto es la red de seguridad
-         (si el modelo devolvió el JSON embebido en ```consulta`). */
-      let payload: unknown = outcome.payload;
-      if (payload === undefined) {
-        try {
-          payload = parseJSON<unknown>(outcome.text);
-        } catch {
-          payload = null;
-        }
-      }
-      const parsed = toSuggestion(payload, library);
-      if (!parsed) {
-        setNotice({ kind: 'err', text: 'El coach no devolvió una sugerencia legible.' });
-        return;
-      }
-      /* Si la red/cuota cayó, `runCoachTask` resuelve con el planificador local
-         y el payload lo dice: el toast no puede prometer IA en ese caso. */
-      const nextSource = suggestionSource(payload, 'ia');
-      setAi({ raw: payload, sug: parsed, source: nextSource });
-      setNotice(null);
-      if (nextSource === 'ia') {
-        toast('Sugerencia mejorada con IA', { kind: 'ok' });
-      } else {
-        toast('Sugerencia regenerada con el plan local (sin IA)', { kind: 'warn' });
-      }
-    } catch (err) {
-      setNotice(
-        wait.cancelled()
-          ? { kind: 'warn', text: 'Cancelado: dejé de esperar la respuesta de la IA.' }
-          : {
-              kind: 'err',
-              text: err instanceof Error ? err.message : 'No se pudo contactar con el coach.',
-            },
-      );
-    } finally {
-      wait.end();
-    }
-  }
-
-  const kpis = weekKpis(list, now, s.daysPerWeek);
   const cells = weekCells(schedule.value, list, now, routines.value);
   const recent = lastSessions(list, 4);
   const load = maxLoadable({ plates: s.plates, bars: s.bars, mode: 'bar' });
@@ -946,30 +545,20 @@ export function HoyView() {
         onStart={startToday}
         onSkip={skipToday}
         onExtra={() => setPickOpen(true)}
-        onAutoPlan={planAutomatically}
+        onFree={() => setPickOpen(true)}
+        onPickRoutine={() => setRoutinePick(!routinePick)}
       />
+
+      {routinePick ? (
+        <RoutinePick
+          onPick={(routineId) => {
+            setRoutinePick(false);
+            startFromRoutine(routineId);
+          }}
+        />
+      ) : null}
 
       <WeekStrip cells={cells} />
-
-      <SuggestCard
-        suggestion={suggestion}
-        raw={raw}
-        source={source}
-        loading={wait.running}
-        wait={wait}
-        notice={notice}
-        onRefresh={() => {
-          setAi(null);
-          setNotice(null);
-          setNonce((n) => n + 1);
-        }}
-        onAi={() => void improveWithAi()}
-        onStart={startSuggestion}
-        onSave={saveSuggestion}
-        onCreate={createNewExercise}
-      />
-
-      <Kpis {...kpis} />
 
       <section class="mt">
         <SectionHead title="Herramientas" help="hoy.tools" />
@@ -1016,29 +605,6 @@ export function HoyView() {
         ) : null}
         {timerVisible ? <FreeTimer onClose={() => setTool(null)} /> : null}
       </section>
-
-      {plan.status !== 'done' ? (
-        <section class="mt">
-          <div class="grid c2">
-            <button type="button" class="btn lg" onClick={() => setPickOpen(true)}>
-              <Icon name="plus" />
-              Libre
-            </button>
-            <button type="button" class="btn lg" onClick={() => setRoutinePick(!routinePick)}>
-              <Icon name="list" />
-              Elegir rutina
-            </button>
-          </div>
-          {routinePick ? (
-            <RoutinePick
-              onPick={(routineId) => {
-                setRoutinePick(false);
-                startFromRoutine(routineId);
-              }}
-            />
-          ) : null}
-        </section>
-      ) : null}
 
       <LastSessions
         list={recent}

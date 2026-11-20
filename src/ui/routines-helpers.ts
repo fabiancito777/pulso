@@ -17,16 +17,7 @@
 import { signal } from '@preact/signals';
 
 import { addDays } from '@/domain/dates';
-import {
-  findExercise,
-  GOAL_REPS,
-  GOAL_REST,
-  GOAL_SETS,
-  groupLabel,
-  isAvailable,
-  resolveExercise,
-} from '@/domain/data';
-import type { EquipmentMap } from '@/domain/data';
+import { findExercise, GOAL_REPS, GOAL_REST, GOAL_SETS, groupLabel } from '@/domain/data';
 import { matchExercise } from '@/domain/match';
 import { clamp, int, num } from '@/domain/num';
 import { richItems, routineFromTemplate } from '@/domain/plan';
@@ -477,48 +468,4 @@ export function validScheduleIso(raw: string, fromIso: string): boolean {
   const value = String(raw ?? '').trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   return value >= fromIso;
-}
-
-/* ---------- detalle de solo lectura ---------- */
-
-/** Fila del modal «Ver»: el ejercicio ya resuelto con sus números. */
-export interface DetailRow {
-  name: string;
-  /** grupo en castellano (`''` si el ejercicio ya no está en la biblioteca) */
-  group: string;
-  sets: number;
-  repMin: number;
-  repMax: number;
-  rest: number;
-  /** `null` = sin peso prescrito (no «0 kg») */
-  weight: number | null;
-  notes: string;
-  /** te falta material ahora mismo para hacerlo */
-  missing: boolean;
-}
-
-/**
- * Items de una rutina para el modal de solo lectura: resuelve cada `exId` contra
- * la biblioteca y aplica los mismos defaults que el editor (`sets` 3, y
- * reps/descanso del ejercicio si el item no los trae).
- */
-export function detailRows(
-  items: readonly RoutineItem[],
-  library: readonly Exercise[],
-  equipment: EquipmentMap,
-): DetailRow[] {
-  return items.map((item) => {
-    const ex = resolveExercise(library, item.exId);
-    return {
-      name: ex ? ex.name : item.exId,
-      group: ex ? groupLabel(ex.group) : '',
-      sets: int(item.sets, 3),
-      repMin: int(item.repMin, ex ? ex.repMin : 8),
-      repMax: int(item.repMax, ex ? ex.repMax : 12),
-      rest: int(item.rest, ex ? ex.rest : 90),
-      weight: typeof item.weight === 'number' ? item.weight : null,
-      notes: typeof item.notes === 'string' ? item.notes : '',
-      missing: ex ? !isAvailable(ex, equipment) : false,
-    };
-  });
 }

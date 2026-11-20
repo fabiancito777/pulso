@@ -74,7 +74,7 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
     });
     onClose();
     toast('Sesión cargada con los pesos anteriores', { kind: 'ok' });
-    go('entrenar');
+    go('hoy');
   }
 
   return (

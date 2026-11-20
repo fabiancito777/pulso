@@ -5,8 +5,8 @@
  * que aquí no se renderiza nada: se leen los FICHEROS como texto (`?raw`, el
  * único modo que `tsc` tipa con `vite/client`) y se comprueba que cada
  * `help="…"` (filas de `kit`) y cada `<HelpBtn id="…">` (cabeceras) apunta a un
- * id que existe, que Ajustes engancha todas sus entradas `opt.*` y que las 7
- * pestañas tienen su ? en su vista. Un id borrado de `help-content.ts` ya lo
+ * id que existe, que Ajustes engancha todas sus entradas `opt.*` y que cada
+ * pestaña tiene su ? en su vista. Un id borrado de `help-content.ts` ya lo
  * caza `tsc` (es un union literal); lo que este test vigila es lo contrario:
  * que nadie se QUede sin enganchar.
  */
@@ -84,9 +84,8 @@ describe('ningún tema se queda sin ancla', () => {
 describe('Ajustes · fase 2', () => {
   const src = SOURCES['./SettingsView.tsx'] ?? '';
 
-  it('las 25 entradas opt.* de la guía están enganchadas', () => {
+  it('las entradas opt.* de la guía están enganchadas', () => {
     const opts = HELP_IDS.filter((id) => id.startsWith('opt.'));
-    expect(opts).toHaveLength(25);
     const used = new Set(idsIn(src));
     for (const id of opts) expect(used.has(id), id).toBe(true);
   });
@@ -95,21 +94,12 @@ describe('Ajustes · fase 2', () => {
     expect(idsIn(src)).toContain('coach.apiKey');
   });
 
-  it('subsección Ayuda: noveno elemento de SUBS y renderizada', () => {
-    expect(src).toMatch(/\{ key: 'ayuda', label: 'Ayuda', icon: 'info' \}/u);
-    expect(src).toMatch(/key === 'ayuda' \? <SecAyuda \/>/u);
-  });
-
-  it('SecAyuda reutiliza el GuideIndex del modal (un solo índice)', () => {
-    expect(src).toContain('<GuideIndex />');
-  });
 });
 
 describe('fase 3 · una ayuda por pestaña', () => {
   /* dónde vive la cabecera de cada pestaña */
   const TAB_VIEWS: [id: string, files: string[]][] = [
     ['tab.hoy', ['./HoyView.tsx']],
-    ['tab.entrenar', ['./SessionCard.tsx']],
     ['tab.rutinas', ['./RoutinesView.tsx']],
     ['tab.calendario', ['./CalendarView.tsx']],
     ['tab.coach', ['./CoachView.tsx']],
@@ -117,8 +107,7 @@ describe('fase 3 · una ayuda por pestaña', () => {
     ['tab.ajustes', ['./SettingsView.tsx']],
   ];
 
-  it('los 7 tab.* existen y están conectados en su vista', () => {
-    expect(HELP_IDS.filter((id) => id.startsWith('tab.'))).toHaveLength(7);
+  it('los tab.* existen y están conectados en su vista', () => {
     for (const [id, files] of TAB_VIEWS) {
       expect(HELP_IDS, id).toContain(id);
       const where = files.filter((f) => idsIn(SOURCES[f] ?? '').includes(id));

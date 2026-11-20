@@ -61,7 +61,7 @@ function FinishedSheet() {
           name: session.name || 'Entrenamiento',
           dayIso: today(),
         });
-        go('entrenar');
+        go('hoy');
       }}
     />
   );
@@ -191,7 +191,7 @@ export function sessionDockMode(
   resting: boolean,
 ): { showSession: boolean; floatingDock: boolean } {
   const running = hasSession || resting;
-  const showSession = tab === 'entrenar' || (tab === 'hoy' && running);
+  const showSession = tab === 'hoy' && running;
   return { showSession, floatingDock: !showSession && running };
 }
 
@@ -206,11 +206,6 @@ function CurrentView({ tab }: { tab: Tab }) {
       /* contrato con I7: montaje único de la pestaña (ProgressCard + charts +
          historial) en su propio componente */
       return <ProgressView />;
-    case 'entrenar':
-      /* La calculadora de discos ya no vive fija aquí: es el botón «discos» de
-         cada ejercicio dentro de la sesión, así solo aparece entrenando y abre
-         con el peso que tiene ese ejercicio. */
-      return null;
     case 'rutinas':
       return <RoutinesView />;
     case 'calendario':

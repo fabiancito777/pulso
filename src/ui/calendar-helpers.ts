@@ -4,13 +4,8 @@
  * **local vs IA** (el `data-ai="0"|"1"` ).
  *
  * Están aparte del componente para poder probarlos con Vitest sin DOM ni
- * `localStorage`: aquí solo entran datos por parámetro y salen datos (los
- * imports con efectos son `parseJSON`, que es puro, y la signal
- * `autoPlanRequest`, el ÚNICO estado del módulo y el único aparte que no es
- * una función pura — está justificado en su sección).
+ * `localStorage`: aquí solo entran datos por parámetro y salen datos.
  */
-import { signal } from '@preact/signals';
-
 import { label } from '@/domain/dates';
 import { parseJSON } from '@/features/coach/parse';
 import type { ScheduleDay } from '@/state/store';
@@ -312,16 +307,6 @@ export function planEngine(source: string): PlanEngine {
   return source === 'ia' ? 'ia' : 'local';
 }
 
-/**
- * Motor con el que se pide un auto-plan cuando solo se sabe si hay key: IA si
- * la hay, dispositivo si no. Es lo que hacía antes con `data-ai` +
- * `C.planWeek({useAI:true})`, que sin key devolvía el plan local en vez de
- * fallar ().
- */
-export function autoPlanEngine(hasKey: boolean): PlanEngine {
-  return hasKey ? 'ia' : 'local';
-}
-
 /** Qué ofrece la barra de planificación del Calendario. */
 export interface PlanControls {
   /** mostrar el botón «Con IA» (la mejora opcional); el local va SIEMPRE */
@@ -337,7 +322,7 @@ export interface PlanControls {
  * bloquea NADA, solo se explica por qué no hay dos botones.
  */
 export function planControls(hasKey: boolean): PlanControls {
-  const ai = autoPlanEngine(hasKey) === 'ia';
+  const ai = hasKey;
   return { ai, foot: ai ? '' : 'sin API key: plan local' };
 }
 
@@ -357,31 +342,4 @@ export function planOrigin(source: string): PlanOrigin {
     subtitle: engine === 'ia' ? 'generada por el coach IA' : 'generada en el dispositivo',
     badge: engine === 'ia' ? 'badge a' : 'badge',
   };
-}
-
-/**
- * Petición de auto-plan lanzada desde OTRA pestaña.
- *
- * Es el `App.views.calendario.autoPlan(...)` que antes ejecutaba a través de
- * `coach:quick` (`views-train.js:566`: navega a Calendario y le pide el plan).
- * Aquí hace falta un trozo de estado módulo (el único del fichero): un motor o
- * `null`, no un booleano, para que dos peticiones seguidas no se confundan y
- * para que la vista sepa si tocaba IA o dispositivo.
- */
-export const autoPlanRequest = signal<PlanEngine | null>(null);
-
-/** Pide un plan a la pestaña Calendario (la llama Hoy: «Plan automático»). */
-export function requestAutoPlan(engine: PlanEngine): void {
-  autoPlanRequest.value = engine;
-}
-
-/**
- * La vista de Calendario consume la petición al montar (o al cambiar la
- * signal): devuelve el motor pendiente y la deja vacía, así que una petición
- * solo dispara UN plan.
- */
-export function takeAutoPlanRequest(): PlanEngine | null {
-  const engine = autoPlanRequest.value;
-  if (engine) autoPlanRequest.value = null;
-  return engine;
 }

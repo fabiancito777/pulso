@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { EQUIPMENT } from '@/domain/catalog';
-import { daysSince, exerciseSummary, prs, type ExerciseSummary } from '@/domain/analytics';
+import { daysSince, exerciseSummary, type ExerciseSummary } from '@/domain/analytics';
 import {
   ACCENTS,
   AI_MODELS,
@@ -29,7 +29,6 @@ import {
   equipPreset,
   equipPresetList,
   goalLabel,
-  groupKeysInUse,
   groupLabel,
   isAvailable,
   missingEquipment,
@@ -89,7 +88,7 @@ import { TEST_NOTICE_SEC, testRestNotice, active as activeSession } from '@/stat
 import { ExerciseGenModal } from '@/ui/ExerciseGenModal';
 import { SyncCard } from '@/ui/SyncCard';
 import { Icon } from '@/ui/Icon';
-import { GuideIndex, HelpBtn } from '@/ui/HelpModal';
+import { HelpBtn } from '@/ui/HelpModal';
 import { Modal } from '@/ui/Modal';
 import {
   InfoCard,
@@ -113,7 +112,6 @@ const SUBS = [
   { key: 'ejercicios', label: 'Ejercicios', icon: 'database' },
   { key: 'coach', label: 'Coach AI', icon: 'sparkles' },
   { key: 'datos', label: 'Datos', icon: 'download' },
-  { key: 'ayuda', label: 'Ayuda', icon: 'info' },
 ] as const;
 
 type SubKey = (typeof SUBS)[number]['key'];
@@ -585,25 +583,10 @@ function SecEntreno() {
           value={st.showRpe}
           onChange={(v) => setSettingsPath('showRpe', v)}
         />
-        <SwitchRow
-          label="Finalizar rápido"
-          hint="No avisar cuando completes todas las series"
-          help="opt.quickFinish"
-          value={st.quickFinish}
-          onChange={(v) => setSettingsPath('quickFinish', v)}
-        />
-        <SwitchRow
-          label="Contar aproximaciones"
-          hint="Incluir series de calentamiento en el volumen"
-          help="opt.countWarmups"
-          value={st.countWarmups}
-          onChange={(v) => setSettingsPath('countWarmups', v)}
-        />
       </div>
       <InfoCard>
-        El descanso entre series lo define cada ejercicio en la biblioteca (más para compuestos,
-        menos para aislamientos) y el coach IA puede ajustarlo por sesión. No se configura a mano
-        para respetar los tiempos óptimos.
+        Cada ejercicio trae un descanso sugerido; puedes ajustarlo a mano en la sesión, en el editor
+        de rutinas o en tus ejercicios.
       </InfoCard>
     </>
   );
@@ -848,11 +831,10 @@ function SecDiscos() {
 
 /* ---------- ejercicios ---------- */
 
-/** Los cuatro segmentos de la lista (spec `ejercicios-revamp.md` §3.3.1). */
+/** Los tres segmentos de la lista: todos los visibles, ★ y ocultos. */
 const EX_SEGMENTS = [
+  { key: 'todos', label: 'Todos' },
   { key: 'fav', label: '★ Favoritos' },
-  { key: 'catalogo', label: 'Catálogo' },
-  { key: 'custom', label: 'Propios' },
   { key: 'ocultos', label: 'Ocultos' },
 ] as const;
 
@@ -867,21 +849,14 @@ const GROUP_INDEX = new Map(GROUPS.map((g, i) => [g.key, i] as const));
 
 function SecEjercicios() {
   const [q, setQ] = useState('');
-  /* Segmento inicial: ★ si ya hay alguno, si no el catálogo. Es una decisión de
-     ESTA apertura (no se persiste): al recargar volverías a favoritos solo si
-     sigues teniendo alguno. */
-  const [segment, setSegment] = useState<ExSegment>(
-    exercises.value.some((e) => e.fav === true) ? 'fav' : 'catalogo',
-  );
+  /* Segmento inicial: todos los visibles. Es una decisión de ESTA apertura
+     (no se persiste). */
+  const [segment, setSegment] = useState<ExSegment>('todos');
   /* Grupos desplegados. Van controlados (no como `<details open>` suelto) para
      que un repintado —marcar una serie, tocar un filtro— no los vuelva a abrir. */
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(
     () => new Set<string>(GROUPS.map((g) => g.key)),
   );
-  /* Modo selección: las seis acciones masivas no ocupan sitio hasta que hacen
-     falta. Sin nada marcado actúan sobre lo filtrado (un clic para todo). */
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set<string>());
   /* `null` = editor cerrado · `'new'` = creando · `Exercise` = editando ese */
   const [editor, setEditor] = useState<Exercise | 'new' | null>(null);
   /* Modal del generador IA (spec `generador-ejercicios.md`): abrirlo NO hace
@@ -939,8 +914,6 @@ function SecEjercicios() {
       const hidden = e.hidden === true;
       if (segment === 'ocultos' ? !hidden : hidden) return false;
       if (segment === 'fav' && e.fav !== true) return false;
-      if (segment === 'catalogo' && e.custom) return false;
-      if (segment === 'custom' && !e.custom) return false;
       if (needle && !norm(e.name).includes(needle)) return false;
       return true;
     })
@@ -954,13 +927,6 @@ function SecEjercicios() {
       return a.name.localeCompare(b.name, 'es');
     });
   const shown = filtered.filter((e) => e.allowed).length;
-  const filteredIds = filtered.map((e) => e.id);
-
-  /* Grupos del catálogo SIN ningún ejercicio (cardio y movilidad de serie, y los
-     añadidos a mano). No se esconden: son justo la lista de lo que te falta, y
-     cada uno lleva su atajo para pedirle ejercicios a la IA. */
-  const inUse = groupKeysInUse(list);
-  const emptyGroups = GROUPS.filter((g) => !inUse.has(g.key));
 
   /* Agrupado por músculo, en el orden del catálogo: así se recorre la biblioteca
      como en Rutinas y no hay que cruzar dos selects para encontrar algo. */
@@ -971,13 +937,6 @@ function SecEjercicios() {
     else byGroup.set(e.group, [e]);
   }
 
-  /* En modo selección, las acciones van sobre lo marcado; si no hay nada marcado,
-     sobre lo filtrado (así «Permitir todo lo que he buscado» sigue a un clic). */
-  const target =
-    selecting && selected.size ? filteredIds.filter((id) => selected.has(id)) : filteredIds;
-  const flagTarget = (patch: Partial<Pick<Exercise, 'fav' | 'hidden'>>): void => {
-    bulkSetExerciseFlag(target, patch);
-  };
   const toggleGroup = (key: string, open: boolean): void => {
     setOpenGroups((prev) => {
       const next = new Set(prev);
@@ -986,28 +945,6 @@ function SecEjercicios() {
       return next;
     });
   };
-  const toggleSelected = (id: string): void => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  /* Atajo de la petición 1: ★ a los ejercicios con los que ya tienes récords.
-     Es un ATAJO, no el modelo: los ★ se siguen pudiendo marcar a mano. */
-  const favMyRecords = (): void => {
-    const known = new Set(list.map((e) => e.id));
-    const ids = Object.keys(prs(sessions.value)).filter((id) => known.has(id));
-    if (!ids.length) {
-      toast('Todavía no tienes récords: entrena un poco y vuelve a marcarlos', { kind: 'warn' });
-      return;
-    }
-    bulkSetExerciseFlag(ids, { fav: true });
-    toast(`${ids.length} ejercicios marcados con ★`, { kind: 'ok' });
-  };
-
   return (
     <>
       <div class="grid c3">
@@ -1048,18 +985,6 @@ function SecEjercicios() {
           ))}
         </div>
         <div class="row wrap mt-s" style="gap:8px;align-items:center">
-          <button
-            type="button"
-            class={`btn sm${selecting ? ' primary' : ' ghost'}`}
-            aria-pressed={selecting}
-            onClick={() => {
-              setSelecting((v) => !v);
-              setSelected(new Set<string>());
-            }}
-          >
-            <Icon name={selecting ? 'check' : 'check-circle'} />
-            {selecting ? 'Hecho' : 'Seleccionar'}
-          </button>
           <button type="button" class="btn sm" onClick={() => setEditor('new')}>
             <Icon name="plus" />
             Añadir propio
@@ -1091,62 +1016,6 @@ function SecEjercicios() {
           </span>
         </div>
       </div>
-      {selecting ? (
-        <div class="card tight mt-s">
-          <div class="row wrap" style="gap:8px">
-            <button type="button" class="btn sm ghost" onClick={() => bulkSetAllowed(target, true)}>
-              Permitir
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => bulkSetAllowed(target, false)}
-            >
-              Prohibir
-            </button>
-            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ fav: true })}>
-              ★ Marcar
-            </button>
-            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ fav: false })}>
-              Quitar ★
-            </button>
-            <button type="button" class="btn sm ghost" onClick={() => flagTarget({ hidden: true })}>
-              Ocultar
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => flagTarget({ hidden: false })}
-            >
-              Mostrar
-            </button>
-          </div>
-          <div class="row wrap mt-s" style="gap:8px;align-items:center">
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => setSelected(new Set(filteredIds))}
-            >
-              Marcar todo
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => setSelected(new Set<string>())}
-            >
-              Nada
-            </button>
-            <button type="button" class="btn sm ghost" onClick={favMyRecords}>
-              ★ Los de mis récords
-            </button>
-            <span class="tiny muted grow">
-              {selected.size
-                ? `acciones sobre ${selected.size} seleccionados`
-                : `acciones sobre los ${filteredIds.length} filtrados`}
-            </span>
-          </div>
-        </div>
-      ) : null}
       {filtered.length ? (
         GROUPS.map((g) => {
           const items = byGroup.get(g.key);
@@ -1172,9 +1041,6 @@ function SecEjercicios() {
                       ex={e}
                       stats={summary.get(e.id)}
                       showHidden={segment === 'ocultos' || e.hidden === true}
-                      selecting={selecting}
-                      selected={selected.has(e.id)}
-                      onSelect={() => toggleSelected(e.id)}
                       onEdit={() => setEditor(e)}
                       onDelete={() => confirmDelete(e)}
                     />
@@ -1189,39 +1055,6 @@ function SecEjercicios() {
           <div class="empty">Sin resultados con estos filtros</div>
         </div>
       )}
-      {!needle && emptyGroups.length ? (
-        <div class="ex-group mt-s">
-          <div class="ex-group-head">
-            <Icon name="sparkles" class="ex-group-caret" />
-            <span class="grow">Sin ejercicios todavía</span>
-            <span class="ex-group-count">{emptyGroups.length}</span>
-          </div>
-          <div class="card flush">
-            {emptyGroups.map((g) => (
-              <div class="ex-pick" key={g.key}>
-                <span class="ex-fav" aria-hidden="true" style="color:var(--muted-2)">
-                  +
-                </span>
-                <div class="grow" style="min-width:0">
-                  <div class="row" style="gap:6px">
-                    <span class="li-title ellipsis">{g.label}</span>
-                  </div>
-                  <div class="li-sub">Ningún ejercicio tuyo de este grupo todavía.</div>
-                </div>
-                <button
-                  type="button"
-                  class="btn sm"
-                  title={`Generar ejercicios de ${g.label} con la IA`}
-                  onClick={() => setGen(`Ejercicios nuevos para ${g.label}`)}
-                >
-                  <Icon name="sparkles" />
-                  Generar
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
       <InfoCard>
         <b>★ Favorito</b> es prioridad, no exclusión: los marcados salen primeros en los buscadores,
         en los generadores y en los consejos del coach. <b>Oculto</b> es solo presentación (lo saca
@@ -1423,9 +1256,6 @@ function ExerciseRow({
   ex,
   stats,
   showHidden,
-  selecting,
-  selected,
-  onSelect,
   onEdit,
   onDelete,
 }: {
@@ -1434,10 +1264,6 @@ function ExerciseRow({
   stats?: ExerciseSummary;
   /** el pill de ocultar/mostrar solo se muestra en «Ocultos» o si ya está oculto */
   showHidden: boolean;
-  /** modo selección: el ★ cede su sitio a la casilla y la fila entera marca */
-  selecting: boolean;
-  selected: boolean;
-  onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -1452,40 +1278,20 @@ function ExerciseRow({
   const fav = ex.fav === true;
   const hidden = ex.hidden === true;
   return (
-    <div
-      class={`ex-pick${selected ? ' on' : ''}${selecting ? ' sel' : ''}`}
-      style={ex.allowed ? '' : 'opacity:.55'}
-      onClick={selecting ? onSelect : undefined}
-    >
-      {selecting ? (
-        <button
-          type="button"
-          class={`ex-check${selected ? ' on' : ''}`}
-          aria-pressed={selected}
-          aria-label={selected ? `Quitar «${ex.name}» de la selección` : `Seleccionar «${ex.name}»`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelect();
-          }}
-        >
-          <Icon name="check" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          class={`ex-fav${fav ? ' on' : ''}`}
-          title={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
-          aria-pressed={fav}
-          aria-label={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
-          onClick={() => bulkSetExerciseFlag([ex.id], { fav: !fav })}
-        >
-          ★
-        </button>
-      )}
+    <div class="ex-pick" style={ex.allowed ? '' : 'opacity:.55'}>
+      <button
+        type="button"
+        class={`ex-fav${fav ? ' on' : ''}`}
+        title={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+        aria-pressed={fav}
+        aria-label={fav ? 'Quitar de favoritos' : 'Marcar como favorito'}
+        onClick={() => bulkSetExerciseFlag([ex.id], { fav: !fav })}
+      >
+        ★
+      </button>
       <div class="grow" style="min-width:0">
         <div class="row" style="gap:6px">
           <span class="li-title ellipsis">{ex.name}</span>
-          {selecting && fav ? <span class="ex-star">★</span> : null}
           {ex.custom ? <span class="badge">propio</span> : null}
           {ex.bw ? <span class="badge">PC</span> : null}
         </div>
@@ -1506,10 +1312,7 @@ function ExerciseRow({
           class="toggle-pill"
           title={hidden ? 'Volver a mostrar' : 'Sacar de la vista'}
           aria-pressed={hidden}
-          onClick={(event) => {
-            event.stopPropagation();
-            bulkSetExerciseFlag([ex.id], { hidden: !hidden });
-          }}
+          onClick={() => bulkSetExerciseFlag([ex.id], { hidden: !hidden })}
         >
           <Icon name={hidden ? 'eye' : 'eye-off'} />
           {hidden ? 'mostrar' : 'ocultar'}
@@ -1519,10 +1322,7 @@ function ExerciseRow({
         type="button"
         class={`toggle-pill ${ex.allowed ? 'on' : 'off'}`}
         title="Permitir o prohibir"
-        onClick={(event) => {
-          event.stopPropagation();
-          bulkSetAllowed([ex.id], !ex.allowed);
-        }}
+        onClick={() => bulkSetAllowed([ex.id], !ex.allowed)}
       >
         {ex.allowed ? 'permitido' : 'prohibido'}
       </button>
@@ -1532,10 +1332,7 @@ function ExerciseRow({
             type="button"
             class="icon-btn"
             title="Editar"
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit();
-            }}
+            onClick={onEdit}
           >
             <Icon name="pencil" />
           </button>
@@ -1543,10 +1340,7 @@ function ExerciseRow({
             type="button"
             class="icon-btn"
             title="Eliminar"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
+            onClick={onDelete}
           >
             <Icon name="trash" />
           </button>
@@ -1716,7 +1510,7 @@ function SecCoach() {
         />
         <NumRow
           label="Espera máxima de respuesta"
-          hint="0 = automática según el pensamiento (60/120/240 s). Súbela con modelos lentos"
+          hint="0 = automática según el nivel de pensamiento (60/120/240/300 s)"
           help="opt.timeoutSec"
           value={Number(ai.timeoutSec) || 0}
           step={30}
@@ -2120,29 +1914,6 @@ function SecDatos() {
 
 /* ========================================================================== */
 
-/* ---------- ayuda ---------- */
-
-/**
- * Subsección Ayuda (`#/ajustes/ayuda`, spec `help-ux.md` §3.4.2): el MISMO
- * índice que el modal de la guía, aquí siempre visible y sin abrir nada.
- * `GuideIndex` es el que exporta `HelpModal.tsx`, así que buscador, secciones y
- * filas son idénticos en los dos sitios (una sola fuente, cero duplicación).
- */
-function SecAyuda() {
-  return (
-    <>
-      <InfoCard>
-        La guía entera de Pulso, aquí a mano: busca un término (1RM, descanso, racha…) o despliega
-        una sección y toca cualquier tema. Es el mismo índice que abre el ⓘ de la barra superior, y
-        los ⓘ de cada opción de Ajustes llegan a estos mismos temas.
-      </InfoCard>
-      <div class="card mt">
-        <GuideIndex />
-      </div>
-    </>
-  );
-}
-
 export function SettingsView({ sub }: { sub: string | null }) {
   const key: SubKey = SUBS.find((s) => s.key === sub)?.key ?? 'perfil';
   return (
@@ -2174,7 +1945,6 @@ export function SettingsView({ sub }: { sub: string | null }) {
       {key === 'ejercicios' ? <SecEjercicios /> : null}
       {key === 'coach' ? <SecCoach /> : null}
       {key === 'datos' ? <SecDatos /> : null}
-      {key === 'ayuda' ? <SecAyuda /> : null}
     </>
   );
 }

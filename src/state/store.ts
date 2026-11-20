@@ -49,8 +49,12 @@ export const STATE_KEY = 'pulso.state';
  *
  * v5: `gemini-4-hydrogen` pasa a ser el modelo por defecto; quien tenía guardado
  * `gemini-3.8-flash` se migra automáticamente al nuevo recomendado.
+ *
+ * v6: se quitan `countWarmups`, `quickFinish` y `ai.autoApply`, tres ajustes que
+ * no hacían nada. Se limpian del estado heredado con `delete` sobre copias,
+ * igual que en v4/v5.
  */
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 /** Claves del perfil activo (el principal conserva las históricas). */
 export const currentRestKey = (): string => restKeyFor(activeProfileId.value);
@@ -154,11 +158,23 @@ export function readProfileState(profileId: string): AppState {
       version < 5
         ? { ...storedSettings, ai: aiMigrated as unknown as Settings['ai'] }
         : storedSettings;
+    /* v6: fuera `countWarmups`, `quickFinish` y `ai.autoApply`. Igual que en
+       v4/v5, `delete` sobre copias del objeto migrado: `withDefaults` deja las
+       claves heredadas en el objeto crudo y hay que quitarlas para que no
+       viajen al export ni a la sincronización. */
+    const settingsClean = { ...settingsMigrated } as Settings & Record<string, unknown>;
+    if (version < 6) {
+      delete settingsClean['countWarmups'];
+      delete settingsClean['quickFinish'];
+      const aiClean = { ...settingsClean.ai } as Settings['ai'] & Record<string, unknown>;
+      delete aiClean['autoApply'];
+      settingsClean.ai = aiClean;
+    }
     /* la key del coach es compartida: si existe, manda sobre la copia del perfil */
     const sharedKey = readSharedApiKey();
     const settings = sharedKey
-      ? { ...settingsMigrated, ai: { ...settingsMigrated.ai, apiKey: sharedKey } }
-      : settingsMigrated;
+      ? { ...settingsClean, ai: { ...settingsClean.ai, apiKey: sharedKey } }
+      : settingsClean;
     return {
       ...(parsed as AppState),
       version: Math.max(version, STATE_VERSION),

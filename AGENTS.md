@@ -51,7 +51,7 @@ npm run verify     # typecheck + lint + test + build
   bloqueado o instalación de la PWA, **mirarlo en el navegador**: eso no lo cubren los tests.
 - Antes de dar algo por bueno: `npm run verify`.
 
-> Estado de referencia (7-nov-2026): 77 archivos de test, 1450 comprobaciones, todas en verde;
+> Estado de referencia (19-nov-2026): 59 archivos de test, 1182 comprobaciones, todas en verde;
 > `typecheck` y `lint` limpios.
 
 ---

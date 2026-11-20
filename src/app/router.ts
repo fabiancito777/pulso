@@ -11,10 +11,9 @@ export interface Tab {
   hint: string;
 }
 
-/** Las 7 pestañas, en el orden de la navegación. */
+/** Las 6 pestañas, en el orden de la navegación. */
 export const TABS: readonly Tab[] = [
   { key: 'hoy', label: 'Hoy', icon: 'home', hint: 'Tu día' },
-  { key: 'entrenar', label: 'Entrenar', icon: 'dumbbell', hint: 'Sesión en curso' },
   { key: 'rutinas', label: 'Rutinas', icon: 'list', hint: 'Rutinas y plantillas' },
   { key: 'calendario', label: 'Calendario', icon: 'calendar', hint: 'Plan semanal' },
   { key: 'coach', label: 'Coach', icon: 'sparkles', hint: 'Chat con el coach' },

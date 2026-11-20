@@ -14,13 +14,12 @@ import { TEMPLATES, equipPreset, findExercise, isAvailable, seedExercises } from
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { addDays } from '@/domain/dates';
 import type { PlanInput } from '@/domain/plan';
-import type { Exercise, RoutineItem, Session } from '@/domain/types';
+import type { Exercise, Session } from '@/domain/types';
 import type { ScheduleDay } from '@/state/store';
 
 import {
   autoRoutineItems,
   bounded,
-  detailRows,
   generateAuto,
   lastUsed,
   matchExercises,
@@ -457,47 +456,5 @@ describe('validScheduleIso', () => {
     expect(validScheduleIso('', HOY)).toBe(false);
     expect(validScheduleIso('mañana', HOY)).toBe(false);
     expect(validScheduleIso('2026-9-5', HOY)).toBe(false);
-  });
-});
-
-/* ---------- detalle de solo lectura ---------- */
-
-describe('detailRows', () => {
-  it('resuelve nombres, aplica defaults y marca lo que falta material', () => {
-    const press = LIBRARY.find((ex) => ex.name === 'Press de Piso con Mancuernas');
-    expect(press).toBeTruthy();
-    const pressId = press?.id ?? '';
-    const items: RoutineItem[] = [
-      { exId: pressId, sets: 4, weight: 60, notes: 'agarrar ancho' },
-      { exId: 'que-no-existe' },
-      { exId: pressId, repMin: 5, repMax: 6, rest: 120 },
-    ];
-
-    const rows = detailRows(items, LIBRARY, {});
-    expect(rows).toHaveLength(3);
-
-    expect(rows[0]?.name).toBe('Press de Piso con Mancuernas');
-    expect(rows[0]?.group).toBe('Pecho');
-    expect(rows[0]?.sets).toBe(4);
-    expect(rows[0]?.weight).toBe(60);
-    expect(rows[0]?.notes).toBe('agarrar ancho');
-    expect(rows[0]?.missing).toBe(true);
-
-    /* item a medias: reps y descanso del ejercicio, `sets` 3 y peso null (no 0) */
-    expect(rows[2]?.sets).toBe(3);
-    expect(rows[2]?.repMin).toBe(5);
-    expect(rows[2]?.repMax).toBe(6);
-    expect(rows[2]?.rest).toBe(120);
-    expect(rows[2]?.weight).toBeNull();
-
-    /* fuera de la biblioteca: se pinta el id sin reventar */
-    expect(rows[1]?.name).toBe('que-no-existe');
-    expect(rows[1]?.group).toBe('');
-    expect(rows[1]?.sets).toBe(3);
-    expect(rows[1]?.missing).toBe(false);
-
-    /* con material disponible ya no falta nada */
-    const withKit = detailRows([items[0]], LIBRARY, equipPreset('todo'));
-    expect(withKit[0]?.missing).toBe(false);
   });
 });

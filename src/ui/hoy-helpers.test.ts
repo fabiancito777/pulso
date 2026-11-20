@@ -8,8 +8,6 @@
  * - el día hecho manda sobre el plan (y una sesión de HOY cuenta, aunque el
  *   plan diga otra cosa);
  * - `day.plan` sucio (JSON a mano, items sin ejercicio) no arruina el hero;
- * - los KPIs de 7 días no inventan una comparativa cuando la semana previa está
- *   vacía;
  * - "Repetir" carga el peso de la MEJOR serie, no del último set;
  * - la racha del chip es la MISMA que pinta Progreso (`totals()`).
  */
@@ -20,25 +18,12 @@ import type { Exercise, Session, SessionEntry, SetLog } from '@/domain/types';
 import type { Routine, ScheduleDay } from '@/state/store';
 
 import { restDayPatch } from './calendar-helpers';
-import {
-  greeting,
-  lastSessions,
-  planRows,
-  repeatItems,
-  suggestionPlan,
-  suggestionRows,
-  suggestionSource,
-  todayPlan,
-  weekCells,
-  weekKpis,
-} from './hoy-helpers';
-import type { RoutineSuggestion } from './routines-helpers';
+import { greeting, lastSessions, planRows, repeatItems, todayPlan, weekCells } from './hoy-helpers';
 
 /* ---------- datos de prueba ---------- */
 
 const HOY = '2026-09-24'; // jueves
 const LUNES = '2026-09-21'; // lunes de esa semana
-const PREV_WEEK = '2026-09-16'; // miércoles de la semana anterior
 
 const serie = (weight: number | null, reps: number, done = true): SetLog => ({
   weight,
@@ -296,53 +281,6 @@ describe('weekCells', () => {
   });
 });
 
-/* ---------- weekKpis ---------- */
-
-describe('weekKpis', () => {
-  it('primer día: todo a cero y sin comparativa', () => {
-    expect(weekKpis([], HOY, 4)).toEqual({
-      sessions: 0,
-      volume: 0,
-      sets: 0,
-      minutes: 0,
-      deltaPct: null,
-      objective: 4,
-    });
-  });
-
-  it('con semana previa calcula el % de volumen', () => {
-    const sessions = [
-      sesion(HOY, [entrada('press', [serie(60, 8), serie(60, 8)])]),
-      sesion(PREV_WEEK, [entrada('press', [serie(60, 8), serie(60, 8)])]),
-      sesion(PREV_WEEK, [entrada('press', [serie(60, 8), serie(60, 8)])]),
-    ];
-    const k = weekKpis(sessions, HOY, 3);
-    expect(k.sessions).toBe(1);
-    expect(k.volume).toBe(960);
-    expect(k.sets).toBe(2);
-    expect(k.minutes).toBe(60);
-    /* 960 vs 1920 → −50 % */
-    expect(k.deltaPct).toBe(-50);
-    expect(k.objective).toBe(3);
-  });
-
-  it('sin semana previa (o sin cambio) no hay comparativa', () => {
-    const soloHoy = [sesion(HOY, [entrada('press', [serie(60, 8)])])];
-    expect(weekKpis(soloHoy, HOY, 4).deltaPct).toBeNull();
-
-    const igual = [
-      sesion(HOY, [entrada('press', [serie(60, 8)])]),
-      sesion(PREV_WEEK, [entrada('press', [serie(60, 8)])]),
-    ];
-    expect(weekKpis(igual, HOY, 4).deltaPct).toBeNull();
-  });
-
-  it('si esta semana está en cero y la previa no, el delta es −100 %', () => {
-    const previa = [sesion(PREV_WEEK, [entrada('press', [serie(60, 8)])])];
-    expect(weekKpis(previa, HOY, 4).deltaPct).toBe(-100);
-  });
-});
-
 /* ---------- repetir una sesión ---------- */
 
 describe('repeatItems', () => {
@@ -414,58 +352,6 @@ describe('greeting', () => {
   });
 });
 
-/* ---------- sugerencia del coach ---------- */
-
-describe('sugerencia', () => {
-  const sugerencia: RoutineSuggestion = {
-    title: 'Sesión de pecho + espalda',
-    focus: 'pecho · espalda',
-    rationale: ['Hace 3 días que no tocas pecho'],
-    exercises: [
-      {
-        name: 'Press banca',
-        matched: true,
-        sets: 4,
-        repMin: 6,
-        repMax: 8,
-        rest: 120,
-        weight: 60,
-        notes: '',
-      },
-      {
-        name: 'Ejercicio que no existe',
-        matched: false,
-        sets: 3,
-        repMin: 10,
-        repMax: 12,
-        rest: 60,
-        weight: null,
-        notes: '',
-      },
-    ],
-  };
-
-  it('las filas llevan grupo (desde la biblioteca), reps medias y peso', () => {
-    const rows = suggestionRows(sugerencia, biblio);
-    expect(rows[0]).toEqual({
-      name: 'Press banca',
-      group: 'pecho',
-      sets: 4,
-      reps: 7,
-      weight: 60,
-      matched: true,
-    });
-    expect(rows[1]?.group).toBe('');
-    expect(rows[1]?.reps).toBe(11);
-  });
-
-  it('para arrancar solo se lleva lo que resolvió contra la biblioteca', () => {
-    expect(suggestionPlan(sugerencia)).toEqual([
-      { name: 'Press banca', sets: 4, repMin: 6, repMax: 8, rest: 120, weight: 60, notes: '' },
-    ]);
-  });
-});
-
 /* ---------- el chip de racha de la barra ---------- */
 
 describe('racha del chip', () => {
@@ -477,26 +363,5 @@ describe('racha del chip', () => {
     expect(totals(sessions, HOY).streak).toBe(2);
     expect(totals(sessions, HOY).streak).toBe(streak(sessions, HOY));
     expect(totals([], HOY).streak).toBe(0);
-  });
-});
-
-/* ---------- badge IA / local de la sugerencia ---------- */
-
-describe('suggestionSource', () => {
-  it('el badge: solo source:ia es IA, lo demás es local', () => {
-    expect(suggestionSource({ source: 'ia' })).toBe('ia');
-    expect(suggestionSource({ source: 'local' })).toBe('local');
-    expect(suggestionSource({ source: 'generador' })).toBe('local');
-    expect(suggestionSource({ title: 'x' })).toBe('local');
-    expect(suggestionSource(null)).toBe('local');
-    expect(suggestionSource('texto suelto')).toBe('local');
-  });
-
-  it('sin source manda el fallback (IA cuando venimos del coach)', () => {
-    expect(suggestionSource({ title: 'x' }, 'ia')).toBe('ia');
-    expect(suggestionSource(undefined, 'ia')).toBe('ia');
-    /* pero un source explícito no lo tapa: si el planificador local cubrió una
-       caída de red, el payload dice local y el badge no puede mentir */
-    expect(suggestionSource({ source: 'local' }, 'ia')).toBe('local');
   });
 });

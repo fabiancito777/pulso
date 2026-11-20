@@ -35,7 +35,7 @@
  * - Los componentes leen los signals (`schedule`, `sessions`, `routines`) ellos
  *   mismos: así el repintado es fino y no hay que pasarles el estado entero.
  */
-import { useEffect, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
@@ -76,7 +76,6 @@ import {
   DAY_STATUSES,
   DAY_STATE_LABEL,
   DAY_STATUS_LABEL,
-  autoPlanRequest,
   clearDayPatch,
   dayState,
   dayTitle,
@@ -90,7 +89,6 @@ import {
   planFromJson,
   planOrigin,
   restDayPatch,
-  takeAutoPlanRequest,
   weekCounts,
   weekSubtitle,
 } from './calendar-helpers';
@@ -791,16 +789,6 @@ export function CalendarView() {
   /* Botón «Con IA» y pie: la key se lee aquí para que el repintado la note
      (es una signal) sin tener que consultarla dentro de cada handler. */
   const controls = planControls(hasApiKey());
-
-  /* «Plan automático» de Hoy: la petición viaja en la signal del helper y se
-     consume UNA vez (el `coach:quick`  llamaba a `autoPlan` de la vista
-     del calendario). El efecto también corre al montar, que es como llega la
-     petición cuando se cambia de pestaña. */
-  const autoRequest = autoPlanRequest.value;
-  useEffect(() => {
-    const engine = takeAutoPlanRequest();
-    if (engine) void requestPlan(engine);
-  }, [autoRequest]);
 
   const weekStart = startOfWeek(cursor);
   const monthLabel = dateLabel(`${cursor.slice(0, 7)}-01`, 'month');

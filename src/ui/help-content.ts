@@ -60,7 +60,6 @@ export const HELP_IDS = [
 
   /* --- las 7 pestañas --- */
   'tab.hoy',
-  'tab.entrenar',
   'tab.rutinas',
   'tab.calendario',
   'tab.coach',
@@ -69,8 +68,6 @@ export const HELP_IDS = [
 
   /* --- Hoy --- */
   'hoy.plan',
-  'hoy.suggest',
-  'hoy.kpis',
   'hoy.lastSessions',
   'hoy.tools',
 
@@ -122,8 +119,6 @@ export const HELP_IDS = [
   'opt.autoRest',
   'opt.increment',
   'opt.showRpe',
-  'opt.countWarmups',
-  'opt.quickFinish',
   'opt.keepAwake',
   'opt.notify',
   'opt.lastTicks',
@@ -150,7 +145,6 @@ export const HELP_IDS = [
   'glossary.rest',
   'glossary.streak',
   'glossary.pr',
-  'glossary.warmup',
   'glossary.increment',
   'glossary.equipment',
   'glossary.routine',
@@ -191,7 +185,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Hoy → tarjeta del día → «Empezar sesión». Si hoy no hay plan, elige «Libre» o abre una rutina desde la pestaña Rutinas.',
       'Marca cada serie con el botón «ok» de su fila; el descanso arranca solo. Al terminar, «Finalizar sesión» guarda el entreno y marca el día como hecho.',
     ],
-    see: ['tab.hoy', 'tab.entrenar'],
+    see: ['tab.hoy', 'entreno.suggested'],
   },
   'flow.repeat': {
     id: 'flow.repeat',
@@ -220,20 +214,10 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Hoy',
     paras: [
-      'Tu día de un vistazo: el saludo, la tarjeta del día y la tira de la semana.',
-      'Debajo: «Recomendado ahora» con la propuesta de hoy, tus números de los últimos 7 días, las últimas sesiones con «Repetir» y dos herramientas (calculadora de discos y temporizador).',
+      'Tu día de un vistazo: el saludo, la tarjeta del día con el plan y la tira de la semana.',
+      'Debajo: las últimas sesiones con «Repetir» y dos herramientas (calculadora de discos y temporizador).',
     ],
-    see: ['hoy.suggest', 'flow.start'],
-  },
-  'tab.entrenar': {
-    id: 'tab.entrenar',
-    section: 'tabs',
-    title: 'Entrenar',
-    paras: [
-      'La sesión en curso: cada ejercicio con sus series (peso, repeticiones y, si quieres, RPE), el descanso con cuenta atrás, las notas y «Finalizar sesión».',
-      'Si no hay ninguna abierta, aquí la empiezas con «Elegir ejercicios…» o «Empezar en blanco».',
-    ],
-    see: ['entreno.suggested', 'entreno.drag'],
+    see: ['hoy.plan', 'flow.start'],
   },
   'tab.rutinas': {
     id: 'tab.rutinas',
@@ -241,7 +225,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Rutinas',
     paras: [
       'Tus rutinas guardadas. Puedes escribir una a mano con «Nueva rutina», generarla sin conexión con «Generar auto» o pedírsela a la IA con «Sugerir rutina con IA».',
-      'Cada tarjeta tiene Empezar, Ver, Editar, Agendar, Duplicar y Eliminar.',
+      'Cada tarjeta tiene Empezar, Editar, Agendar, Duplicar y Eliminar (Duplicar/Eliminar como iconos compactos).',
     ],
     see: ['rutinas.autoVsIa', 'rutinas.source'],
   },
@@ -292,30 +276,10 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Plan de hoy',
     paras: [
       'El botón grande empieza la sesión que toca hoy: la app mira el Calendario, tus rutinas y tu historial para decidir qué te toca.',
-      'Si no hay nada programado aparece «Sin plan para hoy»: puedes descansar («Saltar») o usar «Plan automático», que monta la semana entera en el Calendario sin pedirte clave.',
-      '«Planificar semana» te lleva al Calendario para asignar rutinas a mano.',
+      'Si no hay nada programado aparece «Sin plan para hoy»: puedes entrenar libre, elegir una de tus rutinas o saltarte el día.',
+      'El sello dice de dónde sale el plan: «IA» si lo escribió el coach con tu clave, «plan» si lo calculó tu dispositivo.',
     ],
-    see: ['tab.hoy', 'cal.autoplan'],
-  },
-  'hoy.suggest': {
-    id: 'hoy.suggest',
-    section: 'hoy',
-    title: 'Recomendado ahora',
-    paras: [
-      'La propuesta de entreno para hoy, calculada con tu historial y tu material, con ejercicios, series × repeticiones y peso.',
-      'El sello dice quién la ha hecho: «IA» si la ha escrito el coach con tu clave, «local» si la ha calculado la app en tu dispositivo sin salir de aquí. En los dos casos puedes empezarla tal cual.',
-      'Si no te convence, «Recalcular» te da otra al momento; «Mejorar con IA» se la pasa al coach (necesita clave) y «Guardar rutina» la deja en Rutinas para los próximos días.',
-    ],
-    see: ['flow.plan', 'rutinas.autoVsIa'],
-  },
-  'hoy.kpis': {
-    id: 'hoy.kpis',
-    section: 'hoy',
-    title: 'KPIs de 7 días',
-    paras: [
-      'Resumen de los últimos 7 días: «Sesiones 7d» cuenta los días entrenados frente a tu objetivo semanal, «Volumen 7d» suma los kilos movidos y lo compara con la semana anterior, y «Series 7d» las series hechas con los minutos totales de entreno.',
-    ],
-    see: ['glossary.volume', 'glossary.streak'],
+    see: ['tab.hoy', 'flow.start'],
   },
   'hoy.lastSessions': {
     id: 'hoy.lastSessions',
@@ -672,7 +636,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Cuántos días quieres entrenar cada semana. Con eso el planificador reparte tus rutinas y Hoy te dice si vas al día.',
     ],
-    see: ['opt.goal', 'hoy.kpis'],
+    see: ['opt.goal', 'tab.hoy'],
   },
   'opt.units': {
     id: 'opt.units',
@@ -712,25 +676,6 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Al activarlo aparece una columna más en cada serie. Se guarda y se promedia, pero no cambia ningún cálculo.',
     ],
     see: ['glossary.rpe', 'entreno.drag'],
-  },
-  'opt.countWarmups': {
-    id: 'opt.countWarmups',
-    section: 'ajustes',
-    title: 'Contar aproximaciones',
-    paras: [
-      'Si se activa, las series de calentamiento contarían en el volumen total.',
-      'Aviso: de momento no hace nada. El volumen solo cuenta las series de trabajo.',
-    ],
-    see: ['glossary.warmup', 'glossary.volume'],
-  },
-  'opt.quickFinish': {
-    id: 'opt.quickFinish',
-    section: 'ajustes',
-    title: 'Finalizar rápido',
-    paras: [
-      'Quita el aviso «¡Todas las series marcadas! Pulsa Finalizar» que sale al terminar. El botón «Finalizar» sigue estando igual.',
-    ],
-    see: ['opt.autoRest'],
   },
   'opt.keepAwake': {
     id: 'opt.keepAwake',
@@ -805,7 +750,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Modelo',
     paras: [
-      'Qué versión de Gemini usa el coach. Solo hay dos: «3.8 Flash», el más capaz y el que viene marcado, y «3.5 Flash-Lite», más rápido y barato para el día a día.',
+      'Qué versión de Gemini usa el coach. Hay tres: «Gemini 4 Hydrogen», el más capaz y el que viene marcado; «Gemini 3.8 Flash», respaldo estable; y «Gemini 3.5 Flash-Lite», rápido y económico para el día a día.',
     ],
     see: ['opt.thinkingLevel', 'coach.apiKey'],
   },
@@ -957,15 +902,6 @@ export const HELP: Record<HelpId, HelpTopic> = {
     ],
     see: ['prog.prs', 'glossary.1rm'],
   },
-  'glossary.warmup': {
-    id: 'glossary.warmup',
-    section: 'glosario',
-    title: 'Aproximación (serie de calentamiento)',
-    paras: [
-      'Series ligeras antes de cargar pesado. De momento no cuentan para el volumen: solo suman las series de trabajo.',
-    ],
-    see: ['opt.countWarmups', 'glossary.volume'],
-  },
   'glossary.increment': {
     id: 'glossary.increment',
     section: 'glosario',
@@ -989,7 +925,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Rutina es tu lista guardada. Plantilla es el punto de partida de «Generar auto». Sesión es lo que entrenas hoy y se guarda en el historial.',
     ],
-    see: ['rutinas.generate', 'tab.entrenar'],
+    see: ['rutinas.generate', 'hoy.plan'],
   },
   'glossary.localPlan': {
     id: 'glossary.localPlan',

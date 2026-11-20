@@ -1,7 +1,6 @@
 /**
- * Helpers puros de la vista Hoy: el plan del día, la franja semanal, los KPIs
- * de 7 días, la repetición de una sesión, el saludo y las filas de la
- * sugerencia del coach.
+ * Helpers puros de la vista Hoy: el plan del día, la franja semanal,
+ * la repetición de una sesión y el saludo.
  *
  * Están aparte del componente para poder probarlos con Vitest sin DOM, sin
  * `localStorage` y sin reloj: aquí solo entran datos por parámetro y salen
@@ -20,7 +19,7 @@
  *   con más peso, como antes) y deja el `basis` «repetición de …» para que la
  *   sesión cargada diga de dónde sale el peso.
  */
-import { sessionDate, volumeOf, weeklySeries } from '@/domain/analytics';
+import { sessionDate, volumeOf } from '@/domain/analytics';
 import { dow, label as dateLabel, weekDates } from '@/domain/dates';
 import { fmtN } from '@/domain/format';
 import { int, num } from '@/domain/num';
@@ -30,7 +29,6 @@ import type { Routine, ScheduleDay } from '@/state/store';
 
 import { dayState, dayTitle, dayTypeLabel } from './calendar-helpers';
 import type { DayState } from './calendar-helpers';
-import type { RoutineSuggestion } from './routines-helpers';
 
 /* ---------- plan de hoy ---------- */
 
@@ -244,50 +242,6 @@ export function weekCells(
   });
 }
 
-/* ---------- KPIs de 7 días ---------- */
-
-export interface WeekKpis {
-  sessions: number;
-  /** kg */
-  volume: number;
-  sets: number;
-  minutes: number;
-  /** % frente a la semana previa; `null` = sin comparativa (como antes). */
-  deltaPct: number | null;
-  /** `settings.daysPerWeek` */
-  objective: number;
-}
-
-/**
- * KPIs de los últimos 7 días con su comparativa contra la semana anterior.
- *
- * El `0`  no se pinta como «+0 %»: si la semana previa está vacía (o el
- * resultado redondea a 0) devuelve `null` y la UI escribe «sin comparativa»,
- * exactamente como el `kpis()` de `views-train.js`.
- */
-export function weekKpis(
-  sessions: readonly Session[],
-  todayIso: string,
-  daysPerWeek: number,
-): WeekKpis {
-  const week = weeklySeries(sessions, 1, todayIso)[0];
-  const prev = weeklySeries(sessions, 2, todayIso)[0];
-  const volume = week?.volume ?? 0;
-  let deltaPct: number | null = null;
-  if (prev && prev.volume) {
-    const delta = Math.round(((volume - prev.volume) / prev.volume) * 100);
-    deltaPct = delta === 0 ? null : delta;
-  }
-  return {
-    sessions: week?.sessions ?? 0,
-    volume,
-    sets: week?.sets ?? 0,
-    minutes: week?.minutes ?? 0,
-    deltaPct,
-    objective: int(daysPerWeek, 0),
-  };
-}
-
 /* ---------- repetir una sesión ---------- */
 
 /**
@@ -347,76 +301,4 @@ export function greeting(hour: number, name: string): string {
     .trim()
     .split(' ')[0];
   return first ? `${greet}, ${first}` : greet;
-}
-
-/* ---------- sugerencia del coach ---------- */
-
-/** Una fila de «Recomendado ahora», con el grupo para el badge de color. */
-export interface SuggestRow {
-  name: string;
-  /** clave de grupo muscular («» si el ejercicio no está en la biblioteca) */
-  group: string;
-  sets: number;
-  /** reps concretas: la media del rango, como antes */
-  reps: number;
-  weight: number | null;
-  matched: boolean;
-}
-
-/**
- * Filas de la sugerencia: el grupo sale de la biblioteca (la propuesta solo
- * trae el nombre), y las reps son la media del rango como
- * (`i.sets + '×' + i.reps`).
- */
-export function suggestionRows(
-  suggestion: RoutineSuggestion,
-  library: readonly Exercise[],
-): SuggestRow[] {
-  return suggestion.exercises.map((item) => {
-    const found = library.find((ex) => ex.name === item.name) ?? null;
-    return {
-      name: item.name,
-      group: found?.group ?? '',
-      sets: item.sets,
-      reps: Math.round((item.repMin + item.repMax) / 2),
-      weight: item.weight,
-      matched: item.matched,
-    };
-  });
-}
-
-/**
- * Items de la sugerencia para `startFromPlan`. Solo los que resolvieron contra
- * la biblioteca: arrancar un ejercicio que no existe dejaría la sesión a medias
- * (el mismo criterio que `applySuggestionAsRoutine`).
- */
-export function suggestionPlan(suggestion: RoutineSuggestion): PlanLine[] {
-  return suggestion.exercises
-    .filter((item) => item.matched)
-    .map((item) => ({
-      name: item.name,
-      sets: item.sets,
-      repMin: item.repMin,
-      repMax: item.repMax,
-      rest: item.rest,
-      weight: item.weight,
-      notes: item.notes,
-    }));
-}
-
-/**
- * Origen visible de la sugerencia: el mismo badge
- * (`source === 'ia' ? 'IA': 'local'`, `views-train.js:68`).
- *
- * `fallback` cubre el caso del payload SIN `source`: calculado aquí es `local`,
- * pero cuando el payload viene del coach ya sabemos que fue IA (aunque el modelo
- * se olvidara de escribirlo). Un `source` presente pero distinto de `ia`
- * (`local` cuando el planificador local cubrió una caída de red) manda sobre el
- * fallback: el badge no puede mentir sobre de dónde salió la sugerencia.
- */
-export function suggestionSource(raw: unknown, fallback: 'ia' | 'local' = 'local'): 'ia' | 'local' {
-  const source = isPlain(raw) && typeof raw.source === 'string' ? raw.source : '';
-  if (source === 'ia') return 'ia';
-  if (source) return 'local';
-  return fallback;
 }

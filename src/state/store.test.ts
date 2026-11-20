@@ -1004,4 +1004,33 @@ describe('migración v4/v5 de ai', () => {
     rawState(5, { model: 'gemini-3.8-flash' });
     expect(store.readState().settings.ai.model).toBe('gemini-3.8-flash');
   });
+
+  it('v6 borra countWarmups, quickFinish y ai.autoApply heredados de v5', () => {
+    const crudo = JSON.parse(JSON.stringify(store.defaultState())) as Record<string, unknown>;
+    crudo.version = 5;
+    const settings = crudo.settings as Record<string, unknown>;
+    settings.countWarmups = true;
+    settings.quickFinish = true;
+    (settings.ai as Record<string, unknown>).autoApply = true;
+    mem.set(store.STATE_KEY, JSON.stringify(crudo));
+
+    const out = store.readState();
+
+    expect('countWarmups' in out.settings).toBe(false);
+    expect('quickFinish' in out.settings).toBe(false);
+    expect('autoApply' in out.settings.ai).toBe(false);
+    expect(out.version).toBe(store.STATE_VERSION);
+  });
+
+  it('withDefaults no deja que un __proto__ del estado contaminte Object.prototype', () => {
+    const malicioso = JSON.parse(
+      '{"__proto__":{"contaminado":true},"name":"Ana"}',
+    ) as Record<string, unknown>;
+
+    const out = store.withDefaults(malicioso, { name: 'Por defecto', units: 'kg' });
+
+    expect(out.name).toBe('Ana');
+    expect(({} as Record<string, unknown>)['contaminado']).toBeUndefined();
+    expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
+  });
 });

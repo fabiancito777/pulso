@@ -744,7 +744,7 @@ export function SessionCard() {
         <div class="row between mb-s">
           <div class="row" style="gap:4px">
             <b>Entrenar</b>
-            <HelpBtn id="tab.entrenar" title="Entrenar" />
+            <HelpBtn id="flow.start" title="Empezar a entrenar" />
           </div>
           <span class="tiny muted">sin sesión activa</span>
         </div>
@@ -932,7 +932,7 @@ export function SessionCard() {
         </div>
       </section>{' '}
       <section class="card tight">
-        {prog.total > 0 && prog.done === prog.total && !s.quickFinish ? (
+        {prog.total > 0 && prog.done === prog.total ? (
           <div class="tiny ok mb-s">¡Todas las series marcadas! Pulsa Finalizar.</div>
         ) : null}
         <button class="btn primary lg block" onClick={finish}>

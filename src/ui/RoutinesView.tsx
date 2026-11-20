@@ -68,7 +68,6 @@ import {
   ROTATE_OPTIONS,
   autoRoutineItems,
   bounded,
-  detailRows,
   generateAuto,
   lastUsed,
   matchExercises,
@@ -468,94 +467,6 @@ function ScheduleModal({
 }
 
 /**
- * Modal «Ver»: detalle de solo lectura de una rutina (antes `App.ui.routineDetail`,
- * `app.js:583`). Muestra nombre, enfoque, notas y cada ejercicio con sus números;
- * para cambiar nada se pasa por el editor (botón «Editar» del pie).
- */
-function DetailModal({
-  routine,
-  onClose,
-  onEdit,
-  onStart,
-}: {
-  routine: Routine;
-  onClose: () => void;
-  onEdit: () => void;
-  onStart: () => void;
-}) {
-  const rows = detailRows(routine.items, exercises.value, equipment.value);
-  const unit = settings.value.units;
-  const focus = typeof routine.focus === 'string' ? routine.focus : '';
-  const notes = typeof routine.notes === 'string' ? routine.notes : '';
-  const created = typeof routine.createdAt === 'string' ? routine.createdAt.slice(0, 10) : '';
-
-  return (
-    <Modal
-      title={routine.name}
-      onClose={onClose}
-      foot={
-        <>
-          <button type="button" class="btn ghost" onClick={onClose}>
-            Cerrar
-          </button>
-          <button type="button" class="btn ghost" onClick={onEdit}>
-            <Icon name="pencil" />
-            Editar
-          </button>
-          <button type="button" class="btn primary" onClick={onStart}>
-            <Icon name="play" />
-            Empezar
-          </button>
-        </>
-      }
-    >
-      {focus ? <div class="tiny muted">{focus}</div> : null}
-
-      <div class="card flush mt-s">
-        {rows.length ? (
-          rows.map((row, i) => (
-            <div class="list-item" key={`${row.name}-${i}`}>
-              <span class="num tiny muted" style="width:18px">
-                {i + 1}
-              </span>
-              <div class="li-main">
-                <div class="li-title ellipsis">{row.name}</div>
-                <div class="li-sub">
-                  {row.sets} × {row.repMin}-{row.repMax} · {row.rest} s
-                  {row.group ? ` · ${row.group}` : ''}
-                  {row.weight !== null ? ` · ${fmtN(row.weight)} ${unit}` : ''}
-                  {row.missing ? ' · falta material' : ''}
-                </div>
-                {row.notes ? <div class="tiny muted">{row.notes}</div> : null}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div class="empty">
-            <Icon name="list" />
-            <div>Sin ejercicios</div>
-          </div>
-        )}
-      </div>
-
-      {notes ? (
-        <div class="card tight mt-s">
-          <div class="tiny muted">Notas</div>
-          <div class="tiny">{notes}</div>
-        </div>
-      ) : null}
-
-      <div class="tiny muted mt-s">
-        {rows.length} {rows.length === 1 ? 'ejercicio' : 'ejercicios'} ·{' '}
-        {routineSets(routine.items)} series
-        {created ? ` · creada ${dateLabel(created, 'medium')}` : ''} · origen{' '}
-        {sourceBadge(routine.source).label}
-      </div>
-    </Modal>
-  );
-}
-
-/**
  * Editor de una rutina (crear si `routineId` es `null`). Los campos viven en el
  * estado local y se persisten AL GUARDAR, con `addRoutine`/`updateRoutine` — lo
  * mismo que hacía el modal  en su botón «Guardar rutina».
@@ -931,7 +842,7 @@ function RoutineEditor({
   );
 }
 
-/** La pestaña Rutinas: listado + generar (local o con IA) + detalle/agendar + editor. */
+/** La pestaña Rutinas: listado + generar (local o con IA) + agendar + editor. */
 export function RoutinesView() {
   const list = routines.value;
   const library = exercises.value;
@@ -951,10 +862,9 @@ export function RoutinesView() {
   /* generación local (sin API key): modal de plantillas + propuesta sin guardar */
   const [genOpen, setGenOpen] = useState(false);
   const [auto, setAuto] = useState<AutoProposal | null>(null);
-  /* modal «Agendar» (fecha) y modal «Ver» (detalle de solo lectura) */
+  /* modal «Agendar» (fecha) */
   const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [scheduleIso, setScheduleIso] = useState('');
-  const [detailId, setDetailId] = useState<string | null>(null);
 
   /* Otra pestaña puede pedir que abramos una rutina en el editor (p. ej. desde
      el chat del coach). Se consume al montar: una sola petición, no una cola. */
@@ -1096,7 +1006,7 @@ export function RoutinesView() {
               return;
             }
             setNotice(null);
-            go('entrenar');
+            go('hoy');
           },
         },
       });
@@ -1107,7 +1017,7 @@ export function RoutinesView() {
       return;
     }
     setNotice(null);
-    go('entrenar');
+    go('hoy');
   }
 
   function duplicate(routine: Routine): void {
@@ -1232,10 +1142,6 @@ export function RoutinesView() {
             <Icon name="play" />
             Empezar
           </button>
-          <button type="button" class="btn sm" onClick={() => setDetailId(routine.id)}>
-            <Icon name="eye" />
-            Ver
-          </button>
           <button type="button" class="btn sm" onClick={() => setEditId(routine.id)}>
             <Icon name="pencil" />
             Editar
@@ -1244,13 +1150,23 @@ export function RoutinesView() {
             <Icon name="calendar" />
             Agendar
           </button>
-          <button type="button" class="btn sm ghost" onClick={() => duplicate(routine)}>
+          <button
+            type="button"
+            class="icon-btn"
+            title="Duplicar"
+            aria-label="Duplicar"
+            onClick={() => duplicate(routine)}
+          >
             <Icon name="copy" />
-            Duplicar
           </button>
-          <button type="button" class="btn sm quiet" onClick={() => setConfirmId(routine.id)}>
+          <button
+            type="button"
+            class="icon-btn"
+            title="Eliminar"
+            aria-label="Eliminar"
+            onClick={() => setConfirmId(routine.id)}
+          >
             <Icon name="trash" />
-            Eliminar
           </button>
         </div>
 
@@ -1282,7 +1198,6 @@ export function RoutinesView() {
   }
 
   const scheduleRoutine = findRoutine(scheduleId);
-  const detailRoutine = findRoutine(detailId);
 
   return (
     <>
@@ -1387,23 +1302,6 @@ export function RoutinesView() {
           defaultIso={scheduleIso}
           onClose={() => setScheduleId(null)}
           onConfirm={confirmSchedule}
-        />
-      ) : null}
-
-      {detailRoutine && detailId ? (
-        <DetailModal
-          key={detailId}
-          routine={detailRoutine}
-          onClose={() => setDetailId(null)}
-          onEdit={() => {
-            setDetailId(null);
-            setEditId(detailId);
-          }}
-          onStart={() => {
-            const routine = detailRoutine;
-            setDetailId(null);
-            startRoutine(routine);
-          }}
         />
       ) : null}
     </>
