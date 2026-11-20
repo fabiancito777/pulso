@@ -103,6 +103,10 @@ function dayItems(day: ScheduleDay | null | undefined): PlanLine[] {
       weight === undefined || weight === null || weight === '' ? Number.NaN : num(weight, NaN);
     const reps = Number.isFinite(num(entry.reps, Number.NaN)) ? num(entry.reps) : undefined;
     const notes = typeof entry.notes === 'string' ? entry.notes : undefined;
+    const superset =
+      typeof entry.superset === 'string' && entry.superset.trim()
+        ? entry.superset.trim()
+        : undefined;
     out.push({
       exId: exId || undefined,
       name: name || undefined,
@@ -114,6 +118,7 @@ function dayItems(day: ScheduleDay | null | undefined): PlanLine[] {
       weight: Number.isFinite(parsedWeight) ? parsedWeight : null,
       ...(reps === undefined ? {} : { reps }),
       ...(notes === undefined ? {} : { notes }),
+      ...(superset ? { superset } : {}),
     });
   }
   return out;

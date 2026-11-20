@@ -12,6 +12,7 @@ import {
   creationsFromPayload,
   extractBlocks,
   extractCreations,
+  extractRoutineBlock,
   parseCreations,
   parseJSON,
   payloadItems,
@@ -188,6 +189,59 @@ describe('extractCreations', () => {
 
     const { creations } = extractCreations(text);
     expect(creations.map((item) => item.name)).toEqual(['Curl martillo']);
+  });
+});
+
+/* ---------- rutinas: bloque ```rutina``` ---------- */
+
+describe('extractRoutineBlock', () => {
+  it('extrae un bloque ```rutina``` con exercises y devuelve el resto sin el bloque', () => {
+    const text =
+      'Te dejo la rutina.\n\n```rutina\n{"action":"create","title":"Empuje",' +
+      '"exercises":[{"name":"Press de banca","sets":3}]}\n```\n\nDime si la guardo.';
+
+    const { rest, routine } = extractRoutineBlock(text);
+
+    expect(routine).toEqual({
+      action: 'create',
+      title: 'Empuje',
+      exercises: [{ name: 'Press de banca', sets: 3 }],
+    });
+    expect(rest).not.toContain('```rutina');
+    expect(rest).toContain('Te dejo la rutina.');
+    expect(rest).toContain('Dime si la guardo.');
+  });
+
+  it('acepta una rutina con la lista bajo `items`', () => {
+    const text = '```rutina\n{"title":"Piernas","items":[{"name":"Sentadilla"}]}\n```';
+    const { routine } = extractRoutineBlock(text);
+    expect(routine).toEqual({ title: 'Piernas', items: [{ name: 'Sentadilla' }] });
+  });
+
+  it('devuelve routine null con un bloque ilegible y no rompe', () => {
+    const { rest, routine } = extractRoutineBlock('Va.\n```rutina\nesto no es json\n```');
+    expect(routine).toBeNull();
+    expect(rest).not.toContain('```rutina');
+  });
+
+  it('devuelve routine null con un bloque vacío o sin lista de ejercicios', () => {
+    expect(extractRoutineBlock('```rutina\n```').routine).toBeNull();
+    expect(extractRoutineBlock('```rutina\n{"title":"Sin ejercicios"}\n```').routine).toBeNull();
+    expect(extractRoutineBlock('```rutina\n{"exercises":[]}\n```').routine).toBeNull();
+  });
+
+  it('recorta el `rest` (sin el bloque y sin espacios sobrantes)', () => {
+    const { rest } = extractRoutineBlock(
+      '  Antes\n```rutina\n{"exercises":[{"name":"A"}]}\n```\nDespués  ',
+    );
+    expect(rest).toBe('Antes\n\nDespués');
+  });
+
+  it('sin bloque devuelve routine null y el texto recortado', () => {
+    expect(extractRoutineBlock('  Aquí no hay rutina.  ')).toEqual({
+      rest: 'Aquí no hay rutina.',
+      routine: null,
+    });
   });
 });
 

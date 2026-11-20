@@ -284,6 +284,37 @@ export function extractCreations(text: string): {
 }
 
 /**
+ * Bloques ```rutina``` del texto → la primera rutina válida, CON EL BLOQUE YA
+ * QUITADO del texto: la respuesta que ve el usuario nunca enseña el JSON crudo,
+ * igual que pasa con ```memoria```/```consulta```/```crear```.
+ *
+ * Un bloque cuenta como rutina solo si trae una lista no vacía de ejercicios
+ * (`exercises` o `items`). Un bloque ilegible no rompe la respuesta del chat: se
+ * ignora y se sigue con el siguiente.
+ */
+export function extractRoutineBlock(text: string): {
+  rest: string;
+  routine: Record<string, unknown> | null;
+} {
+  const { rest, blocks } = extractBlocks(text, 'rutina');
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    try {
+      const parsed = parseJSON<unknown>(block);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue;
+      const rec = parsed as Record<string, unknown>;
+      const list = rec.exercises ?? rec.items;
+      if (Array.isArray(list) && list.length > 0) {
+        return { rest: rest.trim(), routine: rec };
+      }
+    } catch {
+      /* un bloque ilegible no rompe la respuesta del chat */
+    }
+  }
+  return { rest: rest.trim(), routine: null };
+}
+
+/**
  * Ejercicios crudos de un payload de `suggest`/`plan`, incluidos los de cada
  * día (`days[].exercises[]`): es lo que recorre la UI para leer `isNew` y lo
  * que `partitionUnresolved` usa para dar con los atributos de un nombre.

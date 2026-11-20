@@ -216,6 +216,8 @@ export interface BuildRequestOpts {
    * efecto en `chat`: ahí los ejercicios nuevos viajan en un bloque ```crear```)
    */
   create?: boolean;
+  /** añadir `ROUTINE_INSTRUCTION` al system en `chat` (por defecto true) */
+  routine?: boolean;
   /**
    * mensaje del usuario: en `chat` es el prompt entero; en las demás tareas es
    * la COLA del prompt (en crudo y sin etiqueta) — los chips con la caja

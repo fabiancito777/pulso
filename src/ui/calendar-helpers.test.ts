@@ -311,17 +311,17 @@ describe('propuesta: local vs IA', () => {
 });
 
 /* La distinción no acaba en la UI: así queda en el ESTADO al aplicar el plan.
-   Misma regla que `C.applyWeek`  (): el día
-   guarda el `source` del plan tal cual y la rutina que nace de él se guarda
-   como 'generador' si no vino de la IA. */
+   Misma regla que `applyWeek`: el día guarda el `source` del plan tal cual y
+   los ejercicios se guardan en `schedule[iso].plan` (sin crear rutinas). */
 describe('applyWeek: la fuente del plan distingue local de IA', () => {
   /* `applyWeek` descarta los días pasados, así que los fixtures usan fechas
      futuras relativas a hoy. */
   const iso = addDays(today(), 7);
 
-  it('escribe source "local" en los días y "generador" en la rutina creada', () => {
+  it('escribe source "local" en los días y guarda los ejercicios en plan (0 rutinas)', () => {
     const antes = store.routines.value.length;
     const name = store.exercises.value[0]?.name ?? '';
+    const exId = store.exercises.value[0]?.id;
 
     const result = coach.applyWeek({
       source: 'local',
@@ -334,13 +334,17 @@ describe('applyWeek: la fuente del plan distingue local de IA', () => {
       ],
     });
 
-    expect(result).toEqual({ days: 2, routines: 1, unresolved: [], skipped: 0 });
+    expect(result).toEqual({ days: 2, routines: 0, unresolved: [], skipped: 0 });
     expect(store.schedule.value[iso]).toMatchObject({ source: 'local', status: 'planned' });
+    /* los ejercicios quedan en el día, no se crea ninguna rutina nueva */
+    expect(store.schedule.value[iso].plan).toEqual(
+      expect.arrayContaining([expect.objectContaining({ exId })]),
+    );
     expect(store.schedule.value[addDays(iso, 1)]).toMatchObject({
       source: 'local',
       status: 'rest',
     });
-    expect(store.routines.value[antes]?.source).toBe('generador');
+    expect(store.routines.value.length).toBe(antes);
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
   });
 

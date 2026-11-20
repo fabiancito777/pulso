@@ -47,6 +47,7 @@ import { equipLabel, groupLabel } from '@/domain/data';
 import { unresolvedNames } from '@/domain/match';
 import { int } from '@/domain/num';
 import { supersetGroups } from '@/domain/supersets';
+import { norm } from '@/domain/text';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
 import { useCoachWait, WaitMeta } from './coach-wait';
@@ -173,6 +174,16 @@ export function resultLine(task: CoachTask, out: CoachOutcome, model: string): C
   if (out.thoughts) line.thoughts = out.thoughts;
   if (out.consulted.length) line.consulted = out.consulted;
   if (out.creations.length) line.creations = out.creations.map((item) => ({ ...item }));
+
+  if (task === 'chat' && out.routinePayload) {
+    line.payload = out.routinePayload;
+    const fromRoutine = creationsFromPayload(out.routinePayload);
+    if (fromRoutine.length) {
+      const existing = new Set((line.creations ?? []).map((c) => norm(c.name)));
+      const extra = fromRoutine.filter((c) => !existing.has(norm(c.name)));
+      if (extra.length) line.creations = [...(line.creations ?? []), ...extra];
+    }
+  }
 
   if (task === 'suggest' || task === 'plan') {
     const payload = payloadOf(out.text);
@@ -494,7 +505,9 @@ function PayloadCard({
   if (!days.length && !exercises.length) return null;
 
   const isPlan = days.length > 0;
+  const isUpdate = asText(payload.action) === 'update';
   const title = asText(payload.title) || (isPlan ? 'Plan semanal' : 'Propuesta de entreno');
+  const target = asText(payload.target) || title;
   const focus = asText(payload.focus);
   const done = payload.done === true;
   const list = isPlan ? days : exercises;
@@ -543,7 +556,13 @@ function PayloadCard({
         onClick={() => onApply(index, isPlan ? 'plan' : 'routine')}
       >
         <Icon name={isPlan ? 'calendar' : 'plus'} />
-        {done ? 'Aplicada' : isPlan ? 'Aplicar plan' : 'Aplicar como rutina'}
+        {done
+          ? 'Aplicada'
+          : isPlan
+            ? 'Aplicar plan'
+            : isUpdate
+              ? `Actualizar «${target}»`
+              : 'Aplicar como rutina'}
       </button>
     </div>
   );
@@ -1071,7 +1090,7 @@ export function CoachView() {
     if (!line) return;
 
     if (kind === 'routine') {
-      const { routine, unresolved } = applySuggestionAsRoutine(line.payload);
+      const { routine, unresolved, updated } = applySuggestionAsRoutine(line.payload);
       const { creatable, warnings } = partitionUnresolved(unresolved, line.payload);
       if (creatable.length) appendCreations(index, creatable);
       if (!routine) {
@@ -1102,7 +1121,7 @@ export function CoachView() {
       if (warnings.length) bits.push(`sin usar (${warnings.length}): ${unresolvedNames(warnings)}`);
       addChat({
         role: 'sys',
-        text: `Rutina creada: ${routine.name}${bits.length ? ` · ${bits.join(' · ')}` : ''}`,
+        text: `${updated ? 'Rutina actualizada' : 'Rutina creada'}: ${routine.name}${bits.length ? ` · ${bits.join(' · ')}` : ''}`,
         ts: nowTs(),
       });
       return;
@@ -1126,13 +1145,18 @@ export function CoachView() {
     const skipped = bits.length ? ` · ${bits.join(' · ')}` : '';
     addChat({
       role: 'sys',
-      text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas creadas` : ''}${skipped}`,
+      text: `Plan aplicado: ${out.days} días${out.routines ? ` · ${out.routines} rutinas enlazadas` : ''}${skipped}`,
       ts: nowTs(),
     });
     /* El plan YA está en el calendario: se salta a verlo, igual que acababa la
        antes (allí era el propio Calendario quien aplicaba, `cal:apply-plan`). Si
        quedan creables, NO se salta: la tarjeta está en esta pestaña. */
-    toast(`Semana agendada: ${out.days} días, ${out.routines} rutinas creadas`, { kind: 'ok' });
+    toast(
+      out.routines
+        ? `Semana agendada: ${out.days} días, ${out.routines} rutinas enlazadas`
+        : `Semana agendada: ${out.days} días`,
+      { kind: 'ok' },
+    );
     if (warnings.length) {
       toast(`Sin usar: ${unresolvedNames(warnings)}`, { kind: 'warn' });
     }

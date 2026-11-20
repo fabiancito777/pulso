@@ -17,9 +17,10 @@
  * - Lo que es lógica con casos borde (la propuesta del coach llega como texto,
  *   la búsqueda tolera tildes) vive en `routines-helpers.ts`, con sus tests.
  */
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import {
   GOAL_REPS,
   GOAL_REST,
@@ -31,7 +32,7 @@ import {
 } from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
 import { fmtN, inputNum } from '@/domain/format';
-import { matchExercise, unresolvedNames } from '@/domain/match';
+import { matchExercise, unresolvedName, unresolvedNames } from '@/domain/match';
 import { clamp, int } from '@/domain/num';
 import { findTemplate } from '@/domain/plan';
 import { linkAt, newSupersetId, pruneSupersets, supersetPosition, unlinkAt } from '@/domain/supersets';
@@ -39,7 +40,8 @@ import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
 import { promptHistory } from '@/state/chat';
-import { applySuggestionAsRoutine, hasApiKey, runCoachTask } from '@/state/coach';
+import { applySuggestionAsRoutine, hasApiKey, partitionUnresolved, runCoachTask } from '@/state/coach';
+import { createExerciseFromAI } from '@/state/exercise-create';
 import { addRoutineToSession, startFromRoutine } from '@/state/session';
 import {
   active,
@@ -74,12 +76,14 @@ import {
   routineSets,
   scheduleRoutinePatch,
   sourceBadge,
+  takeRoutineEditRequest,
   templateSummary,
   toSuggestion,
   validScheduleIso,
   weightOrNull,
 } from './routines-helpers';
 import type { AutoProposal, RoutineSuggestion } from './routines-helpers';
+import { toast } from './toast';
 
 import '../styles/routines.css';
 
@@ -110,18 +114,29 @@ function NoticeBox({ notice, onClose }: { notice: Notice; onClose: () => void })
 /** La propuesta del coach, ya normalizada, con su tabla y sus botones. */
 function ProposalCard({
   proposal,
+  proposalRaw,
   unit,
   library,
   onApply,
   onDiscard,
+  onCreate,
 }: {
   proposal: RoutineSuggestion;
+  proposalRaw: unknown;
   unit: string;
   library: readonly Exercise[];
   onApply: () => void;
   onDiscard: () => void;
+  onCreate: (proposal: AIExerciseProposal) => void;
 }) {
   const unmatched = proposal.exercises.filter((ex) => !ex.matched).length;
+  /* Los nombres que el matcher no resolvió se parten con `partitionUnresolved`:
+     los que SOLO faltan en la biblioteca se pueden crear con un clic; los que
+     chocan con un ejercicio existente siguen siendo un aviso, como siempre. */
+  const unresolved = proposal.exercises
+    .filter((ex) => !ex.matched)
+    .map((ex) => unresolvedName(ex.name, matchExercise(ex.name, library)));
+  const { creatable } = partitionUnresolved(unresolved, proposalRaw);
   /* El motivo se recalcula aquí con el MISMO matcher que usará «Aplicar»
      (`domain/match`): si el veto de atributos rechazó el nombre, el badge no
      puede decir «no está en tu biblioteca» si ahí está. */
@@ -188,6 +203,22 @@ function ProposalCard({
         <div class="tiny warn mt-s">
           {unmatched} {unmatched === 1 ? 'ejercicio no' : 'ejercicios no'} se aplicarán: no están en
           tu biblioteca o no encajan con ella. Se avisará al aplicar.
+        </div>
+      ) : null}
+
+      {creatable.length ? (
+        <div class="card tight mt-s">
+          <div class="tiny">
+            <b>Ejercicios nuevos por confirmar</b>
+          </div>
+          <div class="row wrap mt-s" style="gap:6px">
+            {creatable.map((p) => (
+              <button type="button" key={p.name} class="btn sm ghost" onClick={() => onCreate(p)}>
+                <Icon name="plus" />
+                Crear «{p.name}»
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
@@ -914,6 +945,9 @@ export function RoutinesView() {
   /* espera del coach: segundos, aviso de lentitud y Cancelar */
   const wait = useCoachWait();
   const [proposal, setProposal] = useState<RoutineSuggestion | null>(null);
+  /* JSON crudo de la propuesta: con él se reevalúan los nombres al crear un
+     ejercicio nuevo (para que pase a verde sin volver a pedir la propuesta). */
+  const [proposalRaw, setProposalRaw] = useState<unknown>(null);
   /* generación local (sin API key): modal de plantillas + propuesta sin guardar */
   const [genOpen, setGenOpen] = useState(false);
   const [auto, setAuto] = useState<AutoProposal | null>(null);
@@ -921,6 +955,15 @@ export function RoutinesView() {
   const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [scheduleIso, setScheduleIso] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
+
+  /* Otra pestaña puede pedir que abramos una rutina en el editor (p. ej. desde
+     el chat del coach). Se consume al montar: una sola petición, no una cola. */
+  useEffect(() => {
+    const id = takeRoutineEditRequest();
+    if (id && routines.value.some((routine) => routine.id === id)) {
+      setEditId(id);
+    }
+  }, []);
 
   const byId = new Map(library.map((ex) => [ex.id, ex] as const));
 
@@ -951,6 +994,7 @@ export function RoutinesView() {
     }
     const signal = wait.start();
     setProposal(null);
+    setProposalRaw(null);
     try {
       /* transcript del chat como `contents`: la propuesta se apoya en lo que el
          usuario pidió y pegó antes (P1), igual que en Hoy y en el coach */
@@ -959,7 +1003,12 @@ export function RoutinesView() {
         signal,
         onSlow: wait.markSlow,
       });
-      const parsed = toSuggestion(parseJSON<unknown>(outcome.text), library);
+      /* `payload` viene ya parseado del coach; el texto es la red de seguridad
+         (por si el modelo devolvió el JSON dentro de una cercilla). Guardamos
+         el crudo para poder reevaluar los nombres al crear ejercicios nuevos. */
+      const raw = outcome.payload ?? parseJSON<unknown>(outcome.text);
+      setProposalRaw(raw);
+      const parsed = toSuggestion(raw, library);
       if (!parsed) {
         setNotice({
           kind: 'err',
@@ -993,6 +1042,17 @@ export function RoutinesView() {
     } finally {
       wait.end();
     }
+  }
+
+  /** Crea un ejercicio nuevo de la propuesta y la reevalúa contra la biblioteca. */
+  function createNewExercise(p: AIExerciseProposal): void {
+    const result = createExerciseFromAI(p);
+    if (!result.ok) {
+      toast(result.error, { kind: 'warn' });
+      return;
+    }
+    toast(`Ejercicio creado: «${result.exercise.name}»`, { kind: 'ok' });
+    setProposal(toSuggestion(proposalRaw, exercises.value));
   }
 
   function applyProposal(): void {
@@ -1269,10 +1329,12 @@ export function RoutinesView() {
         <div class="mt-s">
           <ProposalCard
             proposal={proposal}
+            proposalRaw={proposalRaw}
             unit={unit}
             library={library}
             onApply={applyProposal}
             onDiscard={() => setProposal(null)}
+            onCreate={createNewExercise}
           />
         </div>
       ) : null}

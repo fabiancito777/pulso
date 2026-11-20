@@ -73,6 +73,7 @@ import {
   asProposal,
   extractBlocks,
   extractCreations,
+  extractRoutineBlock,
   parseJSON,
   payloadItems,
 } from '@/features/coach/parse';
@@ -97,6 +98,7 @@ import {
   setDay,
   setMeta,
   settings,
+  updateRoutine,
 } from './store';
 import type { Routine, ScheduleDay } from './store';
 
@@ -178,6 +180,12 @@ export interface CoachOutcome {
    * la vista (`creationsFromPayload`).
    */
   creations: AIExerciseProposal[];
+  /**
+   * rutina del bloque ```rutina``` del chat, ya parseada: la vista la ofrece
+   * como tarjeta «Aplicar como rutina» / «Actualizar «…»» (el bloque ya NO está
+   * en `text`).
+   */
+  routinePayload?: Record<string, unknown>;
   /** milisegundos de la tarea entera (según `deps.now`) */
   ms: number;
 }
@@ -767,10 +775,20 @@ export async function runCoachTask(
     });
   }
 
-  /* 5 · memoria: se vuelca y se quita del texto final. `extractMemoryBlock`
+  /* 5 · rutina: se extrae ANTES que los demás bloques para que el orden en que
+     el modelo los emita no rompa `extractMemoryBlock` (que exige que ```memoria```
+     cierre la respuesta). Sin bloque ```rutina``` el texto queda intacto. */
+  const { rest: afterRoutine, routine: routinePayload } = extractRoutineBlock(text);
+
+  /* 6 · ejercicios nuevos: el bloque ```crear``` sale del texto y viaja aparte,
+     para que la vista pinte su tarjeta de confirmación — aquí NUNCA se crea
+     nada, eso es un clic del usuario */
+  const { rest: afterCreations, creations } = extractCreations(afterRoutine);
+
+  /* 7 · memoria: se vuelca y se quita del texto final. `extractMemoryBlock`
      exige que el bloque CIERRE la respuesta: citar el formato a mitad de una
      explicación no es un aprendizaje. */
-  const { rest: clean, block: memoryBlock } = extractMemoryBlock(text);
+  const { rest: clean, block: memoryBlock } = extractMemoryBlock(afterCreations);
   const memoryAdded: string[] = [];
   if (memoryBlock) {
     const update = applyMemoryEntries(String(st.ai.memory ?? ''), memoryBlock);
@@ -779,11 +797,7 @@ export async function runCoachTask(
       patchSettings({ ai: { ...settings.value.ai, memory: update.memory } });
     }
   }
-
-  /* 6 · ejercicios nuevos: el bloque ```crear``` sale del texto (mismo truco que
-     la memoria) y viaja aparte, para que la vista pinte su tarjeta de
-     confirmación — aquí NUNCA se crea nada, eso es un clic del usuario */
-  const { rest: finalText, creations } = extractCreations(clean);
+  const finalText = clean;
 
   /* 7 · una tarea JSON sin JSON utilizable cae al plan local en vez de dejar al
      usuario con «no devolvió una sugerencia legible». Pasa sobre todo cuando el
@@ -812,6 +826,7 @@ export async function runCoachTask(
     memoryAdded,
     consulted,
     creations,
+    ...(routinePayload ? { routinePayload } : {}),
     ms: clock() - t0,
   };
 }
@@ -824,6 +839,8 @@ export interface SuggestionOutcome {
   routine: Routine | null;
   /** nombres propuestos que NO se asociaron a ningún ejercicio: avisar, no callar */
   unresolved: UnresolvedName[];
+  /** `true` si se actualizó una rutina existente en vez de crear una nueva */
+  updated?: boolean;
 }
 
 /**
@@ -850,6 +867,28 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
   const focus = firstString(sug, ['focus']);
   const rationale = rationaleText(sug.rationale);
   const notes = joinNotes(firstString(sug, ['notes']), rationale);
+
+  /* Un bloque ```rutina``` con "action":"update" debe editar la rutina que ya
+     existe (por id o por nombre normalizado), no crear un duplicado. */
+  if (firstString(sug, ['action']) === 'update') {
+    const routineId = firstString(sug, ['routineId']);
+    const target = firstString(sug, ['target', 'title']);
+    const existing = routines.value.find(
+      (candidate) =>
+        (routineId !== '' && candidate.id === routineId) ||
+        (target !== '' && norm(candidate.name) === norm(target)),
+    );
+    if (existing) {
+      const updated = updateRoutine(existing.id, {
+        name: firstString(sug, ['title']) || existing.name,
+        focus: focus || existing.focus,
+        notes: notes || existing.notes,
+        items,
+      });
+      if (updated) return { routine: updated, unresolved, updated: true };
+    }
+  }
+
   const routine = addRoutine({
     name: firstString(sug, ['title']) || 'Rutina del coach',
     focus,
@@ -857,17 +896,16 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
     notes,
     items,
   });
-  return { routine, unresolved };
+  return { routine, unresolved, updated: false };
 }
 
 /**
  * Aplica un plan semanal del coach: cada día apunta el calendario
  * (`status: 'rest'` para `descanso`, `'planned'` para el resto, como antes) y,
- * si el día trae ejercicios reconocibles, se crea su rutina (`source: 'ia'` o
- * `'generador'` para el plan local, nombre `título · fecha`) y se enlaza con
- * `routineId`.
+ * si el día trae ejercicios reconocibles, se guardan en `plan` del día salvo que
+ * el modelo enlace una rutina ya existente (`routineId`), que se respeta.
  *
- * Devuelve cuántos días se escribieron, cuántas rutinas se crearon y —acumulado
+ * Devuelve cuántos días se escribieron, cuántas rutinas se enlazaron y —acumulado
  * de TODOS los días— los nombres que no se asociaron a ningún ejercicio: un plan
  * no puede perder ejercicios sin que la vista lo cuente. Un plan sin `days` no
  * toca nada ni siquiera `meta`.
@@ -930,15 +968,16 @@ export function applyWeek(
       source,
     };
     if (items.length) {
-      const routine = addRoutine({
-        name: `${title} · ${dateLabel(dayIso, 'medium')}`,
-        focus,
-        source: routineSource(source),
-        notes: `Plan semanal (${source})`,
-        items,
-      });
-      patch.routineId = routine.id;
-      out.routines++;
+      /* Los días del plan NO crean rutinas desechables: si el modelo enlaza una
+         rutina que ya existe se usa, y si no los ejercicios van directos en el
+         `plan` del día (listos para entrenar desde Hoy, sin ensuciar Rutinas). */
+      const routineId = firstString(raw, ['routineId']);
+      if (routineId && routines.value.some((candidate) => candidate.id === routineId)) {
+        patch.routineId = routineId;
+      } else {
+        patch.plan = items;
+        patch.routineId = undefined;
+      }
     }
     setDay(dayIso, patch);
     out.days++;

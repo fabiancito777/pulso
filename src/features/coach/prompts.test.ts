@@ -15,6 +15,7 @@ import {
   HISTORY_USER_LIMIT,
   MEMORY_INSTRUCTION,
   PROMPT_HISTORY_LIMIT,
+  ROUTINE_INSTRUCTION,
   buildRequest,
 } from './prompts';
 import { PLAN_RESPONSE_SCHEMA, SUGGEST_RESPONSE_SCHEMA } from './schema';
@@ -110,7 +111,9 @@ describe('buildRequest', () => {
   it('permite system propio y desactivar la memoria', () => {
     const req = buildRequest('chat', { system: 'System custom', memory: false, question: 'x' });
     expect(req.system.startsWith('System custom')).toBe(true);
-    expect(req.system).not.toContain('```memoria');
+    /* ROUTINE_INSTRUCTION menciona ```memoria en su texto: comprobar la
+       instrucción completa, no la subcadena, para no dar un falso positivo */
+    expect(req.system).not.toContain(MEMORY_INSTRUCTION);
   });
 
   it('inyecta CONSULT_INSTRUCTION en chat y analyze, no en suggest/plan', () => {
@@ -136,6 +139,20 @@ describe('buildRequest', () => {
     expect(sinCrear).not.toContain(CREATION_INSTRUCTION);
     expect(sinCrear).toContain(MEMORY_INSTRUCTION);
     expect(sinCrear).toContain(CONSULT_INSTRUCTION);
+  });
+
+  it('inyecta ROUTINE_INSTRUCTION SOLO en chat y se puede desactivar con routine: false', () => {
+    expect(buildRequest('chat', { question: 'hola' }).system).toContain(ROUTINE_INSTRUCTION);
+    expect(buildRequest('analyze', { question: 'hola' }).system).not.toContain(
+      ROUTINE_INSTRUCTION,
+    );
+    expect(buildRequest('suggest').system).not.toContain(ROUTINE_INSTRUCTION);
+    expect(buildRequest('plan').system).not.toContain(ROUTINE_INSTRUCTION);
+
+    const sinRutina = buildRequest('chat', { question: 'hola', routine: false }).system;
+    expect(sinRutina).not.toContain(ROUTINE_INSTRUCTION);
+    expect(sinRutina).toContain(MEMORY_INSTRUCTION);
+    expect(sinRutina).toContain(CREATION_INSTRUCTION);
   });
 
   it('suggest pide JSON con el esquema de la respuesta, sin ejemplo en el prompt', () => {

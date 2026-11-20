@@ -485,3 +485,74 @@ describe('detalle extra que ve el coach', () => {
     expect(rutinas).not.toContain(exId);
   });
 });
+
+/**
+ * Señales extra que el coach debe ver para distinguir lo planificado de lo
+ * hecho: series incompletas, ejercicios del plan no ejecutados, planes sueltos
+ * (`day.plan`) y días pasados con plan que nadie entrenó.
+ */
+describe('plan frente a realidad en el contexto', () => {
+  it('dice (series 1/4) cuando no se completaron las series de la plantilla', () => {
+    const incompleta: Session = {
+      ...SESION,
+      id: 's-inc',
+      entries: [
+        { exId: 'ex-press', name: 'Press de banca', sets: [{ weight: 75, reps: 10, done: true }] },
+      ],
+    };
+    const text = context({ sessions: [incompleta] });
+    expect(text).toContain(
+      '[objetivo plantilla: 4x8-12 · descanso 90s · cumple 1/1] (series 1/4)',
+    );
+  });
+
+  it('lista los ejercicios del plan que no se llegaron a hacer', () => {
+    const conSalto: Session = {
+      ...SESION,
+      id: 's-salto',
+      routineId: null,
+      plan: [{ exId: 'ex-press' }, { exId: 'ex-dominadas' }],
+      entries: [
+        { exId: 'ex-press', name: 'Press de banca', sets: [{ weight: 75, reps: 10, done: true }] },
+      ],
+    };
+    const text = context({ sessions: [conSalto] });
+    expect(text).toContain('[dejó sin hacer: Dominadas]');
+  });
+
+  it('muestra los ejercicios de un plan suelto (sin rutina) en el PLAN SEMANAL', () => {
+    const text = context({
+      sessions: [],
+      schedule: {
+        '2026-09-24': {
+          status: 'planned',
+          title: 'Tren superior',
+          plan: [{ exId: 'ex-press' }, { name: 'Dominadas' }],
+        },
+      },
+    });
+    expect(text).toContain('· plan: Press de banca, Dominadas');
+  });
+
+  it('marca un día pasado con plan y sin sesión como SALTADO / SIN HACER', () => {
+    expect(context()).toContain('- 21 sep 2026 (lun): Empuje A [SALTADO / SIN HACER]');
+  });
+
+  it('marca también el plan suelto de un día pasado sin sesión', () => {
+    const text = context({
+      sessions: [],
+      schedule: { '2026-09-21': { status: 'planned', plan: [{ exId: 'ex-press' }] } },
+    });
+    expect(text).toContain('- 21 sep 2026 (lun): libre · plan: Press de banca [SALTADO / SIN HACER]');
+  });
+
+  it('avisa cuando se entrenó con otra rutina distinta a la asignada al día', () => {
+    const otra: Session = { ...SESION, id: 's-otra', date: '2026-09-21', routineId: 'otra-rt' };
+    const text = context({
+      sessions: [otra],
+      routines: [RUTINA, { id: 'otra-rt', name: 'Otra rutina', source: 'manual', items: [] }],
+    });
+    expect(text).toContain('- 21 sep 2026 (lun): Empuje A [HECHO:');
+    expect(text).toContain('[entrenó distinto al plan]');
+  });
+});

@@ -819,7 +819,7 @@ describe('applyWeek', () => {
      esa semana como `todayIso`, así el test no depende del reloj. */
   const LUNES = INICIO_SEMANA;
 
-  it('escribe los 7 días, crea rutina por día de entreno y marca lastPlanAt', () => {
+  it('escribe los 7 días, guarda los ejercicios en el plan del día y marca lastPlanAt', () => {
     const days = Array.from({ length: 7 }, (_, i) => {
       const date = addDays(LUNES, i);
       const descanso = i === 6;
@@ -843,7 +843,7 @@ describe('applyWeek', () => {
       LUNES,
     );
 
-    expect(aplicado).toEqual({ days: 7, routines: 6, unresolved: [], skipped: 0 });
+    expect(aplicado).toEqual({ days: 7, routines: 0, unresolved: [], skipped: 0 });
     expect(Object.keys(store.schedule.value).sort()).toEqual(
       Array.from({ length: 7 }, (_, i) => addDays(LUNES, i)),
     );
@@ -863,12 +863,11 @@ describe('applyWeek', () => {
     });
     expect(store.schedule.value[descanso]?.routineId).toBeUndefined();
 
-    expect(store.routines.value).toHaveLength(6);
-    expect(store.routines.value[0]?.source).toBe('ia');
-    expect(store.routines.value[0]?.name).toContain('Empuje 1 ·');
-    expect(store.routines.value[0]?.items[0]).toMatchObject({ exId: pressId(), sets: 4 });
-    expect(store.schedule.value[LUNES]?.routineId).toBe(store.routines.value[0]?.id);
-    expect(persistedRoutines()).toHaveLength(6);
+    /* el plan semanal NO ensucia «Mis rutinas»: los ejercicios quedan en el día */
+    expect(store.routines.value).toHaveLength(0);
+    expect(store.schedule.value[LUNES]?.routineId).toBeUndefined();
+    expect(store.schedule.value[LUNES]?.plan).toMatchObject([{ exId: pressId(), sets: 4 }]);
+    expect(persistedRoutines()).toHaveLength(0);
 
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
     expect((store.readState().meta as Record<string, unknown>).lastPlanAt).toEqual(
@@ -925,8 +924,9 @@ describe('applyWeek', () => {
     );
 
     expect(aplicado.days).toBe(2);
-    /* solo el día 1 queda con rutina: el día 2 NO tenía ni un ejercicio reconocible */
-    expect(aplicado.routines).toBe(1);
+    /* los ejercicios reconocibles van al plan del día; el día 2 NO tenía ninguno */
+    expect(aplicado.routines).toBe(0);
+    expect(store.schedule.value[LUNES]?.plan).toBeDefined();
     expect(aplicado.unresolved.map((u) => u.name)).toEqual([
       'Press de Piso con Mancuernas inclinado',
       'Kroc Row unilateral con mancuerna',
@@ -934,6 +934,7 @@ describe('applyWeek', () => {
     expect(aplicado.unresolved[0]?.reason).toContain('inclinado');
     expect(aplicado.unresolved[1]?.reason).toBe('no está en tu biblioteca');
     expect(store.schedule.value[addDays(LUNES, 1)]?.routineId).toBeUndefined();
+    expect(store.schedule.value[addDays(LUNES, 1)]?.plan).toBeUndefined();
   });
 
   it('sanea los números raros del modelo antes de guardarlos', () => {
@@ -960,8 +961,8 @@ describe('applyWeek', () => {
       LUNES,
     );
 
-    const item = store.routines.value[0]?.items[0];
-    expect(item).toMatchObject({ sets: 12, repMin: 9, repMax: 9, rest: 600, weight: 500 });
+    const plan = store.schedule.value[LUNES]?.plan as Record<string, unknown>[] | undefined;
+    expect(plan?.[0]).toMatchObject({ sets: 12, repMin: 9, repMax: 9, rest: 600, weight: 500 });
   });
 
   it('un plan sin days no toca ni el calendario ni meta', () => {
@@ -1193,5 +1194,72 @@ describe('D4: bucle de consultas acotado', () => {
       { generateFn: depsGen, signal: fromDeps },
     );
     expect(depsGen.mock.calls[0]?.[0].signal).toBe(fromDeps);
+  });
+});
+
+describe('bloque ```rutina``` del chat', () => {
+  it('extrae la rutina, quita el bloque del texto y respeta la memoria al final', async () => {
+    const gen = makeGen([
+      res(
+        'Listo.\n' +
+          '```rutina\n' +
+          `{"action":"create","title":"Mi rutina","exercises":[{"name":"${NOMBRE}",` +
+          '"sets":3,"repMin":8,"repMax":12,"rest":90}]}\n' +
+          '```\n' +
+          '```memoria\n- dato nuevo\n```',
+      ),
+    ]);
+
+    const out = await coach.runCoachTask(
+      'chat',
+      { userText: 'crea esta rutina' },
+      { generateFn: gen },
+    );
+
+    expect(out.routinePayload).toMatchObject({ action: 'create', title: 'Mi rutina' });
+    expect(out.text).toBe('Listo.');
+    expect(out.text).not.toContain('```rutina');
+    expect(out.memoryAdded).toEqual(['- dato nuevo']);
+  });
+
+  it('sin bloque rutina el texto queda idéntico a como estaba', async () => {
+    const gen = makeGen([res('Solo conversamos.')]);
+    const out = await coach.runCoachTask('chat', { userText: 'hola' }, { generateFn: gen });
+
+    expect(out.text).toBe('Solo conversamos.');
+    expect(out.routinePayload).toBeUndefined();
+  });
+
+  it('action update actualiza la rutina existente por nombre sin duplicarla', () => {
+    const existing = store.addRoutine({
+      name: 'Empuje original',
+      source: 'manual',
+      items: [{ exId: pressId(), sets: 2, repMin: 8, repMax: 10 }],
+    });
+
+    const out = coach.applySuggestionAsRoutine({
+      action: 'update',
+      target: 'empuje original',
+      title: 'Empuje actualizado',
+      focus: 'Pecho',
+      exercises: [{ name: NOMBRE, sets: 3, repMin: 8, repMax: 12 }],
+    });
+
+    expect(out.updated).toBe(true);
+    expect(out.routine?.id).toBe(existing.id);
+    expect(out.routine?.name).toBe('Empuje actualizado');
+    expect(store.routines.value).toHaveLength(1);
+  });
+
+  it('action update sin coincidencia crea una rutina nueva', () => {
+    const out = coach.applySuggestionAsRoutine({
+      action: 'update',
+      target: 'No existe',
+      title: 'Nueva',
+      exercises: [{ name: NOMBRE, sets: 3 }],
+    });
+
+    expect(out.updated).toBe(false);
+    expect(out.routine?.name).toBe('Nueva');
   });
 });

@@ -36,7 +36,7 @@ import {
   isAvailable,
   resolveExercise,
 } from '@/domain/data';
-import { dow, dowLong, label as dateLabel, today, weekDates } from '@/domain/dates';
+import { addDays, dow, dowLong, label as dateLabel, startOfWeek, today } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { int, num, sum } from '@/domain/num';
 import { maxLoadable } from '@/domain/plates';
@@ -62,6 +62,21 @@ const nameOfFor =
   (exercises: readonly Exercise[]): NameOf =>
   (exId, fallback) =>
     String((fallback as string | undefined) ?? resolveExercise(exercises, exId)?.name ?? exId);
+
+/** Nombres resumidos de los ejercicios de un `day.plan` (máximo 8). */
+function planNames(plan: unknown, nameOf: NameOf): string[] {
+  if (!Array.isArray(plan)) return [];
+  const names: string[] = [];
+  for (const raw of plan as unknown[]) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue;
+    const item = raw as Record<string, unknown>;
+    const exId = typeof item.exId === 'string' ? item.exId : '';
+    const fallback = typeof item.name === 'string' ? item.name : undefined;
+    const name = nameOf(exId, fallback);
+    if (name) names.push(name);
+  }
+  return names.slice(0, 8);
+}
 
 /**
  * Línea de una sesión con los datos REALES serie a serie y, si salió de una
@@ -101,17 +116,36 @@ function sessionLine(
     if (item) {
       const repMin = int(item.repMin, goalRange[0]);
       const repMax = int(item.repMax, goalRange[1]);
+      const goalSets = int(item.sets, 3);
       const cumplidas = done.filter((set) => {
         const reps = num(set.reps);
         return reps >= repMin && reps <= repMax;
       }).length;
       target =
-        ` [objetivo plantilla: ${int(item.sets, 3)}x${repMin}-${repMax}` +
+        ` [objetivo plantilla: ${goalSets}x${repMin}-${repMax}` +
         ` · descanso ${int(item.rest, 90)}s · cumple ${cumplidas}/${done.length}]`;
+      if (done.length < goalSets) target += ` (series ${done.length}/${goalSets})`;
     }
     const notes = entry.notes?.trim() ? ` (${entry.notes.trim()})` : '';
     parts.push(`${nameOf(entry.exId, entry.name)}: ${detail}${notes}${target}`);
   });
+
+  /* Ejercicios que estaban en el plan y no llegaron a hacerse (ninguna serie
+     marcada). Se dicen al final de la línea para que el modelo vea QUÉ faltó,
+     no solo lo que sí se hizo. */
+  const skipped: string[] = [];
+  if (session.plan?.length) {
+    for (const planned of session.plan) {
+      const exId = typeof planned.exId === 'string' && planned.exId.trim() ? planned.exId : '';
+      if (!exId) continue;
+      const done = session.entries.some(
+        (entry) => entry.exId === exId && entry.sets.some((set) => set.done),
+      );
+      const fallback: unknown = (planned as unknown as Record<string, unknown>).name;
+      if (!done) skipped.push(nameOf(exId, fallback));
+    }
+  }
+
   if (!parts.length) return '';
   const flags: string[] = [];
   if (session.partial === true) flags.push('[PARCIAL · bloque suelto]');
@@ -121,7 +155,8 @@ function sessionLine(
     `${dateLabel(sessionDate(session), 'medium')} · ${session.name || 'Sesión'}` +
     (flags.length ? ` ${flags.join(' · ')}` : '') +
     ` (${fmtVol(volumeOf(session))} kg, ${setsOf(session)} series,` +
-    ` ${fmtDur(durationOf(session, OPEN_SESSION_NOW))}): ${parts.join(' | ')}`
+    ` ${fmtDur(durationOf(session, OPEN_SESSION_NOW))}): ${parts.join(' | ')}` +
+    (skipped.length ? ` · [dejó sin hacer: ${skipped.join(', ')}]` : '')
   );
 }
 
@@ -369,7 +404,13 @@ export function buildContext(params: BuildContextParams): string {
 
   /* ---------- plan semanal ---------- */
   out.push('=== PLAN SEMANAL (semana en curso, día a día) ===');
-  for (const iso of weekDates(todayIso)) {
+  /* La semana empieza en lunes, pero si hoy cae a finales de semana el plan
+     puede llegar hasta seis días DESPUÉS de hoy: se cubren las dos ventanas. */
+  const weekStart = startOfWeek(todayIso);
+  const weekEnd = addDays(weekStart, 6);
+  const horizonEnd = addDays(todayIso, 6);
+  const planEnd = weekEnd > horizonEnd ? weekEnd : horizonEnd;
+  for (let iso = weekStart; iso <= planEnd; iso = addDays(iso, 1)) {
     const day = schedule[iso] ?? {};
     const routine = day.routineId ? (routines.find((r) => r.id === day.routineId) ?? null) : null;
     const daySessions = sessions.filter((session) => sessionDate(session) === iso);
@@ -390,6 +431,26 @@ export function buildContext(params: BuildContextParams): string {
       }
     } else if (day.status === 'rest') line += ' [DESCANSO]';
     else if (day.status === 'skipped') line += ' [SALTADO]';
+
+    /* Plan suelto (sin rutina): los ejercicios viajan en `day.plan`. */
+    if (!routine) {
+      const names = planNames(day.plan, nameOf);
+      if (names.length) line += ` · plan: ${names.join(', ')}`;
+    }
+    /* Se entrenó, pero no la rutina que el día tenía asignada. */
+    if (daySessions.length && routine && !daySessions.some((s) => s.routineId === routine.id)) {
+      line += ' [entrenó distinto al plan]';
+    }
+    /* Día ya pasado con plan y sin sesión: ni se entrenó ni se marcó descanso. */
+    if (
+      iso < todayIso &&
+      !daySessions.length &&
+      day.status !== 'done' &&
+      day.status !== 'rest' &&
+      (routine || (Array.isArray(day.plan) && day.plan.length))
+    ) {
+      line += ' [SALTADO / SIN HACER]';
+    }
     out.push(`- ${dateLabel(iso, 'medium')} (${dow(iso)}): ${line}`);
   }
   out.push('');

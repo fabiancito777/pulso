@@ -123,6 +123,22 @@ export function boundedHistory(
 }
 
 /**
+ * Se añade al system SOLO de `chat` para que el modelo pueda emitir una rutina
+ * suya, nueva o modificada, en un bloque ```rutina``` que la app guarda tras
+ * confirmación. `opts.routine === false` lo desactiva.
+ */
+export const ROUTINE_INSTRUCTION = [
+  'Si en el chat el usuario te pasa una rutina suya (de antes de usar la app), te pide crear una rutina nueva o te pide modificar/actualizar una de sus RUTINAS GUARDADAS, puedes emitirla en un bloque ```rutina``` para que la app la guarde o la actualice tras confirmarlo él:',
+  '```rutina',
+  '{"action":"create","title":"Nombre corto","focus":"Grupos","notes":"","exercises":[{"name":"Nombre exacto de la lista o nuevo con isNew","sets":3,"repMin":8,"repMax":12,"rest":90,"weight":null,"superset":"","notes":""}]}',
+  '```',
+  '- Si pide modificar una rutina existente de === RUTINAS GUARDADAS ===, pon "action":"update" y "target":"Nombre EXACTO de esa rutina" (y en "title" el mismo nombre o el nuevo).',
+  '- Si incluye un ejercicio que NO está en EJERCICIOS PERMITIDOS, añádele "isNew":true,"group":"...","equip":"...","type":"..." (igual que en ```crear```) para que el usuario confirme antes de crearlo.',
+  '- Si además emites ```memoria```, pon SIEMPRE ```memoria``` el ÚLTIMO bloque al final de toda la respuesta.',
+  '- Si el usuario solo pregunta o conversa sin pedir ni pasar una rutina concreta, NO pongas el bloque ```rutina```.',
+].join('\n');
+
+/**
  * Se añade al system SOLO de `chat` para que el modelo pueda proponer ejercicios
  * NUEVOS que no están en la biblioteca: los emite en un bloque ```crear``` (mismo
  * mecanismo que ```memoria```/```consulta```) y `extractCreations` lo separa de la
@@ -281,6 +297,7 @@ export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): Coac
   /* SOLO en chat: en suggest/plan manda el JSON (el bloque ```crear``` no cabría
      y los nuevos se piden con "isNew":true dentro del propio ejercicio) y en
      analyze no se propone nada. */
+  if (opts.routine !== false && task === 'chat') system += `\n\n${ROUTINE_INSTRUCTION}`;
   if (opts.create !== false && task === 'chat') system += `\n\n${CREATION_INSTRUCTION}`;
   if (opts.context) system += `\n\nCONTEXTO DEL USUARIO:\n${opts.context}`;
 

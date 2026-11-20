@@ -28,11 +28,12 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
+import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import { durationOf, sessionDate, setsOf, totals, volumeOf } from '@/domain/analytics';
 import { groupColor, groupLabel, resolveExercise } from '@/domain/data';
 import { label as dateLabel, dowLong, today } from '@/domain/dates';
 import { fmtDur, fmtMmss, fmtN, fmtVol, fmtW } from '@/domain/format';
-import { matchExercise, unresolvedNames } from '@/domain/match';
+import { matchExercise, unresolvedName, unresolvedNames } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { maxLoadable } from '@/domain/plates';
 import { clamp, int } from '@/domain/num';
@@ -41,7 +42,8 @@ import type { Session } from '@/domain/types';
 import { localSuggest } from '@/features/coach/local';
 import { parseJSON } from '@/features/coach/parse';
 import { promptHistory } from '@/state/chat';
-import { applySuggestionAsRoutine, hasApiKey, runCoachTask } from '@/state/coach';
+import { applySuggestionAsRoutine, hasApiKey, partitionUnresolved, runCoachTask } from '@/state/coach';
+import { createExerciseFromAI } from '@/state/exercise-create';
 import {
   active,
   rest,
@@ -275,6 +277,7 @@ function WeekStrip({ cells }: { cells: ReturnType<typeof weekCells> }) {
 
 function SuggestCard({
   suggestion,
+  raw,
   source,
   loading,
   wait,
@@ -283,8 +286,10 @@ function SuggestCard({
   onAi,
   onStart,
   onSave,
+  onCreate,
 }: {
   suggestion: RoutineSuggestion | null;
+  raw: unknown;
   source: 'ia' | 'local';
   loading: boolean;
   wait: CoachWait;
@@ -293,6 +298,7 @@ function SuggestCard({
   onAi: () => void;
   onStart: () => void;
   onSave: () => void;
+  onCreate: (proposal: AIExerciseProposal) => void;
 }) {
   if (!suggestion) {
     return (
@@ -308,6 +314,14 @@ function SuggestCard({
   }
 
   const rows = suggestionRows(suggestion, exercises.value);
+  /* Los ejercicios marcados con `isNew: true` llegan sin resolver. Se parten
+     con `partitionUnresolved` sobre el JSON crudo: lo que solo falta en la
+     biblioteca se crea con un clic; lo que choca con otro ejercicio sigue siendo
+     un aviso (nunca se crea un duplicado). */
+  const unresolved: UnresolvedName[] = suggestion.exercises
+    .filter((item) => !item.matched)
+    .map((item) => unresolvedName(item.name, matchExercise(item.name, exercises.value)));
+  const { creatable } = partitionUnresolved(unresolved, raw);
   const badge =
     source === 'ia' ? { cls: 'badge a', label: 'IA' } : { cls: 'badge', label: 'local' };
 
@@ -371,6 +385,21 @@ function SuggestCard({
             <div class="divider" />
             <div class="tiny muted">{suggestion.rationale.slice(0, 3).join(' · ')}</div>
           </>
+        ) : null}
+        {creatable.length ? (
+          <div class="card tight mt-s">
+            <div class="tiny">
+              <b>Ejercicios nuevos por confirmar</b>
+            </div>
+            <div class="row wrap mt-s" style="gap:6px">
+              {creatable.map((p) => (
+                <button type="button" key={p.name} class="btn sm ghost" onClick={() => onCreate(p)}>
+                  <Icon name="plus" />
+                  Crear «{p.name}»
+                </button>
+              ))}
+            </div>
+          </div>
         ) : null}
         {notice ? (
           <div
@@ -830,6 +859,19 @@ export function HoyView() {
     toast(savedText, { kind: unresolved.length ? 'warn' : 'ok' });
   }
 
+  /** Crea un ejercicio nuevo propuesto por la IA y reevalúa la sugerencia. */
+  function createNewExercise(p: AIExerciseProposal): void {
+    const result = createExerciseFromAI(p);
+    if (!result.ok) {
+      toast(result.error, { kind: 'warn' });
+      return;
+    }
+    toast(`Ejercicio creado: «${result.exercise.name}»`, { kind: 'ok' });
+    setAi((prev) =>
+      prev ? { ...prev, sug: toSuggestion(prev.raw, exercises.value) ?? prev.sug } : prev,
+    );
+  }
+
   /** `Mejorar con IA`: sin key ni se intenta (nunca un throw silencioso). */
   async function improveWithAi(): Promise<void> {
     if (wait.running) return;
@@ -911,6 +953,7 @@ export function HoyView() {
 
       <SuggestCard
         suggestion={suggestion}
+        raw={raw}
         source={source}
         loading={wait.running}
         wait={wait}
@@ -923,6 +966,7 @@ export function HoyView() {
         onAi={() => void improveWithAi()}
         onStart={startSuggestion}
         onSave={saveSuggestion}
+        onCreate={createNewExercise}
       />
 
       <Kpis {...kpis} />

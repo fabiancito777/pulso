@@ -54,11 +54,12 @@ import {
 } from '@/domain/dates';
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { unresolvedNames } from '@/domain/match';
-import type { Session } from '@/domain/types';
+import type { RoutineItem, Session } from '@/domain/types';
 import { localWeek } from '@/features/coach/local';
 import { promptHistory } from '@/state/chat';
 import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
 import {
+  addRoutine,
   equipment,
   exercises,
   findRoutine,
@@ -98,6 +99,7 @@ import { HelpBtn } from './HelpModal';
 import { useCoachWait, WaitMeta } from './coach-wait';
 import { Icon } from './Icon';
 import { Kpi } from './kit';
+import { requestEditRoutine } from './routines-helpers';
 
 type ViewMode = 'week' | 'month';
 
@@ -135,6 +137,67 @@ const TYPE_ICON: Record<DayType, string> = {
 /** Sesiones de un día concreto. Usa `sessionDate` por si una sesión vieja solo trae `startedAt`. */
 function sessionsOn(iso: string): Session[] {
   return sessions.value.filter((s) => sessionDate(s) === iso);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Items sueltos de `day.plan` (días del plan sin rutina asociada). */
+function dayPlanEntries(day: ScheduleDay | undefined): Record<string, unknown>[] {
+  const raw: unknown = day?.plan;
+  return Array.isArray(raw) ? raw.filter(isRecord) : [];
+}
+
+/**
+ * Abre el editor de rutinas para los ejercicios del día. Si el día ya tiene
+ * rutina, basta con pedir su edición; si solo tiene `day.plan`, se convierte en
+ * una rutina nueva (con los items que traigan `exId`) que pasa a ser la rutina
+ * del día antes de abrir el editor.
+ */
+function editDayExercises(
+  iso: string,
+  routine: ReturnType<typeof findRoutine>,
+  planEntries: readonly Record<string, unknown>[],
+): void {
+  if (routine) {
+    requestEditRoutine(routine.id);
+    go('rutinas');
+    return;
+  }
+  const items: RoutineItem[] = [];
+  for (const entry of planEntries) {
+    const exId = typeof entry.exId === 'string' ? entry.exId.trim() : '';
+    if (!exId) continue;
+    items.push({
+      exId,
+      sets: typeof entry.sets === 'number' ? entry.sets : undefined,
+      repMin: typeof entry.repMin === 'number' ? entry.repMin : undefined,
+      repMax: typeof entry.repMax === 'number' ? entry.repMax : undefined,
+      rest: typeof entry.rest === 'number' ? entry.rest : undefined,
+      weight:
+        typeof entry.weight === 'number'
+          ? entry.weight
+          : entry.weight === null
+            ? null
+            : undefined,
+      notes: typeof entry.notes === 'string' ? entry.notes : undefined,
+      superset: typeof entry.superset === 'string' ? entry.superset : undefined,
+    });
+  }
+  if (!items.length) return;
+  const day = schedule.value[iso];
+  const focusRaw: unknown = day?.focus;
+  const sourceRaw: unknown = day?.source;
+  const created = addRoutine({
+    name: dayTitle(day, '') || 'Rutina del plan',
+    focus: typeof focusRaw === 'string' ? focusRaw : '',
+    source: typeof sourceRaw === 'string' ? sourceRaw : 'ia',
+    items,
+  });
+  setDay(iso, { routineId: created.id, plan: undefined });
+  requestEditRoutine(created.id);
+  go('rutinas');
 }
 
 /** Asigna (o quita) la rutina de un día. Quitarla deja el día sin plan. */
@@ -449,6 +512,8 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
   const daySessions = sessionsOn(iso);
   const state = dayState(day, daySessions.length);
   const routine = findRoutine(typeof day?.routineId === 'string' ? day.routineId : '');
+  const planEntries = dayPlanEntries(day);
+  const hasPlan = planEntries.length > 0;
 
   return (
     <aside class="cal-detail">
@@ -501,9 +566,48 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
             })}
           </div>
         </div>
+      ) : !routine && hasPlan ? (
+        <div>
+          <div class="label">Ejercicios del plan</div>
+          <div class="cal-items">
+            {planEntries.map((entry, i) => {
+              const exId = typeof entry.exId === 'string' ? entry.exId : '';
+              const ex = exId ? resolveExercise(exercises.value, exId) : null;
+              const name = ex?.name ?? (typeof entry.name === 'string' ? entry.name : exId);
+              const sets = typeof entry.sets === 'number' ? entry.sets : 3;
+              const reps =
+                typeof entry.reps === 'number'
+                  ? fmtN(entry.reps, 0)
+                  : `${fmtN(typeof entry.repMin === 'number' ? entry.repMin : 8, 0)}-${fmtN(typeof entry.repMax === 'number' ? entry.repMax : 12, 0)}`;
+              const weight = typeof entry.weight === 'number' ? ` @ ${fmtN(entry.weight)}` : '';
+              return (
+                <div key={`${exId || name}-${i}`} class="kv">
+                  <span class="k ellipsis">
+                    {i + 1}. {name}
+                  </span>
+                  <span class="v num tiny">
+                    {fmtN(sets, 0)} × {reps}
+                    {weight}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : (
         <div class="tiny muted">Sin ejercicios asignados: elige una rutina o genera el plan.</div>
       )}
+
+      {routine || hasPlan ? (
+        <button
+          type="button"
+          class="btn sm ghost"
+          onClick={() => editDayExercises(iso, routine, planEntries)}
+        >
+          <Icon name="pencil" />
+          Editar ejercicios del día
+        </button>
+      ) : null}
 
       {daySessions.length ? (
         <div>
@@ -831,11 +935,16 @@ export function CalendarView() {
     /* `skipped` son los días que ya pasaron: se dicen para que no parezca que
        el plan se perdió por el camino. */
     const skipped = result.skipped ? ` · ${result.skipped} días pasados ignorados` : '';
+    /* Los ejercicios del plan se guardan en `day.plan`, no como rutinas: con
+       cero rutinas nuevas no tiene sentido decir «0 rutinas». */
+    const base = result.routines
+      ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped}`
+      : `Plan aplicado: ${result.days} días${skipped}`;
     setNotice({
       kind: result.unresolved.length ? 'warn' : 'ok',
       text: result.unresolved.length
-        ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped} · sin usar (${result.unresolved.length}): ${unresolvedNames(result.unresolved)}`
-        : `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped}`,
+        ? `${base} · sin usar (${result.unresolved.length}): ${unresolvedNames(result.unresolved)}`
+        : base,
     });
   }
 

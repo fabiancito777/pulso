@@ -14,6 +14,8 @@
  *   + `richItems`, con el ajuste por objetivo del modal `routines:generate`.
  * - **Agendar** propone el próximo día libre del calendario y valida el ISO del input.
  */
+import { signal } from '@preact/signals';
+
 import { addDays } from '@/domain/dates';
 import {
   findExercise,
@@ -38,6 +40,28 @@ import { dayState } from './calendar-helpers';
 
 /** Cuántos ejercicios devuelve la búsqueda por defecto. */
 export const SEARCH_LIMIT = 8;
+
+/* ---------- petición de edición de rutina (calendario → rutinas) ---------- */
+
+/**
+ * Canal para abrir el editor de una rutina desde otra pestaña (p. ej. el botón
+ * «Editar ejercicios del día» del calendario). La vista Rutinas lo consume con
+ * `takeRoutineEditRequest()` al montar; se consume UNA vez para que un cambio
+ * de pestaña posterior no reabra el editor.
+ */
+export const routineEditRequest = signal<string | null>(null);
+
+/** Pide editar una rutina (id) desde otra pestaña. */
+export function requestEditRoutine(id: string): void {
+  routineEditRequest.value = id;
+}
+
+/** Lee y limpia la petición pendiente (null si no hay ninguna). */
+export function takeRoutineEditRequest(): string | null {
+  const id = routineEditRequest.value;
+  if (id) routineEditRequest.value = null;
+  return id;
+}
 
 /* ---------- búsqueda de ejercicios ---------- */
 
