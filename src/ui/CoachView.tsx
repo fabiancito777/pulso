@@ -55,6 +55,7 @@ import { MEMORY_LIMIT, defaultMemory } from '@/features/coach/memory';
 import { creationsFromPayload, parseJSON } from '@/features/coach/parse';
 import type { CoachTask } from '@/features/coach/types';
 import {
+  applyImportedSessions,
   applySuggestionAsRoutine,
   applyWeek,
   hasApiKey,
@@ -175,9 +176,10 @@ export function resultLine(task: CoachTask, out: CoachOutcome, model: string): C
   if (out.consulted.length) line.consulted = out.consulted;
   if (out.creations.length) line.creations = out.creations.map((item) => ({ ...item }));
 
-  if (task === 'chat' && out.routinePayload) {
-    line.payload = out.routinePayload;
-    const fromRoutine = creationsFromPayload(out.routinePayload);
+  if (task === 'chat' && (out.routinePayload || out.sessionsPayload)) {
+    const chatPayload = out.routinePayload ?? out.sessionsPayload;
+    line.payload = chatPayload;
+    const fromRoutine = creationsFromPayload(chatPayload);
     if (fromRoutine.length) {
       const existing = new Set((line.creations ?? []).map((c) => norm(c.name)));
       const extra = fromRoutine.filter((c) => !existing.has(norm(c.name)));
@@ -449,7 +451,7 @@ function renderMd(text: string): ComponentChildren[] {
 /* ---------- tarjeta de la propuesta ---------- */
 
 /** Qué botón lleva la tarjeta y qué se le pasa a `apply…`. */
-type ApplyKind = 'routine' | 'plan';
+type ApplyKind = 'routine' | 'plan' | 'sessions';
 
 /** Una línea de la tarjeta: día del plan (título · tipo) o ejercicio (nombre · prescripción). */
 function cardLine(item: unknown, isPlan: boolean): ComponentChildren {
@@ -502,18 +504,23 @@ function PayloadCard({
     : Array.isArray(payload.items)
       ? payload.items
       : [];
-  if (!days.length && !exercises.length) return null;
+  const sessionsList = Array.isArray(payload.sessions) ? payload.sessions.filter(isPlain) : [];
+  if (!days.length && !exercises.length && !sessionsList.length) return null;
 
   const isPlan = days.length > 0;
+  const isSessions = sessionsList.length > 0;
   const isUpdate = asText(payload.action) === 'update';
-  const title = asText(payload.title) || (isPlan ? 'Plan semanal' : 'Propuesta de entreno');
+  const title =
+    asText(payload.title) ||
+    (isPlan ? 'Plan semanal' : isSessions ? 'Entrenos anteriores' : 'Propuesta de entreno');
   const target = asText(payload.target) || title;
   const focus = asText(payload.focus);
   const done = payload.done === true;
-  const list = isPlan ? days : exercises;
+  const list = isPlan ? days : isSessions ? sessionsList : exercises;
   /* los pares que propuso el coach se ven ANTES de aplicar: si no, la rutina se
      guardaba con superseries que el usuario nunca tuvo delante */
-  const pairs = isPlan ? [] : supersetGroups(exercises as { superset?: string | null }[]);
+  const pairs =
+    isPlan || isSessions ? [] : supersetGroups(exercises as { superset?: string | null }[]);
   const pairOf = (i: number): { letter: string; position: number; size: number } | null => {
     for (const group of pairs) {
       const at = group.indices.indexOf(i);
@@ -521,19 +528,42 @@ function PayloadCard({
     }
     return null;
   };
+  const sessionLine = (value: unknown): ComponentChildren => {
+    if (!isPlain(value)) return null;
+    const item = value;
+    const iso = (asText(item.date) || asText(item.iso)).slice(0, 10);
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? dateLabel(iso, 'short') : '';
+    const name = asText(item.name) || asText(item.title) || 'Sesión';
+    const items = Array.isArray(item.exercises)
+      ? item.exercises
+      : Array.isArray(item.items)
+        ? item.items
+        : [];
+    return (
+      <>
+        {day ? <span class="tiny muted num">{day} · </span> : null}
+        <span>{name}</span>
+        <span class="tiny muted">{items.length} ej.</span>
+      </>
+    );
+  };
 
   return (
     <div class="coach-card">
       <div class="row between">
         <b class="grow ellipsis">{title}</b>
         <span class="badge a">
-          {isPlan ? `${days.length} días` : `${exercises.length} ejercicios`}
+          {isPlan
+            ? `${days.length} días`
+            : isSessions
+              ? `${sessionsList.length} ${sessionsList.length === 1 ? 'sesión' : 'sesiones'}`
+              : `${exercises.length} ejercicios`}
         </span>
       </div>
       {focus ? <div class="tiny muted mt-s">{focus}</div> : null}
       <ul class="coach-list">
         {list.slice(0, 8).map((item, i) => {
-          const pair = isPlan ? null : pairOf(i);
+          const pair = isPlan || isSessions ? null : pairOf(i);
           return (
             <li key={i}>
               {pair ? (
@@ -541,28 +571,32 @@ function PayloadCard({
                   SS {pair.letter} · {pair.position}/{pair.size}
                 </span>
               ) : null}
-              {cardLine(item, isPlan)}
+              {isSessions ? sessionLine(item) : cardLine(item, isPlan)}
             </li>
           );
         })}
       </ul>
-      {!isPlan && exercises.length > 8 ? (
+      {!isPlan && !isSessions && exercises.length > 8 ? (
         <div class="tiny muted">+{exercises.length - 8} ejercicios más</div>
       ) : null}
       <button
         type="button"
         class="btn sm primary mt-s"
         disabled={done}
-        onClick={() => onApply(index, isPlan ? 'plan' : 'routine')}
+        onClick={() => onApply(index, isPlan ? 'plan' : isSessions ? 'sessions' : 'routine')}
       >
-        <Icon name={isPlan ? 'calendar' : 'plus'} />
-        {done
-          ? 'Aplicada'
-          : isPlan
-            ? 'Aplicar plan'
-            : isUpdate
-              ? `Actualizar «${target}»`
-              : 'Aplicar como rutina'}
+        <Icon name={isPlan ? 'calendar' : isSessions ? 'check' : 'plus'} />
+        {isSessions
+          ? done
+            ? 'Importadas'
+            : 'Importar al historial'
+          : done
+            ? 'Aplicada'
+            : isPlan
+              ? 'Aplicar plan'
+              : isUpdate
+                ? `Actualizar «${target}»`
+                : 'Aplicar como rutina'}
       </button>
     </div>
   );
@@ -1122,6 +1156,48 @@ export function CoachView() {
       addChat({
         role: 'sys',
         text: `${updated ? 'Rutina actualizada' : 'Rutina creada'}: ${routine.name}${bits.length ? ` · ${bits.join(' · ')}` : ''}`,
+        ts: nowTs(),
+      });
+      return;
+    }
+
+    if (kind === 'sessions') {
+      /* Los ejercicios descartados en la tarjeta no se reintentan: si el modelo
+         los vuelve a proponer, los saltamos para no importarlos otra vez. */
+      const skipNames = (line.creations ?? [])
+        .filter((creation) => creation.status === 'discarded')
+        .map((creation) => creation.name);
+      const out = applyImportedSessions(line.payload, { skipNames });
+
+      if (out.creatable.length) {
+        appendCreations(index, out.creatable);
+        addChat({
+          role: 'sys',
+          text: `No he importado nada todavía: faltan ${out.creatable.length} ejercicios por crear. Confirma o descarta los nuevos de arriba y vuelve a pulsar «Importar al historial».`,
+          ts: nowTs(),
+        });
+        toast(`Ejercicios nuevos por crear: ${quoted(out.creatable)}`, { kind: 'warn' });
+        return;
+      }
+      if (!out.sessions.length) {
+        addChat({
+          role: 'sys',
+          text: 'No había sesiones válidas para importar: revisa las fechas y los ejercicios.',
+          ts: nowTs(),
+        });
+        return;
+      }
+
+      markApplied(index);
+      const count = `${out.sessions.length} ${out.sessions.length === 1 ? 'sesión' : 'sesiones'}`;
+      toast(`Importadas ${count} al historial`, { kind: 'ok' });
+      addChat({
+        role: 'sys',
+        text:
+          `Importadas ${count} al historial` +
+          (out.warnings.length
+            ? ` · sin usar (${out.warnings.length}): ${unresolvedNames(out.warnings)}`
+            : ''),
         ts: nowTs(),
       });
       return;

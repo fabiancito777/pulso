@@ -171,6 +171,26 @@ describe('resultLine (propuestas de ejercicio nuevo)', () => {
     expect(resultLine('chat', out({ text: 'hola' }), 'g').creations).toBeUndefined();
   });
 
+  it('en chat con sessionsPayload deja el payload y las creaciones listas para importar', () => {
+    const sessionsPayload = {
+      sessions: [
+        {
+          date: '2026-09-01',
+          name: 'Empuje',
+          exercises: [
+            { name: 'Press Inventado', isNew: true, group: 'pecho', equip: 'barra', type: 'compuesto' },
+          ],
+        },
+      ],
+    };
+
+    const line = resultLine('chat', out({ text: 'Aquí están.', sessionsPayload }), 'g');
+
+    expect(line.payload).toBe(sessionsPayload);
+    expect(line.text).toBe('Aquí están.');
+    expect(line.creations?.map((item) => item.name)).toEqual(['Press Inventado']);
+  });
+
   it('en suggest saca del payload SOLO lo marcado con isNew: true', () => {
     const text = JSON.stringify({
       title: 'Tracción',

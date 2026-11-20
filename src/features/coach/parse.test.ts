@@ -13,6 +13,7 @@ import {
   extractBlocks,
   extractCreations,
   extractRoutineBlock,
+  extractSessionsBlock,
   parseCreations,
   parseJSON,
   payloadItems,
@@ -245,6 +246,42 @@ describe('extractRoutineBlock', () => {
   });
 });
 
+describe('extractSessionsBlock', () => {
+  it('extrae el bloque ```entrenos``` con sessions y devuelve el resto sin el bloque', () => {
+    const text =
+      'Aquí tienes tus entrenos.\n\n```entrenos\n{"sessions":[{"date":"2026-11-18","name":"Empuje",' +
+      '"exercises":[{"name":"Press de banca","sets":[{"weight":18,"reps":10}]}]}]}\n```\n\nDime si los guardo.';
+
+    const { rest, sessions } = extractSessionsBlock(text);
+
+    expect(sessions).toEqual({
+      sessions: [
+        {
+          date: '2026-11-18',
+          name: 'Empuje',
+          exercises: [{ name: 'Press de banca', sets: [{ weight: 18, reps: 10 }] }],
+        },
+      ],
+    });
+    expect(rest).not.toContain('```entrenos');
+    expect(rest).toContain('Aquí tienes tus entrenos.');
+    expect(rest).toContain('Dime si los guardo.');
+  });
+
+  it('devuelve sessions null con un bloque ilegible, vacío o sin sessions', () => {
+    expect(extractSessionsBlock('Va.\n```entrenos\nesto no es json\n```').sessions).toBeNull();
+    expect(extractSessionsBlock('```entrenos\n```').sessions).toBeNull();
+    expect(extractSessionsBlock('```entrenos\n{"sessions":[]}\n```').sessions).toBeNull();
+  });
+
+  it('sin bloque devuelve sessions null y el texto recortado', () => {
+    expect(extractSessionsBlock('  Aquí no hay entrenos.  ')).toEqual({
+      rest: 'Aquí no hay entrenos.',
+      sessions: null,
+    });
+  });
+});
+
 describe('parseCreations', () => {
   it('acepta array u objeto con lista y descarta lo que no tiene nombre', () => {
     expect(
@@ -284,6 +321,21 @@ describe('payloadItems', () => {
     expect(items.map((item) => item.name)).toEqual(['A', 'B', 'C']);
     expect(payloadItems(null)).toEqual([]);
     expect(payloadItems([1, 2])).toEqual([]);
+  });
+
+  it('recorre también sessions[].exercises (incluidos los isNew)', () => {
+    const items = payloadItems({
+      sessions: [
+        {
+          date: '2026-11-18',
+          exercises: [{ name: 'Press de banca' }, { name: 'Remo nuevo', isNew: true }],
+        },
+        { items: [{ name: 'Sentadilla' }] },
+        'raro',
+      ],
+    });
+    expect(items.map((item) => item.name)).toEqual(['Press de banca', 'Remo nuevo', 'Sentadilla']);
+    expect(items[1]?.isNew).toBe(true);
   });
 });
 

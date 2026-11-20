@@ -315,6 +315,33 @@ export function extractRoutineBlock(text: string): {
 }
 
 /**
+ * Bloques ```entrenos``` del texto → la primera sesión válida, CON EL BLOQUE
+ * YA QUITADO del texto: el chat no enseña el JSON crudo, igual que pasa con
+ * ```memoria```/```rutina```. Un bloque cuenta como historial importable solo
+ * si trae una lista no vacía de `sessions`. Un bloque ilegible se ignora.
+ */
+export function extractSessionsBlock(text: string): {
+  rest: string;
+  sessions: Record<string, unknown> | null;
+} {
+  const { rest, blocks } = extractBlocks(text, 'entrenos');
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    try {
+      const parsed = parseJSON<unknown>(block);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) continue;
+      const rec = parsed as Record<string, unknown>;
+      if (Array.isArray(rec.sessions) && rec.sessions.length > 0) {
+        return { rest: rest.trim(), sessions: rec };
+      }
+    } catch {
+      /* un bloque ilegible no rompe el chat */
+    }
+  }
+  return { rest: rest.trim(), sessions: null };
+}
+
+/**
  * Ejercicios crudos de un payload de `suggest`/`plan`, incluidos los de cada
  * día (`days[].exercises[]`): es lo que recorre la UI para leer `isNew` y lo
  * que `partitionUnresolved` usa para dar con los atributos de un nombre.
@@ -337,6 +364,13 @@ export function payloadItems(payload: unknown): Record<string, unknown>[] {
     for (const day of raw.days) {
       if (typeof day !== 'object' || day === null || Array.isArray(day)) continue;
       const rec = day as Record<string, unknown>;
+      push(rec.exercises ?? rec.items);
+    }
+  }
+  if (Array.isArray(raw.sessions)) {
+    for (const sess of raw.sessions) {
+      if (typeof sess !== 'object' || sess === null || Array.isArray(sess)) continue;
+      const rec = sess as Record<string, unknown>;
       push(rec.exercises ?? rec.items);
     }
   }

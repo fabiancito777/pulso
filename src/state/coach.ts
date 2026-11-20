@@ -56,11 +56,11 @@ import {
 import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
-import { int, num } from '@/domain/num';
-import { sanitizePrescription } from '@/domain/prescription';
+import { clamp, int, num, uid } from '@/domain/num';
+import { sanitizePrescription, WEIGHT_MAX } from '@/domain/prescription';
 import { freshSupersetIds } from '@/domain/supersets';
 import { norm, trunc } from '@/domain/text';
-import type { Exercise, RoutineItem, Session, Settings } from '@/domain/types';
+import type { Exercise, RoutineItem, Session, SessionEntry, SetLog, Settings } from '@/domain/types';
 import { GeminiError, generate, thinkingTimeoutMs } from '@/features/coach/client';
 import type { ChatMsg, GenOpts, GenResult } from '@/features/coach/client';
 import { buildContext } from '@/features/coach/context';
@@ -74,6 +74,7 @@ import {
   extractBlocks,
   extractCreations,
   extractRoutineBlock,
+  extractSessionsBlock,
   parseJSON,
   payloadItems,
 } from '@/features/coach/parse';
@@ -88,6 +89,7 @@ import type { BuildRequestOpts, CoachRequest, CoachTask } from '@/features/coach
 import {
   active,
   addRoutine,
+  appendSessions,
   equipment,
   exercises,
   findExercise,
@@ -186,6 +188,11 @@ export interface CoachOutcome {
    * en `text`).
    */
   routinePayload?: Record<string, unknown>;
+  /**
+   * sesiones pasadas del bloque ```entrenos``` del chat, ya parseadas: la vista
+   * las ofrece como tarjeta «Importar al historial» (bloque ya NO en `text`).
+   */
+  sessionsPayload?: Record<string, unknown>;
   /** milisegundos de la tarea entera (según `deps.now`) */
   ms: number;
 }
@@ -780,12 +787,17 @@ export async function runCoachTask(
      cierre la respuesta). Sin bloque ```rutina``` el texto queda intacto. */
   const { rest: afterRoutine, routine: routinePayload } = extractRoutineBlock(text);
 
-  /* 6 · ejercicios nuevos: el bloque ```crear``` sale del texto y viaja aparte,
+  /* 6 · entrenos pasados: el bloque ```entrenos``` viaja aparte para que la
+     vista lo ofrezca como tarjeta «Importar al historial» (nunca se importa
+     nada aquí: hace falta la confirmación del usuario). */
+  const { rest: afterSessions, sessions: sessionsPayload } = extractSessionsBlock(afterRoutine);
+
+  /* 7 · ejercicios nuevos: el bloque ```crear``` sale del texto y viaja aparte,
      para que la vista pinte su tarjeta de confirmación — aquí NUNCA se crea
      nada, eso es un clic del usuario */
-  const { rest: afterCreations, creations } = extractCreations(afterRoutine);
+  const { rest: afterCreations, creations } = extractCreations(afterSessions);
 
-  /* 7 · memoria: se vuelca y se quita del texto final. `extractMemoryBlock`
+  /* 8 · memoria: se vuelca y se quita del texto final. `extractMemoryBlock`
      exige que el bloque CIERRE la respuesta: citar el formato a mitad de una
      explicación no es un aprendizaje. */
   const { rest: clean, block: memoryBlock } = extractMemoryBlock(afterCreations);
@@ -827,6 +839,7 @@ export async function runCoachTask(
     consulted,
     creations,
     ...(routinePayload ? { routinePayload } : {}),
+    ...(sessionsPayload ? { sessionsPayload } : {}),
     ms: clock() - t0,
   };
 }
@@ -985,6 +998,121 @@ export function applyWeek(
 
   setMeta({ lastPlanAt: nowTs() });
   return out;
+}
+
+/**
+ * Convierte un bloque ```entrenos``` del chat en sesiones REALES del historial.
+ *
+ * Los nombres se resuelven con el MISMO matcher que el resto del coach. Lo que no
+ * se puede crear (porque choca con un ejercicio existente) se avisa; lo que solo
+ * falta en la biblioteca se ofrece como tarjeta de creación. Mientras quede
+ * cualquier ejercicio por crear NO se escribe nada: así se evita importar una
+ * sesión a medias y duplicarla al volver a pulsar «Importar» tras crear.
+ */
+export function applyImportedSessions(
+  payload: unknown,
+  opts: { skipNames?: readonly string[] } = {},
+): {
+  sessions: Session[];
+  unresolved: UnresolvedName[];
+  creatable: AIExerciseProposal[];
+  warnings: UnresolvedName[];
+} {
+  const empty = { sessions: [], unresolved: [], creatable: [], warnings: [] };
+  if (!isPlain(payload) || !Array.isArray(payload.sessions)) return empty;
+
+  const skipped = new Set((opts.skipNames ?? []).map((name) => norm(name)));
+  const allUnresolved: UnresolvedName[] = [];
+  const built: Session[] = [];
+  const toWeight = (raw: unknown): number | null => {
+    if (raw === null || raw === undefined) return null;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(value) || value < 0) return null;
+    return Math.min(value, WEIGHT_MAX);
+  };
+
+  for (const rawSession of payload.sessions) {
+    if (!isPlain(rawSession)) continue;
+    const rawDate = firstString(rawSession, ['date']);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today();
+    const unit =
+      rawSession.unit === 'lb' ? 'lb' : rawSession.unit === 'kg' ? 'kg' : settings.value.units;
+    const name = firstString(rawSession, ['name', 'title']) || 'Sesión importada';
+    const rawItems = Array.isArray(rawSession.exercises) ? rawSession.exercises : rawSession.items;
+    const entries: SessionEntry[] = [];
+
+    if (Array.isArray(rawItems)) {
+      for (const item of rawItems) {
+        if (!isPlain(item)) continue;
+        const itemName = firstString(item, ['name', 'exercise', 'ejercicio']);
+        if (!itemName) continue;
+        const match = matchExercise(itemName, exercises.value);
+        if (!match.ex) {
+          if (skipped.has(norm(itemName))) continue;
+          allUnresolved.push(unresolvedName(itemName, match));
+          continue;
+        }
+
+        const sets: SetLog[] = [];
+        if (Array.isArray(item.sets)) {
+          for (const set of item.sets) {
+            if (!isPlain(set)) continue;
+            sets.push({
+              weight: toWeight(set.weight),
+              reps: clamp(int(set.reps, 8), 1, 99),
+              rpe: set.rpe != null ? clamp(num(set.rpe), 1, 10) : null,
+              done: true,
+            });
+          }
+        } else if (typeof item.sets === 'number') {
+          /* formato compacto: `sets: 3, reps: 8, weight: 20` */
+          const count = clamp(int(item.sets, 3), 1, 12);
+          const reps = clamp(int(item.reps ?? item.repMin, 8), 1, 99);
+          const weight = toWeight(item.weight);
+          const rpe = item.rpe != null ? clamp(num(item.rpe), 1, 10) : null;
+          for (let i = 0; i < count; i++) sets.push({ weight, reps, rpe, done: true });
+        }
+        if (!sets.length) continue;
+
+        entries.push({
+          exId: match.ex.id,
+          name: match.ex.name,
+          group: match.ex.group,
+          notes: firstString(item, ['notes']),
+          sets,
+        });
+      }
+    }
+
+    if (!entries.length) continue;
+    const values = entries
+      .flatMap((entry) => entry.sets)
+      .map((set) => set.rpe)
+      .filter((value): value is number => value != null);
+    const rpe =
+      rawSession.rpe != null
+        ? clamp(num(rawSession.rpe), 1, 10)
+        : values.length
+          ? clamp(values.reduce((acc, value) => acc + value, 0) / values.length, 1, 10)
+          : null;
+    built.push({
+      id: uid('s'),
+      name,
+      date,
+      startedAt: `${date}T10:00:00.000Z`,
+      endedAt: `${date}T10:00:00.000Z`,
+      unit,
+      source: 'import',
+      entries,
+      notes: firstString(rawSession, ['notes']),
+      rpe,
+    });
+  }
+
+  const { creatable, warnings } = partitionUnresolved(allUnresolved, payload);
+  if (creatable.length) return { sessions: [], unresolved: allUnresolved, creatable, warnings };
+  if (built.length) appendSessions(built);
+  return { sessions: built, unresolved: allUnresolved, creatable: [], warnings };
 }
 
 /* ---------- propuestas de ejercicios nuevos al aplicar ---------- */

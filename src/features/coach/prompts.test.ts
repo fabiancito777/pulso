@@ -11,6 +11,7 @@ import {
   CONSULT_INSTRUCTION,
   CREATION_INSTRUCTION,
   DEFAULT_SYSTEM,
+  HISTORY_IMPORT_INSTRUCTION,
   HISTORY_MODEL_LIMIT,
   HISTORY_USER_LIMIT,
   MEMORY_INSTRUCTION,
@@ -93,6 +94,34 @@ describe('CREATION_INSTRUCTION', () => {
   });
 });
 
+describe('HISTORY_IMPORT_INSTRUCTION', () => {
+  it('define el bloque ```entrenos``` con su ejemplo y reglas de fechas y ejercicios nuevos', () => {
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('```entrenos');
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('"sessions"');
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('YYYY-MM-DD');
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('"weight": null');
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('"isNew":true');
+    expect(HISTORY_IMPORT_INSTRUCTION).toContain('Fecha de hoy del PERFIL');
+    expect(HISTORY_IMPORT_INSTRUCTION).not.toContain(MEMORY_INSTRUCTION);
+  });
+});
+
+describe('reglas de lesiones y enfermedad', () => {
+  it('DEFAULT_SYSTEM protege lesiones/enfermedades activas sin decir «sincero»', () => {
+    expect(DEFAULT_SYSTEM).toContain('lesiones');
+    expect(DEFAULT_SYSTEM).toContain('enfermedades activas');
+    expect(DEFAULT_SYSTEM).toContain('recuperó');
+    expect(DEFAULT_SYSTEM).not.toContain('sincero');
+  });
+
+  it('MEMORY_INSTRUCTION pide guardar dolor y la recuperación en líneas nuevas', () => {
+    expect(MEMORY_INSTRUCTION).toContain('lesión');
+    expect(MEMORY_INSTRUCTION).toContain('estoy con gripe');
+    expect(MEMORY_INSTRUCTION).toContain('recuperó');
+    expect(MEMORY_INSTRUCTION).toContain('línea nueva');
+  });
+});
+
 describe('buildRequest', () => {
   const context = '=== PERFIL ===\nNombre: Ana';
 
@@ -153,6 +182,18 @@ describe('buildRequest', () => {
     expect(sinRutina).not.toContain(ROUTINE_INSTRUCTION);
     expect(sinRutina).toContain(MEMORY_INSTRUCTION);
     expect(sinRutina).toContain(CREATION_INSTRUCTION);
+  });
+
+  it('inyecta HISTORY_IMPORT_INSTRUCTION SOLO en chat y se excluye con importHistory: false', () => {
+    expect(buildRequest('chat', { question: 'hola' }).system).toContain(HISTORY_IMPORT_INSTRUCTION);
+    expect(buildRequest('chat', { question: 'hola', importHistory: false }).system).not.toContain(
+      HISTORY_IMPORT_INSTRUCTION,
+    );
+    expect(buildRequest('suggest').system).not.toContain(HISTORY_IMPORT_INSTRUCTION);
+    expect(buildRequest('plan').system).not.toContain(HISTORY_IMPORT_INSTRUCTION);
+    expect(buildRequest('analyze', { question: 'hola' }).system).not.toContain(
+      HISTORY_IMPORT_INSTRUCTION,
+    );
   });
 
   it('suggest pide JSON con el esquema de la respuesta, sin ejemplo en el prompt', () => {

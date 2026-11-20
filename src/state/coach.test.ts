@@ -1263,3 +1263,117 @@ describe('bloque ```rutina``` del chat', () => {
     expect(out.routine?.name).toBe('Nueva');
   });
 });
+
+describe('importar entrenos pasados del chat', () => {
+  it('extrae el bloque ```entrenos``` del texto de una respuesta de chat', async () => {
+    const gen = makeGen([
+      res(
+        'Aquí están.\n' +
+          '```entrenos\n' +
+          '{"sessions":[{"date":"2026-09-01","name":"Empuje","exercises":[' +
+          `{"name":"${NOMBRE}","sets":[{"weight":18,"reps":10}]}]}]}\n` +
+          '```',
+      ),
+    ]);
+
+    const out = await coach.runCoachTask('chat', { userText: 'importa' }, { generateFn: gen });
+
+    expect(out.sessionsPayload).toMatchObject({
+      sessions: [{ date: '2026-09-01', name: 'Empuje' }],
+    });
+    expect(out.text).toBe('Aquí están.');
+    expect(out.text).not.toContain('```entrenos');
+  });
+
+  it('importa sets detallados y el formato compacto, saneando pesos y RPE', () => {
+    const out = coach.applyImportedSessions({
+      sessions: [
+        {
+          date: '2026-09-01',
+          name: 'Empuje',
+          rpe: 8,
+          exercises: [
+            {
+              name: NOMBRE,
+              sets: [
+                { weight: 18, reps: 10 },
+                { weight: -5, reps: 200, rpe: 11 },
+              ],
+            },
+          ],
+        },
+        {
+          date: '2026-09-03',
+          name: 'Pierna',
+          exercises: [{ name: NOMBRE, sets: 3, reps: 8, weight: 20 }],
+        },
+      ],
+    });
+
+    expect(out.sessions).toHaveLength(2);
+    expect(store.sessions.value).toHaveLength(2);
+    expect(out.sessions[0]).toMatchObject({
+      name: 'Empuje',
+      date: '2026-09-01',
+      startedAt: '2026-09-01T10:00:00.000Z',
+      source: 'import',
+      rpe: 8,
+    });
+    expect(out.sessions[0]?.entries[0]?.sets).toEqual([
+      { weight: 18, reps: 10, rpe: null, done: true },
+      { weight: null, reps: 99, rpe: 10, done: true },
+    ]);
+    expect(out.sessions[1]?.entries[0]?.sets).toHaveLength(3);
+    expect(out.sessions[1]?.entries[0]?.sets[0]).toMatchObject({
+      weight: 20,
+      reps: 8,
+      done: true,
+    });
+  });
+
+  it('no escribe nada en el historial mientras haya ejercicios nuevos por crear', () => {
+    const out = coach.applyImportedSessions({
+      sessions: [
+        {
+          date: '2026-09-01',
+          name: 'Mixta',
+          exercises: [
+            { name: NOMBRE, sets: 2, reps: 8 },
+            {
+              name: 'Ejercicio Inventado',
+              isNew: true,
+              group: 'pecho',
+              equip: 'mancuerna',
+              type: 'fuerza',
+              sets: 2,
+              reps: 8,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(out.sessions).toEqual([]);
+    expect(store.sessions.value).toHaveLength(0);
+    expect(out.creatable.map((item) => item.name)).toContain('Ejercicio Inventado');
+  });
+
+  it('un ejercicio descartado no se vuelve a importar', () => {
+    const out = coach.applyImportedSessions(
+      {
+        sessions: [
+          {
+            date: '2026-09-02',
+            name: 'Suelto',
+            exercises: [{ name: 'Ejercicio Inventado', sets: 2, reps: 8 }],
+          },
+        ],
+      },
+      { skipNames: ['ejercicio inventado'] },
+    );
+
+    expect(out.sessions).toEqual([]);
+    expect(out.creatable).toEqual([]);
+    expect(store.sessions.value).toHaveLength(0);
+  });
+});

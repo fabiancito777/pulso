@@ -42,6 +42,7 @@ export const DEFAULT_SYSTEM = [
   '- Decide tú el descanso óptimo entre series de cada ejercicio (compuestos grandes 180-240 s, auxiliares 90-120 s, aislamientos 60-75 s) y devuélvelo en el campo rest; el usuario no configura los descansos.',
   '- Incluye descansos entre series y justifica brevemente cada decisión del plan.',
   '- Si el usuario pide JSON, devuelve ÚNICAMENTE el JSON, sin texto adicional ni markdown.',
+  '- Respeta estrictamente las lesiones, molestias o enfermedades activas que figuren en MEMORIA DEL COACH: evita ejercicios que carguen la zona afectada y reduce carga o volumen si el usuario está enfermo o volviendo de un parón, hasta que te indique que se recuperó.',
   '- Prioriza seguridad: avisa si detectas señales de sobreentrenamiento o dolor, y recuerda que no eres un médico.',
 ].join('\n');
 
@@ -58,6 +59,7 @@ export const MEMORY_INSTRUCTION = [
   '```',
   'Una línea por dato, sin mezclar el bloque con el resto de la respuesta, y sin duplicar lo que ya aparece en su MEMORIA DEL COACH (la deduplicación final la hace la app): si dudas de si es nuevo, mejor guárdalo.',
   'Si el usuario te pregunta qué debería cambiar o mejorar, la conclusión a la que llegues sobre él también cuenta como aprendizaje: mete el bloque aunque el resto de la respuesta ya lo haya dicho.',
+  'Si menciona dolor, lesión o estar enfermo (p. ej. «me duele el hombro con press militar» o «estoy con gripe»), guárdalo en una línea concreta para evitar esos movimientos hasta que te diga que se recuperó (y cuando se recupere, anota la recuperación en una línea nueva).',
   'Si no hay nada nuevo que guardar, no pongas el bloque.',
 ].join('\n');
 
@@ -161,6 +163,23 @@ export const CREATION_INSTRUCTION = [
 ].join('\n');
 
 /**
+ * Se añade al system SOLO de `chat` para que el modelo pueda extraer entrenos
+ * pasados que el usuario le pasa para importarlos en su historial. `opts.importHistory === false`
+ * lo desactiva. La app importa tras confirmación, igual que ```rutina```/```crear```.
+ */
+export const HISTORY_IMPORT_INSTRUCTION = [
+  'Si en el chat el usuario te pasa entrenamientos PASADOS que ya realizó (p. ej. notas anteriores a usar la app) para registrarlos en su historial, extráelos en un bloque ```entrenos``` para que la app los importe tras confirmarlo él:',
+  '```entrenos',
+  '{"sessions":[{"date":"YYYY-MM-DD","name":"Nombre corto","rpe":null,"notes":"","exercises":[{"name":"Nombre exacto de la lista o nuevo con isNew","sets":[{"weight":18,"reps":10},{"weight":18,"reps":9}]}]}]}',
+  '```',
+  '- Convierte fechas relativas («ayer», «el lunes») a YYYY-MM-DD usando la Fecha de hoy del PERFIL.',
+  '- Si no dijo la hora o duración exacta, deja la fecha bien; si algún ejercicio no tiene peso (peso corporal o no lo apuntó), pon `"weight": null`.',
+  '- Si algún ejercicio no está en EJERCICIOS PERMITIDOS, añádele `"isNew":true,"group":"...","equip":"...","type":"..."` igual que en ```crear``` para que confirme antes de crearlo.',
+  '- Si también emites memoria al final, deja el bloque de memoria el ÚLTIMO de toda la respuesta.',
+  '- Si no te está pasando entrenos pasados para guardar, NO pongas el bloque ```entrenos```.',
+].join('\n');
+
+/**
  * Se añade al system de `chat` y `analyze` para que el modelo pueda PEDIR datos
  * históricos en vez de inventarlos: emite un bloque ```consulta``` y la app le
  * responde con `queryHistory` antes de que conteste. Va después de
@@ -218,7 +237,7 @@ function localHead(opts: BuildRequestOpts, label: string): string[] {
   return [
     label,
     JSON.stringify(opts.local),
-    'Trata esa base como un borrador YA coherente con sus datos: consérvala en lo que sea correcto y cambia solo lo que mejore (pesos, ejercicios que no encajen, orden, descansos). No la repitas tal cual sin revisar.',
+    'Trata esa base como un borrador YA coherente con sus datos: consérvala en lo que sea correcto, descarta o adapta cualquier ejercicio que choque con lesiones/enfermedad activas en MEMORIA DEL COACH, y cambia solo lo que mejore (pesos, orden, descansos). No la repitas tal cual sin revisar.',
     '',
   ];
 }
@@ -299,6 +318,8 @@ export function buildRequest(task: CoachTask, opts: BuildRequestOpts = {}): Coac
      analyze no se propone nada. */
   if (opts.routine !== false && task === 'chat') system += `\n\n${ROUTINE_INSTRUCTION}`;
   if (opts.create !== false && task === 'chat') system += `\n\n${CREATION_INSTRUCTION}`;
+  if (opts.importHistory !== false && task === 'chat')
+    system += `\n\n${HISTORY_IMPORT_INSTRUCTION}`;
   if (opts.context) system += `\n\nCONTEXTO DEL USUARIO:\n${opts.context}`;
 
   const history = boundedHistory(
