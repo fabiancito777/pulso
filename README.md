@@ -58,6 +58,8 @@ pantalla completa y funciona offline).
   arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
   Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
   apagado de fábrica. En la vista habitual puedes editar el RPE y borrar series.
+- **Guía visual de curl con mancuernas**. En modo súper simple, abre el ejercicio **Curl de Bíceps**
+  y toca la miniatura para ver las posturas de inicio y final.
 - **Consejo del ejercicio y nota personal**. Abre **Ver consejo** para consultar la indicación de la
   rutina o de la biblioteca. En modo súper simple está en `⋯`, junto a **Nota personal**, donde puedes
   guardar cómo te sentiste. En *Ajustes → Entreno* puedes dejar visibles el consejo y el descanso

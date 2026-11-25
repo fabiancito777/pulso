@@ -187,6 +187,83 @@
 .simple-ex-card .ex-menu-trigger {
   flex-basis: 38px;
 }
+.simple-ex-card .exercise-demo-trigger {
+  flex: none;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 9px;
+}
+.exercise-demo-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #e9e9e9;
+  color: #333;
+}
+.exercise-demo-thumb img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 200%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+  object-position: left center;
+}
+.simple-demo-body {
+  display: grid;
+  gap: 10px;
+}
+.simple-demo-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #e9e9e9;
+}
+.simple-demo-labels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+.simple-demo-cue {
+  margin: 0;
+  padding: 11px 12px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px;
+}
+.simple-demo-fallback {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.simple-demo-fallback .ico {
+  flex: none;
+}
 .simple-ex-card .ex-body {
   padding: 8px 16px 15px;
 }

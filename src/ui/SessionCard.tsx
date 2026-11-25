@@ -66,6 +66,70 @@ import { Ring } from './Ring';
 import { RoutinePickerModal } from './RoutinePickerModal';
 import { toast } from './toast';
 
+/* Solo estos IDs describen el curl bilateral supino que ilustra el piloto.
+   Las variantes alternas, martillo y barra quedan fuera aunque compartan grupo. */
+const DUMBBELL_CURL_DEMO_IDS = new Set(['curl-de-biceps', 'curl-con-mancuernas']);
+const DUMBBELL_CURL_DEMO_SRC = `${import.meta.env.BASE_URL}exercise-demos/dumbbell-curl.webp`;
+
+function ExerciseDemoThumb() {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span class="exercise-demo-thumb" aria-hidden="true">
+      {failed ? (
+        <Icon name="eye" />
+      ) : (
+        <img
+          src={DUMBBELL_CURL_DEMO_SRC}
+          alt=""
+          aria-hidden="true"
+          width="960"
+          height="640"
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </span>
+  );
+}
+
+function ExerciseDemoModal({
+  name,
+  cue,
+  onClose,
+}: {
+  name: string;
+  cue: string;
+  onClose: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <Modal title="Curl bilateral con mancuernas" sub={name} onClose={onClose}>
+      <div class="simple-demo-body">
+        {failed ? (
+          <div class="simple-demo-fallback" role="status">
+            <Icon name="info" />
+            <span>La guía visual no está disponible. Puedes seguir registrando tus series.</span>
+          </div>
+        ) : (
+          <img
+            class="simple-demo-image"
+            src={DUMBBELL_CURL_DEMO_SRC}
+            alt="Inicio del curl bilateral de pie con los brazos abajo y final con las mancuernas cerca de los hombros"
+            onError={() => setFailed(true)}
+          />
+        )}
+        {!failed ? (
+          <div class="simple-demo-labels" aria-hidden="true">
+            <span>Inicio</span>
+            <span>Final</span>
+          </div>
+        ) : null}
+        {cue ? <p class="simple-demo-cue">{cue}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
 /** Reloj de la sesión. Aislado a propósito: es lo que se repinta cada segundo. */
 function Clock() {
   return <span class="num">{fmtClock(sessionSeconds.value)}</span>;
@@ -481,6 +545,7 @@ function EntryCard(props: {
   const [notesDraft, setNotesDraft] = useState('');
   const [cueOpen, setCueOpen] = useState(false);
   const [restOpen, setRestOpen] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
   const [restDraft, setRestDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -523,6 +588,11 @@ function EntryCard(props: {
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
+  const canShowDemo = props.simple && !props.collapsed && DUMBBELL_CURL_DEMO_IDS.has(en.exId);
+
+  useEffect(() => {
+    if (props.collapsed) setDemoOpen(false);
+  }, [props.collapsed]);
 
   const cancelNotes = () => {
     setNotesDraft(en.notes);
@@ -562,7 +632,7 @@ function EntryCard(props: {
     };
   }, [highlight]);
 
-  return (
+  const card = (
     <div
       class={`ex-card${doneSets === en.sets.length ? ' done' : ''}${props.collapsed ? ' collapsed' : ''}${props.simple ? ' simple-ex-card' : ''}`}
       ref={box}
@@ -607,6 +677,18 @@ function EntryCard(props: {
             )}
           </span>
         </button>
+        {canShowDemo ? (
+          <button
+            type="button"
+            class="btn sm quiet exercise-demo-trigger"
+            aria-label={`Ver movimiento de ${en.name}`}
+            aria-haspopup="dialog"
+            title="Ver movimiento"
+            onClick={() => setDemoOpen(true)}
+          >
+            <ExerciseDemoThumb />
+          </button>
+        ) : null}
         {!props.collapsed ? (
           <button
             ref={menuButton}
@@ -940,6 +1022,19 @@ function EntryCard(props: {
         </div>
       )}
     </div>
+  );
+
+  return (
+    <>
+      {card}
+      {canShowDemo && demoOpen ? (
+        <ExerciseDemoModal
+          name={en.name}
+          cue={en.cue?.trim() || ex?.tips?.trim() || ''}
+          onClose={() => setDemoOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }
 
