@@ -1022,6 +1022,31 @@ describe('migración v4/v5 de ai', () => {
     expect(out.version).toBe(store.STATE_VERSION);
   });
 
+  it('los toggles compactos usan el valor por defecto en estados antiguos y se guardan', () => {
+    const crudo = JSON.parse(JSON.stringify(store.defaultState())) as Record<string, unknown>;
+    crudo.version = 6;
+    const settings = crudo.settings as Record<string, unknown>;
+    delete settings['showExerciseCue'];
+    delete settings['showExerciseRest'];
+    mem.set(store.STATE_KEY, JSON.stringify(crudo));
+
+    const out = store.readState();
+    expect(out.settings.showExerciseCue).toBe(false);
+    expect(out.settings.showExerciseRest).toBe(false);
+    expect(out.version).toBe(store.STATE_VERSION);
+
+    store.setSettingsPath('showExerciseCue', true);
+    store.setSettingsPath('showExerciseRest', true);
+    expect(store.readState().settings).toMatchObject({
+      showExerciseCue: true,
+      showExerciseRest: true,
+    });
+    expect(store.exportState().settings).toMatchObject({
+      showExerciseCue: true,
+      showExerciseRest: true,
+    });
+  });
+
   it('withDefaults no deja que un __proto__ del estado contaminte Object.prototype', () => {
     const malicioso = JSON.parse(
       '{"__proto__":{"contaminado":true},"name":"Ana"}',

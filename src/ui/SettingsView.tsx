@@ -583,6 +583,18 @@ function SecEntreno() {
           value={st.showRpe}
           onChange={(v) => setSettingsPath('showRpe', v)}
         />
+        <SwitchRow
+          label="Consejo del ejercicio"
+          hint="Muestra la nota de la rutina y el consejo de técnica cuando están disponibles"
+          value={st.showExerciseCue}
+          onChange={(v) => setSettingsPath('showExerciseCue', v)}
+        />
+        <SwitchRow
+          label="Descanso por ejercicio"
+          hint="Muestra u oculta el descanso del ejercicio; se edita desde ⋯"
+          value={st.showExerciseRest}
+          onChange={(v) => setSettingsPath('showExerciseRest', v)}
+        />
       </div>
       <InfoCard>
         Cada ejercicio trae un descanso sugerido; puedes ajustarlo a mano en la sesión, en el editor

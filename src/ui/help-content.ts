@@ -328,8 +328,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'entreno',
     title: 'Descanso de cada ejercicio',
     paras: [
-      'El descanso de este ejercicio, en segundos. Lo tienes al lado del nombre: «descanso: 90 s · pulsa para cambiarlo».',
-      'Si lo dejas en 0, se usa el descanso que trae el ejercicio de fábrica.',
+      'El descanso asignado a este ejercicio, en segundos. Puedes cambiarlo desde el menú ⋯ del ejercicio.',
+      'Con 0 no se programa descanso; si el valor no está definido, se usa el descanso general. «Descanso por ejercicio» en Ajustes → Entreno solo muestra u oculta este dato durante la sesión; no cambia el temporizador.',
     ],
     see: ['opt.autoRest', 'glossary.rest'],
   },
@@ -349,7 +349,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'El descanso lo define cada ejercicio',
     paras: [
       'Cada ejercicio trae su propio descanso: más largo en los movimientos pesados y más corto en los aislamientos.',
-      'Puedes cambiarlo en el propio ejercicio, o dejar que lo ajuste el coach cuando prepara la sesión.',
+      'Puedes cambiarlo desde el menú ⋯ del ejercicio, o dejar que lo ajuste el coach cuando prepara la sesión. Un valor 0 significa que no hay descanso; si el valor falta, se usa el descanso general.',
     ],
     see: ['entreno.entryRest', 'opt.autoRest'],
   },

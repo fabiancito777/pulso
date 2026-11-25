@@ -20,6 +20,7 @@ import { groupLabel } from '@/domain/data';
 import { volumeOf } from '@/domain/analytics';
 import { fmtClock, fmtMmss, fmtN, fmtVol, inputNum } from '@/domain/format';
 import { num } from '@/domain/num';
+import { suggestPlateMode } from '@/domain/plates';
 import { restView } from '@/domain/rest';
 import { entryVolume, MAX_SETS, progress as sessionProgress } from '@/domain/session';
 import { supersetGroups } from '@/domain/supersets';
@@ -54,7 +55,7 @@ import {
   subRestSeconds,
   toggleSetAt,
 } from '@/state/session';
-import { exercises, settings as settingsSignal } from '@/state/store';
+import { equipment as equipmentSignal, exercises, settings as settingsSignal } from '@/state/store';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
@@ -251,7 +252,7 @@ export function SessionDock({
  * mueven y no se pierde el `ellipsis` en los demás.
  */
 function ExName({ name }: { name: string }) {
-  const box = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLSpanElement>(null);
   const text = useRef<HTMLSpanElement>(null);
   const [shift, setShift] = useState(0);
 
@@ -272,14 +273,14 @@ function ExName({ name }: { name: string }) {
 
   const duration = Math.max(3, Math.min(14, shift / 22));
   return (
-    <div
+    <span
       ref={box}
       class={`ex-name ex-name-scroll${shift ? ' marquee' : ''}`}
       title={name}
       style={shift ? `--marquee-shift:-${shift}px;--marquee-dur:${duration.toFixed(1)}s` : undefined}
     >
       <span ref={text}>{name}</span>
-    </div>
+    </span>
   );
 }
 
@@ -445,16 +446,47 @@ function EntryCard(props: {
   superset?: { letter: string; position: number; size: number };
   onPlates?: (index: number) => void;
   onComplete?: (index: number) => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  onResetFocus?: () => void;
 }) {
   const { entry: en, index: i, total, unit, onPlates } = props;
   const [notesOpen, setNotesOpen] = useState(false);
   const [restOpen, setRestOpen] = useState(false);
+  const [restDraft, setRestDraft] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const menuGroup = useRef<HTMLDivElement>(null);
+  const restInput = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const highlight = props.highlight === true;
   const ex = exercises.value.find((e) => e.id === en.exId);
   const doneSets = en.sets.filter((s) => s.done).length;
   const volume = entryVolume(en, unit);
   const showRpe = settingsSignal.value.showRpe;
+  const prefs = settingsSignal.value;
+  const showCue = prefs.showExerciseCue === true;
+  const showRest = prefs.showExerciseRest === true;
+  const restSec = en.restSec ?? prefs.restDefault;
+  const plateMode = suggestPlateMode(ex ?? { name: en.name }, {
+    saved: prefs.plateModes[en.exId],
+    hasAdjustableDumbbells: equipmentSignal.value.mancuernas_ajustables === true,
+    hasBarbell: equipmentSignal.value.barra_olimpica === true,
+  });
+  useEffect(() => {
+    if (restOpen) restInput.current?.focus();
+  }, [restOpen]);
+  useEffect(() => {
+    if (menuOpen) {
+      menuGroup.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    }
+  }, [menuOpen]);
+  useEffect(() => {
+    if (!props.collapsed) return;
+    setMenuOpen(false);
+    setNotesOpen(false);
+    setRestOpen(false);
+  }, [props.collapsed]);
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
@@ -487,50 +519,147 @@ function EntryCard(props: {
   }, [highlight]);
 
   return (
-    <div class={`ex-card${doneSets === en.sets.length ? ' done' : ''}`} ref={box}>
+    <div
+      class={`ex-card${doneSets === en.sets.length ? ' done' : ''}${props.collapsed ? ' collapsed' : ''}`}
+      ref={box}
+    >
       <div class="ex-head">
-        <div class="grow" style="min-width:0">
-          {props.superset ? (
-            <div class="ss-badge">
-              SS {props.superset.letter} · {props.superset.position}/{props.superset.size}
-            </div>
-          ) : null}
-          <ExName name={en.name} />
-          {ex?.tips ? <div class="tiny muted">{ex.tips}</div> : null}
-          <div class="ex-meta">
-            {ex ? `${groupLabel(ex.group)} · ${ex.type} · ` : ''}
-            {doneSets}/{en.sets.length} series{volume ? ` · ${fmtVol(volume)} kg` : ''}
-          </div>
-          {en.basis ? (
-            <div class="ex-meta" style="display:flex;gap:4px;align-items:center">
-              <Icon name="target" />
-              <span class="grow" style="min-width:0;overflow:hidden;text-overflow:ellipsis">
-                {en.basis}
+        <button
+          type="button"
+          class="ex-head-title"
+          aria-expanded={!props.collapsed}
+          onClick={() => props.onToggle?.()}
+        >
+          <span class="grow ex-head-copy" style="min-width:0">
+            {props.superset ? (
+              <span class="ss-badge">
+                SS {props.superset.letter} · {props.superset.position}/{props.superset.size}
               </span>
-            </div>
-          ) : null}
-        </div>
-        <button
-          class="icon-btn"
-          title="Subir"
-          disabled={i === 0}
-          onClick={() => moveExercise(i, -1)}
-        >
-          <Icon name="chev-u" />
+            ) : null}
+            <ExName name={en.name} />
+            {!props.collapsed ? (
+              <span class="ex-meta">
+                {ex ? `${groupLabel(ex.group)} · ${ex.type}` : null}
+                {`${ex ? ' · ' : ''}${doneSets}/${en.sets.length} series${volume ? ` · ${fmtVol(volume)} kg` : ''}`}
+              </span>
+            ) : null}
+            {!props.collapsed && en.basis ? (
+              <span class="ex-meta ex-basis">
+                <Icon name="target" />
+                <span class="grow ex-basis-text">{en.basis}</span>
+              </span>
+            ) : null}
+          </span>
+          <span class="ex-head-indicator">
+            {props.collapsed ? <Icon name="chev-d" /> : <Icon name="chev-u" />}
+          </span>
         </button>
-        <button
-          class="icon-btn"
-          title="Bajar"
-          disabled={i >= total - 1}
-          onClick={() => moveExercise(i, 1)}
-        >
-          <Icon name="chev-d" />
-        </button>
-        <button class="icon-btn" title="Quitar ejercicio" onClick={() => removeExercise(i)}>
-          <Icon name="trash" />
-        </button>
+        {!props.collapsed ? (
+          <button
+            ref={menuButton}
+            type="button"
+            class="icon-btn ex-menu-trigger"
+            aria-label={`Opciones de ${en.name}`}
+            aria-expanded={menuOpen}
+            title="Más opciones"
+            onClick={(event: Event) => {
+              event.stopPropagation();
+              setMenuOpen((open) => !open);
+            }}
+          >
+            ···
+          </button>
+        ) : (
+          <span class="ex-progress-label">
+            {doneSets}/{en.sets.length} series
+          </span>
+        )}
       </div>
-      <div class="ex-body">
+      {props.collapsed ? null : (
+        <div class="ex-body">
+        {menuOpen ? (
+          <div
+            class="ex-menu"
+            ref={menuGroup}
+            role="group"
+            aria-label={`Opciones de ${en.name}`}
+            onKeyDown={(event: KeyboardEvent) => {
+              if (event.key !== 'Escape') return;
+              event.preventDefault();
+              setMenuOpen(false);
+              menuButton.current?.focus();
+            }}
+          >
+            <button
+              type="button"
+              class="btn sm ghost"
+              disabled={i === 0}
+              onClick={() => {
+                moveExercise(i, -1);
+                props.onResetFocus?.();
+                setMenuOpen(false);
+              }}
+            >
+              <Icon name="chev-u" /> Subir
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              disabled={i >= total - 1}
+              onClick={() => {
+                moveExercise(i, 1);
+                props.onResetFocus?.();
+                setMenuOpen(false);
+              }}
+            >
+              <Icon name="chev-d" /> Bajar
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => {
+                setNotesOpen((open) => !open);
+                setMenuOpen(false);
+              }}
+            >
+              <Icon name="pencil" /> {notesOpen ? 'Cerrar nota' : 'Nota / consejo'}
+            </button>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={() => {
+                setRestDraft(en.restSec == null ? '' : String(en.restSec));
+                setRestOpen((open) => !open);
+                setMenuOpen(false);
+              }}
+            >
+              <Icon name="rest" />
+              {restOpen ? 'Cerrar descanso' : `Descanso · ${restSec ? `${restSec}s` : 'sin descanso'}`}
+            </button>
+            {plateMode === 'none' ? (
+              <button
+                type="button"
+                class="btn sm ghost"
+                onClick={() => {
+                  onPlates?.(i);
+                  setMenuOpen(false);
+                }}
+              >
+                <Icon name="plate" /> Discos
+              </button>
+            ) : null}
+            <button
+              type="button"
+              class="btn sm ghost danger"
+              onClick={() => {
+                removeExercise(i);
+                props.onResetFocus?.();
+              }}
+            >
+              <Icon name="trash" /> Quitar ejercicio
+            </button>
+          </div>
+        ) : null}
         <div class={`set-head${showRpe ? ' with-rpe' : ''}`}>
           <span>#</span>
           <span>peso ({unit})</span>
@@ -550,6 +679,20 @@ function EntryCard(props: {
             onDone={props.onComplete}
           />
         ) : null}
+        {showCue && (en.notes || ex?.tips) ? (
+          <div class="exercise-cues">
+            {en.notes ? (
+              <div class="set-hint exercise-cue">
+                <Icon name="info" /> {en.notes}
+              </div>
+            ) : null}
+            {ex?.tips && ex.tips !== en.notes ? (
+              <div class="set-hint exercise-cue">
+                <Icon name="info" /> {ex.tips}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {notesOpen ? (
           <input
             class="input sm mt-s"
@@ -560,10 +703,6 @@ function EntryCard(props: {
               setNotes(i, (event.currentTarget as HTMLInputElement).value)
             }
           />
-        ) : en.notes ? (
-          <div class="set-hint">
-            <Icon name="info" /> {en.notes}
-          </div>
         ) : null}
         <div class="prog-mini">
           <i style={`width:${((doneSets / (en.sets.length || 1)) * 100).toFixed(0)}%`} />
@@ -582,52 +721,67 @@ function EntryCard(props: {
             <Icon name="plus" />
             serie
           </button>
-          <button
-            class="btn sm quiet"
-            title="Qué discos cargan este peso"
-            onClick={() => onPlates?.(i)}
-          >
-            <Icon name="plate" />
-            discos
-          </button>
-          <HelpBtn id="entreno.platesBtn" title="Qué discos cargan este peso" />
-          <button class="btn sm quiet" onClick={() => setNotesOpen((open) => !open)}>
-            <Icon name="pencil" />
-            {notesOpen ? 'cerrar nota' : 'nota'}
-          </button>
+          {plateMode !== 'none' ? (
+            <button
+              class="btn sm quiet"
+              title="Qué discos cargan este peso"
+              onClick={() => onPlates?.(i)}
+            >
+              <Icon name="plate" />
+              discos
+            </button>
+          ) : null}
         </div>
-        <div class="row" style="gap:6px">
-          {restOpen ? (
+        {showRest ? (
+          <div class="set-hint exercise-rest">
+            <Icon name="rest" /> descanso: {restSec ? `${restSec}s` : 'sin descanso'}
+          </div>
+        ) : null}
+        {restOpen ? (
+          <div class="ex-rest-editor">
             <input
+              ref={restInput}
               class="input num sm mt-s"
               type="number"
               inputmode="numeric"
               min="0"
               step="5"
-              value={inputNum(en.restSec)}
+              value={restDraft}
               aria-label="descanso de este ejercicio, en segundos"
-              title="Descanso que arranca al marcar serie (0 = el ajuste general)"
-              onChange={(event: Event) => {
-                const raw = (event.currentTarget as HTMLInputElement).value.trim();
-                /* vacío = sin cambios (el valor se escribe al confirmar, no en cada tecla) */
-                if (raw === '') return;
-                setEntryRest(i, Math.max(0, num(raw)));
+              placeholder={`General (${prefs.restDefault}s)`}
+              title="Descanso al marcar una serie (0 = sin descanso; borrar el campo no cambia el valor)"
+              onInput={(event: Event) => {
+                setRestDraft((event.currentTarget as HTMLInputElement).value);
               }}
-              onBlur={() => setRestOpen(false)}
+              onKeyDown={(event: KeyboardEvent) => {
+                if (event.key === 'Enter' && restDraft.trim() !== '') {
+                  event.preventDefault();
+                  setEntryRest(i, Math.max(0, num(restDraft)));
+                  setRestOpen(false);
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setRestOpen(false);
+                }
+              }}
             />
-          ) : (
             <button
               type="button"
-              class="set-hint"
-              title="Pulsa para cambiar el descanso de este ejercicio"
-              onClick={() => setRestOpen(true)}
+              class="btn sm primary"
+              disabled={restDraft.trim() === ''}
+              onClick={() => {
+                setEntryRest(i, Math.max(0, num(restDraft)));
+                setRestOpen(false);
+              }}
             >
-              <Icon name="rest" /> descanso: {en.restSec}s · pulsa para cambiarlo
+              Guardar
             </button>
-          )}
-          <HelpBtn id="entreno.entryRest" title="Descanso de cada ejercicio" />
+            <button type="button" class="btn sm ghost" onClick={() => setRestOpen(false)}>
+              Cancelar
+            </button>
+          </div>
+        ) : null}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -645,7 +799,14 @@ function EntryList(props: {
   onPlates: (index: number) => void;
   onComplete: (index: number) => void;
 }) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  useEffect(() => setExpanded(null), [props.session.id]);
+  useEffect(() => {
+    if (props.highlight !== null) setExpanded(props.highlight);
+  }, [props.highlight]);
   const entries = props.session.entries;
+  const autoFocus = Math.max(0, entries.findIndex((entry) => entry.sets.some((set) => !set.done)));
+  const expandedIndex = expanded === null ? autoFocus : expanded;
   const groups = supersetGroups(entries);
   const byIndex = new Map<number, SupersetGroup>();
   for (const group of groups) for (const idx of group.indices) byIndex.set(idx, group);
@@ -671,10 +832,19 @@ function EntryList(props: {
         unit={props.session.unit}
         highlight={props.highlight === i}
         superset={
-          group ? { letter: group.letter, position: group.indices.indexOf(i) + 1, size: group.indices.length } : undefined
+          group
+            ? {
+                letter: group.letter,
+                position: group.indices.indexOf(i) + 1,
+                size: group.indices.length,
+              }
+            : undefined
         }
         onPlates={props.onPlates}
         onComplete={props.onComplete}
+        collapsed={expandedIndex !== i}
+        onToggle={() => setExpanded(expandedIndex === i ? -1 : i)}
+        onResetFocus={() => setExpanded(null)}
       />
     );
   };

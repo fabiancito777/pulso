@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
   keepAwake: true,
   increment: 2.5,
   showRpe: false,
+  showExerciseCue: false,
+  showExerciseRest: false,
   countdownTick: true,
   plates: [...PLATES_DEFAULT],
   bars: { ...BARS_DEFAULT },

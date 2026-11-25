@@ -153,6 +153,10 @@ export interface Settings {
   keepAwake: boolean;
   increment: number;
   showRpe: boolean;
+  /** Mostrar el consejo breve del ejercicio durante la sesión activa. */
+  showExerciseCue: boolean;
+  /** Mostrar el descanso configurado para cada ejercicio durante la sesión. */
+  showExerciseRest: boolean;
   countdownTick: boolean;
   plates: PlateStock[];
   bars: BarWeights;
