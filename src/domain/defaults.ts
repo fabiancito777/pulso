@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showRpe: false,
   showExerciseCue: false,
   showExerciseRest: false,
+  simpleWorkoutMode: false,
   countdownTick: true,
   plates: [...PLATES_DEFAULT],
   bars: { ...BARS_DEFAULT },

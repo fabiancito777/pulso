@@ -6,7 +6,7 @@ y **todo funciona sin key** (el planificador local cubre sugerencias y plan sema
 
 **Web**: <https://fabiancito777.github.io/pulso/> (publicada por Actions desde `main`).
 
-> El contexto completo de esta app (comandos, convenciones, arquitectura) está en **`AGENTS.md`**.
+> Las convenciones, la arquitectura y el flujo de entrega están en [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -53,16 +53,20 @@ pantalla completa y funciona offline).
 
 ### Hoy / Entrenar
 - Sesión activa con **marcado de series** (peso × reps × check), añadir/quitar series y ejercicios,
-  reordenar, notas por ejercicio y cronómetro total de la sesión.
-- **Timer de descanso integrado en la sesión**: al marcar una serie, el propio **recuadro de sesión en
-  curso** se convierte en la cuenta atrás (anillo + tiempo + ejercicio + `−15 s / +15 s / Saltar`); al
-  terminar vuelve a mostrar el progreso de la sesión. Si navegas a otra pestaña queda como barra flotante
-  compacta. El cómputo es por timestamp, así que la cuenta atrás es correcta aunque la pestaña quede en
-  segundo plano o el móvil se bloquee.
-- **El recuadro de descanso se queda pegado** bajo la barra superior mientras dura: con una rutina larga
-  puedes estar en el último ejercicio y seguir viendo el tiempo. Un botón en el propio recuadro
-  (**Resumen / Descanso**) alterna entre la cuenta atrás y el resumen de la sesión (tiempo, volumen y
-  series hechas); en la vista de resumen el descanso queda como una línea compacta.
+  reordenar y ver el cronómetro de la sesión. Puedes plegar cada ejercicio para ver solo su avance.
+- **Modo súper simple** (*Ajustes → Entreno*). Muestra la sesión activa en negro y lima, con **Finalizar**
+  arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
+  Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
+  apagado de fábrica. En la vista habitual puedes editar el RPE y borrar series.
+- **Consejo del ejercicio y nota personal**. Abre **Ver consejo** para consultar la indicación de la
+  rutina o de la biblioteca. En modo súper simple está en `⋯`, junto a **Nota personal**, donde puedes
+  guardar cómo te sentiste. En *Ajustes → Entreno* puedes dejar visibles el consejo y el descanso
+  configurado para cada ejercicio.
+- **Temporizador de descanso**. En la vista habitual, **Resumen / Descanso** alterna entre el progreso
+  y la cuenta atrás, con `−15 s`, `+15 s` y **Saltar**. En el modo súper simple, el resumen sigue
+  visible y el descanso tiene su propia fila con `+15 s` y **Saltar**. Puedes seguir viendo la cuenta
+  al desplazarte o cambiar de pestaña. El temporizador calcula el tiempo restante a partir de la hora
+  de fin, incluso al volver del segundo plano o desbloquear el móvil.
 - **El descanso solo arranca cuando tiene sentido**: no salta al marcar la **última** serie de un
   ejercicio (no hay nada entre medias), pero **sí** al terminarlo si te queda otro por hacer —y entonces
   el aviso nombra el **siguiente ejercicio**, que es cuando de verdad cambias de máquina—. En la última
@@ -72,10 +76,9 @@ pantalla completa y funciona offline).
 - **Editar una serie se aplica hacia abajo**: cambiar el peso (o las reps) de la serie 2 lo copia a las
   siguientes de ese ejercicio; nunca a las de arriba ni a las ya marcadas (esas ya se hicieron). Así no
   repites el mismo peso cuatro veces.
-- **Descanso editable**: cada ejercicio de la biblioteca trae un tiempo sugerido (compuestos grandes
-  ~180-240 s, auxiliares ~90-120 s, aislamientos ~60-75 s) que el coach IA puede ajustar, pero puedes
-  cambiarlo **por ejercicio durante la sesión**, en el editor de rutinas y al crear/editar ejercicios
-  propios.
+- **Descanso editable**. Puedes cambiarlo en `⋯` durante la sesión, en el editor de rutinas y al
+  crear o editar ejercicios propios. Un valor de `0` desactiva el descanso de ese ejercicio. Si no
+  tiene un tiempo asignado, se usa el descanso general.
 - **Aviso de fin aunque no estés mirando la app**: al terminar suena el pitido, vibra y lanza una
   **notificación del sistema**; con la app en segundo plano la lanza el *service worker*
   (`public/sw.js`), y con el
@@ -88,8 +91,8 @@ pantalla completa y funciona offline).
 - **Autollenado progresivo**: cada serie se rellena con el peso sugerido a partir de tu última sesión
   del mismo ejercicio (fórmula de Epley) + tu incremento configurado. Si no tienes historial el campo
   queda **vacío** (no en 0), así que un ejercicio a peso corporal no parece pesar 0 kg.
-- **RPE por serie opcional** (Ajustes → Entreno): añade una tercera columna para apuntar el esfuerzo de
-  cada serie (1-10); se guarda con la sesión y aparece en el detalle.
+- **RPE por serie opcional** (*Ajustes → Entreno*). Añade una columna en la vista habitual para
+  apuntar el esfuerzo de cada serie (1-10). Se guarda con la sesión y aparece en el detalle.
 - **Calculadora de discos** integrada (y como herramienta suelta) con **modo de carga**: barra, **1
   mancuerna** (unilateral) o **2 mancuernas** cargables. El mismo inventario no rinde igual en cada caso
   (dos mancuernas necesitan el doble de discos para el mismo peso), así que calcula discos **por lado o
@@ -127,8 +130,8 @@ pantalla completa y funciona offline).
   (`auto|minimal|low|medium|high|xhigh`), mostrar u ocultar el resumen de razonamiento
   (`includeThoughts`), máximo de tokens y system prompt. No hay `temperature` ni `thinkingBudget`:
   Gemini 3 las ignora o no las usa. Hydrogen convierte `minimal` en `low` porque rechaza ese nivel.
-- **Espera máxima de respuesta**, automática según el thinking (60/120/240 s) o fijada a mano en
-  segundos; mientras se espera la app dice cuánto lleva y deja cancelar sin cortar la app.
+- **Espera máxima de respuesta**. Se calcula según el nivel de pensamiento o se puede fijar en
+  segundos. Mientras espera, la app muestra cuánto tiempo ha pasado y permite cancelar.
 - Botón de prueba de conexión con diagnóstico de errores.
 - **Todo funciona sin IA**: el planificador local cubre sugerencias y plan semanal sin key.
 
@@ -155,7 +158,8 @@ pantalla completa y funciona offline).
 - **Perfil**: nombre, nivel, objetivo (hipertrofia, fuerza, perder grasa, salud), días/semana, unidades kg/lb.
 - **Apariencia**: tema **AMOLED (negro puro #000)**, oscuro o claro; 10 acentos de color; sonido y volumen;
   vibración; notificaciones; mantener pantalla encendida durante la sesión.
-- **Entreno**: descanso automático (tiempo definido por ejercicio/plantilla o por el coach IA), incremento de progresión, RPE, etc.
+- **Entreno**. Descanso automático, incremento de progresión, RPE, visibilidad del consejo y del
+  descanso por ejercicio, y modo súper simple.
 - **Equipo**: 49 piezas en 6 categorías (barras, mancuernas, estructuras, máquinas, bancos, accesorios,
   cardio) con presets: casa básica, gimnasio completo, todo, solo peso corporal.
 - **Discos**: inventario editable (medida × **discos** × disponible; se cuenta en unidades sueltas y se
@@ -174,9 +178,10 @@ pantalla completa y funciona offline).
 
 ## Privacidad y datos
 
-- Sesiones, rutinas, ajustes, inventario y la API key se guardan **solo en `localStorage` de tu navegador**.
-- No hay backend propio ni analítica. La única salida de red es la llamada al endpoint de Gemini
-  (`generativelanguage.googleapis.com`) cuando usas el coach, con la key que tú pegas.
+- Los datos se guardan en `localStorage`. Si vinculas otro dispositivo, Pulso sincroniza una copia
+  cifrada mediante el Worker. La API key se excluye de la sincronización.
+- Cuando usas el coach en línea, Pulso envía el contexto descrito abajo a Gemini con tu API key.
+  Las notas personales nuevas por ejercicio se guardan aparte, fuera de ese contexto.
 - Exporta una copia desde *Ajustes → Datos* de vez en cuando: borrar los datos del navegador borra la app.
 
 ## Modelos y thinking
@@ -234,7 +239,7 @@ src/domain/             · NÚCLEO PURO (sin DOM ni estado): discos, analítica,
 src/state/              · estado + persistencia (store, sesión activa, coach, chat)
 src/features/coach/     · cerebro del coach: contexto, memoria, historial, prompts,
                           parseo, cliente Gemini y planificador local
-src/ui/                 · componentes y vistas Preact (Hoy, Entrenar, Rutinas,
+src/ui/                 · componentes y vistas Preact (Hoy, Rutinas,
                           Calendario, Coach, Progreso, Ajustes, Onboarding)
 src/platform/           · lo que toca el navegador (audio, keep-alive, SW, notify, theme)
 src/styles/             · base.css (hoja base) + v2.css y estilos por vista
@@ -253,7 +258,7 @@ fuera de sí mismo, así que se prueba sin navegador.
 | `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
 | `npm run typecheck` | `tsc --noEmit` con `strict`. |
 | `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest offline (dominio, estado y UI; **1182 tests**). |
+| `npm run test` | Vitest offline para dominio, estado y UI. |
 | `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
 | `npm run format` | Prettier sobre el proyecto. |
 
@@ -261,6 +266,8 @@ fuera de sí mismo, así que se prueba sin navegador.
 
 ## Notas de desarrollo
 
+- **Entrega**. Ejecuta `npm run verify`, crea el commit y haz push a la rama remota correspondiente.
+  GitHub Actions despliega Pages con los pushes a `main`.
 - **Tests**: viven en `src/**/*.test.ts` (Vitest), sin navegador; los flujos de modal y timer
   que no se pueden probar así se verifican con Playwright.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y

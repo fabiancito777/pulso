@@ -157,6 +157,8 @@ export interface Settings {
   showExerciseCue: boolean;
   /** Mostrar el descanso configurado para cada ejercicio durante la sesión. */
   showExerciseRest: boolean;
+  /** Simplificar la presentación de la sesión activa. */
+  simpleWorkoutMode: boolean;
   countdownTick: boolean;
   plates: PlateStock[];
   bars: BarWeights;

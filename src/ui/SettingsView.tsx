@@ -595,6 +595,12 @@ function SecEntreno() {
           value={st.showExerciseRest}
           onChange={(v) => setSettingsPath('showExerciseRest', v)}
         />
+        <SwitchRow
+          label="Modo súper simple"
+          hint="Cambia la presentación de la sesión activa para mostrar solo lo esencial"
+          value={st.simpleWorkoutMode}
+          onChange={(v) => setSettingsPath('simpleWorkoutMode', v)}
+        />
       </div>
       <InfoCard>
         Cada ejercicio trae un descanso sugerido; puedes ajustarlo a mano en la sesión, en el editor

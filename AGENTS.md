@@ -4,8 +4,7 @@ Contexto para trabajar en esta app. Si el hilo se alarga o se pierde el contexto
 primero**: aquí está lo vital (stack, comandos, arquitectura, convenciones y las decisiones que no
 se deben "arreglar" sin querer).
 
-> Última actualización: 7-nov-2026 · reescrito para la v2 real (Vite + Preact). El anterior describía
-> la app vanilla de `js/*.js`, que ya no existe en el repo.
+> Última actualización: 24-nov-2026 · flujo de entrega y modo súper simple de la sesión activa.
 
 ---
 
@@ -51,8 +50,17 @@ npm run verify     # typecheck + lint + test + build
   bloqueado o instalación de la PWA, **mirarlo en el navegador**: eso no lo cubren los tests.
 - Antes de dar algo por bueno: `npm run verify`.
 
-> Estado de referencia (19-nov-2026): 59 archivos de test, 1182 comprobaciones, todas en verde;
-> `typecheck` y `lint` limpios.
+> Estado de referencia (24-nov-2026): `npm run verify` pasó con 59 archivos y 1186 pruebas.
+
+**Entrega de cambios**
+
+- Cierra cada tarea que modifique el repositorio con un commit y un push a la rama remota
+  correspondiente, salvo que el usuario indique otra cosa. Ejecuta `npm run verify` antes del commit,
+  incluye solo los archivos de la tarea y comprueba después que la rama local y su upstream coinciden.
+  El push a `main` activa el despliegue de GitHub Pages.
+- Para cambios de código, el usuario prefiere que los implementen subagentes GPT‑6 Luna con esfuerzo
+  alto y que otro Luna revise los flujos. El agente principal coordina, revisa el código y las
+  regresiones, y se encarga del commit y el push. Indica qué flujos se pudieron probar en navegador.
 
 ---
 
@@ -68,7 +76,7 @@ src/domain/           · núcleo PURO (sin DOM ni signals): discos, analítica, 
 src/features/coach/   · contexto, memoria, historial, prompts, parseo tolerante, esquemas,
                         cliente Gemini, generador de ejercicios y planificador local
 src/state/            · signals + persistencia: store, sesión activa, chat, coach, perfiles, sync
-src/ui/               · vistas y componentes Preact (Hoy, Entrenar, Rutinas, Calendario, Coach,
+src/ui/               · vistas y componentes Preact (Hoy, Rutinas, Calendario, Coach,
                         Progreso, Ajustes, Onboarding) + kit, Modal, toast, gráficos, iconos
 src/platform/         · lo que toca el navegador: audio, keep-alive, wake lock, SW, notify,
                         clipboard, files, theme, install, cripto de sync
@@ -102,8 +110,9 @@ router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashcha
 - **Perfiles**: cada perfil tiene su clave (`pulso.state` para el principal, `pulso.state.<id>` para
   el resto; también `pulso.rest` y las claves de siembra). Usa `currentStateKey()`/`currentRestKey()`
   en vez de componer claves a mano. La **API key del coach se comparte** entre perfiles.
-- **Persistencia**: el estado se escribe con debounce; el descanso va en su propia clave
-  (`pulso.rest`) porque cambia cada segundo y no merece reescribir todo.
+- **Persistencia**. Los setters escriben el estado local. El descanso guarda su timestamp en su
+  propia clave (`pulso.rest` en el perfil principal) y la subida por sincronización se agrupa con
+  un debounce de 8 s.
 - **Fechas**: ISO local `YYYY-MM-DD` con `src/domain/dates.ts` (`today()`, `addDays()`, `diffDays()`).
   Nunca `toISOString().slice(0, 10)` para fechas de calendario (desfase por zona horaria).
 - **Números en inputs**: `fmtN()` da coma decimal y **no sirve para `value` de
@@ -126,9 +135,9 @@ router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashcha
 - **CSS**: `base.css` es la base y los componentes compartidos; `v2.css` y las hojas por vista
   añaden lo suyo. Evita duplicar reglas: el proyecto arrastró durante meses restos de la v1
   (`.nav*`, `.restbar*`, `.chart-wrap`…) que se limpiaron el 3-nov-2026.
-- **Nav**: la barra es `v2-tabs`, un **carril horizontal con scroll** (`overflow-x:auto`) que centra
-  la pestaña activa y difumina el borde cuando queda contenido fuera. No es una barra fija: no la
-  "arregles" recortando pestañas.
+- **Nav**: `v2-tabs` es un **carril horizontal con scroll** (`overflow-x:auto`) que centra la pestaña
+  activa y difumina el borde cuando queda contenido fuera. En modo súper simple se oculta únicamente
+  mientras hay una sesión activa en Hoy. En las demás vistas debe seguir accesible por desplazamiento.
 
 ---
 
@@ -136,7 +145,7 @@ router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashcha
 
 ### Sesión activa
 `sessions` guarda lo terminado; `active` la sesión en curso (entradas con `sets` → `weight/reps/done`,
-más `basis`, `notes`, `restSec`, supersets). Al empezar se prellena con `suggestWeight()`
+más `basis`, `cue`, `notes`, `restSec` y supersets). Al empezar se prellena con `suggestWeight()`
 (Epley + incremento); **sin historial el peso queda vacío**, no 0. Al terminar se guardan solo las
 series marcadas, se calcula el RPE medio y el día queda `done` en el calendario.
 
@@ -146,8 +155,19 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
 - **`basis`**: cada entrada lleva de dónde sale el peso («última vez 60 kg × 8 · hace 3 días»,
   «repetición de 21 sep 2026», «sin historial»). Se muestra bajo el nombre del ejercicio: **el dato
   ya está en pantalla**, no lo dupliques en otro sitio.
-- Supersets: ejercicios consecutivos con `ssId`; la insignia «SS A · 1/2» y el descanso corto del
+- Supersets: ejercicios consecutivos con el mismo `superset`. La insignia «SS A · 1/2» y el descanso corto del
   primero marcan la transición.
+- **Modo súper simple** (`settings.simpleWorkoutMode`, apagado de fábrica): Ajustes → Entreno lo
+  guarda por perfil. `App.tsx` aplica la vista focal cuando hay sesión activa en Hoy y `SessionCard.tsx`
+  reutiliza la tabla, el progreso y las acciones de sesión. La cabecera **Pulso** abre Ajustes → Entreno
+  sin finalizar. Volver a Hoy conserva la sesión. El temporizador libre mantiene su vista habitual.
+- **Consejo y nota personal**: la prescripción guarda el texto en `RoutineItem.notes` y lo copia a
+  `ActiveEntry.cue`. `ActiveEntry.notes` es la nota personal y termina en `SessionEntry.personalNote`,
+  fuera del contexto del coach. Al repetir se usa el consejo del ejercicio o la copia del plan guardada
+  en la sesión. `normalizeActiveSession()` recupera el consejo antiguo cuando puede identificarlo y
+  conserva como nota el texto ambiguo. Los interruptores `showExerciseCue` y `showExerciseRest` solo
+  controlan qué se muestra en la tarjeta. El menú `⋯` del modo súper simple permite consultar el
+  consejo y editar el descanso. En la vista habitual, el consejo tiene su propio acceso en la tarjeta.
 
 ### Timer de descanso
 `src/domain/rest.ts` calcula **por timestamp** (`endsAt - now`), no acumulando: sigue siendo correcto
@@ -155,8 +175,8 @@ con la pestaña en segundo plano o el móvil bloqueado. Se espeja en `pulso.rest
 - Arranca al marcar una serie **si queda algo por hacer**: series pendientes del ejercicio, o el
   siguiente ejercicio si acabas de cerrar el actual (ahí el aviso lo nombra).
 - Desmarcar una serie lo cancela; `+15 s` con el descanso terminado abre una cuenta nueva.
-- Se pinta dentro del recuadro de sesión (y como barra compacta en otras pestañas); el recuadro es
-  `position: sticky` bajo la appbar.
+- En la vista habitual se pinta en el recuadro de sesión o en la barra compacta al desplazarse o
+  cambiar de pestaña. En modo súper simple se pinta como una fila `sticky` independiente del resumen.
 - **Aviso con el móvil bloqueado (requisito frágil)**: pitido largo (~3,5 s) + vibración +
   notificación del sistema. Tres capas: audio de silencio en bucle + `mediaSession` (`keepAlive`),
   wake lock que se refresca al volver a la app, y notificación **programada en el service worker**
@@ -173,13 +193,13 @@ permitida, historial serie a serie, días desde el último estímulo, récords, 
 semanal), `prompts.ts` arma la petición, `parse.ts` tolera JSON envuelto, `local.ts` es el
 planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
 
-- **Modelos**: solo dos, en `AI_MODELS` (`src/domain/catalog.ts`): `gemini-3.8-flash` (por defecto)
-  y `gemini-3.5-flash-lite`. No hay descubrimiento de modelos por API; un `model` guardado que ya no
-  esté en la lista se resetea al de fábrica en la migración del estado.
-- **Sin `temperature`**: Gemini 3.6+ la ignora en `generateContent`, así que el ajuste se retiró del
-  estado y de la UI (la migración v4 lo borra del `localStorage`).
-- **`thinkingConfig`**: solo `thinkingLevel` (`auto`/`low`/`high`); `thinkingBudget` es de 2.5 y no
-  se usa. La espera máxima se ajusta al nivel (60/120/240 s) y se puede cancelar.
+- **Modelos** en `AI_MODELS` (`src/domain/catalog.ts`). `gemini-4-hydrogen` es el predeterminado
+  desde la migración v5. `gemini-3.8-flash` y `gemini-3.5-flash-lite` están disponibles como respaldo.
+  El selector usa ese catálogo local.
+- **`thinkingConfig`** admite `thinkingLevel` (`auto`, `minimal`, `low`, `medium`, `high`, `xhigh`)
+  e `includeThoughts`. `client.ts` adapta `minimal` a `low` en Hydrogen. La espera automática depende
+  del nivel, se puede configurar en segundos y admite cancelación. La migración v4
+  retiró `temperature` y `thinkingBudget` del estado.
 - **Validación de la salida**: lo que devuelve el modelo NO se guarda a ciegas. `domain/prescription.ts`
   (`sanitizePrescription`) acota series/reps/descanso/peso antes de crear rutinas o días, y se comparte
   con el planificador local; la UI usa la misma función (`ui/routines-helpers.ts`).
@@ -223,3 +243,4 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 3-nov-2026 | `main.tsx`: se filtran los avisos benignos de `ResizeObserver` y los errores se muestran en lenguaje humano. | La app se acusaba a sí misma con un mensaje interno en inglés al abrir Ajustes y Coach. |
 | 3-nov-2026 | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso. | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`. |
 | 7-nov-2026 | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso. |
+| 24-nov-2026 | Modo súper simple por perfil y separación entre consejo y nota personal. Se documenta la entrega con commit y push. | Reduce los controles durante la sesión y preserva las notas personales al guardar. |

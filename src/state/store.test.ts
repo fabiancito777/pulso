@@ -1028,22 +1028,27 @@ describe('migración v4/v5 de ai', () => {
     const settings = crudo.settings as Record<string, unknown>;
     delete settings['showExerciseCue'];
     delete settings['showExerciseRest'];
+    delete settings['simpleWorkoutMode'];
     mem.set(store.STATE_KEY, JSON.stringify(crudo));
 
     const out = store.readState();
     expect(out.settings.showExerciseCue).toBe(false);
     expect(out.settings.showExerciseRest).toBe(false);
+    expect(out.settings.simpleWorkoutMode).toBe(false);
     expect(out.version).toBe(store.STATE_VERSION);
 
     store.setSettingsPath('showExerciseCue', true);
     store.setSettingsPath('showExerciseRest', true);
+    store.setSettingsPath('simpleWorkoutMode', true);
     expect(store.readState().settings).toMatchObject({
       showExerciseCue: true,
       showExerciseRest: true,
+      simpleWorkoutMode: true,
     });
     expect(store.exportState().settings).toMatchObject({
       showExerciseCue: true,
       showExerciseRest: true,
+      simpleWorkoutMode: true,
     });
   });
 

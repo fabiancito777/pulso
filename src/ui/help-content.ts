@@ -673,7 +673,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Mostrar RPE',
     paras: [
       'El RPE es cuánto te costó la serie, del 1 al 10: 7 significa que aún podías hacer dos repeticiones y 10 que fuiste al fallo.',
-      'Al activarlo aparece una columna más en cada serie. Se guarda y se promedia, pero no cambia ningún cálculo.',
+      'En la vista habitual, al activarlo aparece una columna más en cada serie. El Modo súper simple la oculta; para volver a verla, apágalo en Ajustes → Entreno. El RPE se guarda y se promedia, pero no cambia ningún cálculo.',
     ],
     see: ['glossary.rpe', 'entreno.drag'],
   },

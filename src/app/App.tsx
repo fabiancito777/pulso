@@ -11,7 +11,14 @@ import { today } from '@/domain/dates';
 import { fmtClock } from '@/domain/format';
 import { progress as sessionProgress } from '@/domain/session';
 import { applyTheme } from '@/platform/theme';
-import { active, lastFinished, rest, sessionSeconds, startFromPlan, startLoop } from '@/state/session';
+import {
+  active,
+  lastFinished,
+  rest,
+  sessionSeconds,
+  startFromPlan,
+  startLoop,
+} from '@/state/session';
 import { startSyncAuto } from '@/state/sync';
 import { activeProfile, profileInitial } from '@/state/profiles';
 import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
@@ -225,6 +232,7 @@ export function App() {
   const sub = tabSub(current.key);
   const streak = totals(sessions.value).streak;
   const session = active.value;
+  const focusedWorkout = Boolean(session && s.simpleWorkoutMode && current.key === 'hoy');
   const prog = session ? sessionProgress(session) : null;
   const { showSession, floatingDock } = sessionDockMode(
     current.key,
@@ -281,7 +289,7 @@ export function App() {
   }, []);
 
   return (
-    <div class="v2-shell">
+    <div class={`v2-shell${focusedWorkout ? ' simple-workout-shell' : ''}`}>
       <header class="v2-bar" ref={bar}>
         <div class="v2-brand">
           <b>Pulso</b>
@@ -325,7 +333,7 @@ export function App() {
       </header>
 
       <main class="v2-main">
-        {sub ? <div class="v2-sub">{sub}</div> : null}
+        {!focusedWorkout && sub ? <div class="v2-sub">{sub}</div> : null}
 
         {!storageAvailable ? (
           <div class="card tight">
@@ -337,7 +345,7 @@ export function App() {
 
         {showSession ? <SessionCard /> : null}
 
-        <CurrentView tab={current} />
+        {!focusedWorkout ? <CurrentView tab={current} /> : null}
 
         {floatingDock ? (
           rest.value.running ? (
@@ -355,7 +363,7 @@ export function App() {
         ) : null}
       </main>
 
-      <BottomNav current={current.key} />
+      {!focusedWorkout ? <BottomNav current={current.key} /> : null}
 
       <FinishedSheet />
 

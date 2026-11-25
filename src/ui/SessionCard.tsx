@@ -24,6 +24,7 @@ import { suggestPlateMode } from '@/domain/plates';
 import { restView } from '@/domain/rest';
 import { entryVolume, MAX_SETS, progress as sessionProgress } from '@/domain/session';
 import { supersetGroups } from '@/domain/supersets';
+import { go } from '@/app/router';
 import type { SupersetGroup } from '@/domain/supersets';
 import type { ActiveEntry, ActiveSession, Unit } from '@/domain/types';
 import {
@@ -176,6 +177,24 @@ function RestStrip() {
   );
 }
 
+/** Descanso en una fila para la pantalla de sesión focal. */
+function SimpleRest() {
+  const left = restSeconds.value;
+  const info = restView(rest.value, Date.now());
+  return (
+    <div class={`simple-rest${info.over ? ' done' : ''}`}>
+      <b>Descanso</b>
+      <strong class="num">{fmtMmss(left).padStart(5, '0')}</strong>
+      <button type="button" class="btn sm" onClick={() => addRestSeconds(15)}>
+        +15 s
+      </button>
+      <button type="button" class="btn sm" onClick={stopRestTimer}>
+        {info.over ? 'Seguir' : 'Saltar'}
+      </button>
+    </div>
+  );
+}
+
 /**
  * Descanso acoplado al pie: la versión reducida de `RestBox` para cuando la
  * tarjeta grande ya no está a la vista. Solo lo esencial: tiempo, ±15 s y
@@ -277,7 +296,9 @@ function ExName({ name }: { name: string }) {
       ref={box}
       class={`ex-name ex-name-scroll${shift ? ' marquee' : ''}`}
       title={name}
-      style={shift ? `--marquee-shift:-${shift}px;--marquee-dur:${duration.toFixed(1)}s` : undefined}
+      style={
+        shift ? `--marquee-shift:-${shift}px;--marquee-dur:${duration.toFixed(1)}s` : undefined
+      }
     >
       <span ref={text}>{name}</span>
     </span>
@@ -291,14 +312,18 @@ function SetRow(props: {
   unit: Unit;
   /** todas las series hechas: el «×» de borrar deja sitio a «Completar» */
   locked?: boolean;
+  simple?: boolean;
+  last?: boolean;
 }) {
-  const { entry, entryIndex: i, setIndex: j, unit, locked } = props;
+  const { entry, entryIndex: i, setIndex: j, unit, locked, simple } = props;
   const set = entry.sets[j];
   if (!set) return null;
   const showRpe = settingsSignal.value.showRpe;
   const readValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
   return (
-    <div class={`set-row${set.done ? ' done' : ''}${showRpe ? ' with-rpe' : ''}`}>
+    <div
+      class={`set-row${set.done ? ' done' : ''}${showRpe && !simple ? ' with-rpe' : ''}${simple ? ` simple-set-row${props.last ? ' last' : ''}` : ''}`}
+    >
       <span class="set-idx">{j + 1}</span>
       <input
         class="input num"
@@ -327,7 +352,7 @@ function SetRow(props: {
         }}
         aria-label={`repeticiones serie ${j + 1}`}
       />
-      {showRpe ? (
+      {showRpe && !simple ? (
         <input
           class="input num"
           type="number"
@@ -353,7 +378,7 @@ function SetRow(props: {
       >
         <Icon name="check" />
       </button>
-      {entry.sets.length > 1 && !locked ? (
+      {entry.sets.length > 1 && !locked && !simple ? (
         <button
           type="button"
           class="icon-btn"
@@ -449,6 +474,7 @@ function EntryCard(props: {
   collapsed?: boolean;
   onToggle?: () => void;
   onResetFocus?: () => void;
+  simple?: boolean;
 }) {
   const { entry: en, index: i, total, unit, onPlates } = props;
   const [notesOpen, setNotesOpen] = useState(false);
@@ -538,7 +564,7 @@ function EntryCard(props: {
 
   return (
     <div
-      class={`ex-card${doneSets === en.sets.length ? ' done' : ''}${props.collapsed ? ' collapsed' : ''}`}
+      class={`ex-card${doneSets === en.sets.length ? ' done' : ''}${props.collapsed ? ' collapsed' : ''}${props.simple ? ' simple-ex-card' : ''}`}
       ref={box}
     >
       <div class="ex-head">
@@ -555,7 +581,12 @@ function EntryCard(props: {
               </span>
             ) : null}
             <ExName name={en.name} />
-            {!props.collapsed ? (
+            {props.simple && props.collapsed ? (
+              <span class="simple-collapsed-meta">
+                {doneSets} de {en.sets.length} series
+              </span>
+            ) : null}
+            {!props.collapsed && !props.simple ? (
               <span class="ex-meta">
                 {ex ? `${groupLabel(ex.group)} · ${ex.type}` : null}
                 {`${ex ? ' · ' : ''}${doneSets}/${en.sets.length} series${volume ? ` · ${fmtVol(volume)} kg` : ''}`}
@@ -569,7 +600,11 @@ function EntryCard(props: {
             ) : null}
           </span>
           <span class="ex-head-indicator">
-            {props.collapsed ? <Icon name="chev-d" /> : <Icon name="chev-u" />}
+            {props.collapsed ? (
+              <Icon name="chev-d" />
+            ) : props.simple ? null : (
+              <Icon name="chev-u" />
+            )}
           </span>
         </button>
         {!props.collapsed ? (
@@ -587,264 +622,321 @@ function EntryCard(props: {
           >
             ···
           </button>
-        ) : (
+        ) : !props.simple ? (
           <span class="ex-progress-label">
             {doneSets}/{en.sets.length} series
           </span>
-        )}
+        ) : null}
       </div>
       {props.collapsed ? null : (
         <div class="ex-body">
-        {menuOpen ? (
-          <div
-            class="ex-menu"
-            ref={menuGroup}
-            role="group"
-            aria-label={`Opciones de ${en.name}`}
-            onKeyDown={(event: KeyboardEvent) => {
-              if (event.key !== 'Escape') return;
-              event.preventDefault();
-              setMenuOpen(false);
-              menuButton.current?.focus();
-            }}
-          >
-            <button
-              type="button"
-              class="btn sm ghost"
-              disabled={i === 0}
-              onClick={() => {
-                moveExercise(i, -1);
-                props.onResetFocus?.();
+          {menuOpen ? (
+            <div
+              class="ex-menu"
+              ref={menuGroup}
+              role="group"
+              aria-label={`Opciones de ${en.name}`}
+              onKeyDown={(event: KeyboardEvent) => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
                 setMenuOpen(false);
+                menuButton.current?.focus();
               }}
             >
-              <Icon name="chev-u" /> Subir
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              disabled={i >= total - 1}
-              onClick={() => {
-                moveExercise(i, 1);
-                props.onResetFocus?.();
-                setMenuOpen(false);
-              }}
-            >
-              <Icon name="chev-d" /> Bajar
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => {
-                if (notesOpen) {
-                  cancelNotes();
-                } else {
-                  setNotesDraft(en.notes);
-                  setNotesOpen(true);
-                }
-                setMenuOpen(false);
-              }}
-            >
-              <Icon name="pencil" /> {notesOpen ? 'Cerrar nota personal' : 'Nota personal'}
-            </button>
-            <button
-              type="button"
-              class="btn sm ghost"
-              onClick={() => {
-                setRestDraft(en.restSec == null ? '' : String(en.restSec));
-                setRestOpen((open) => !open);
-                setMenuOpen(false);
-              }}
-            >
-              <Icon name="rest" />
-              {restOpen ? 'Cerrar descanso' : `Descanso · ${restSec ? `${restSec}s` : 'sin descanso'}`}
-            </button>
-            {plateMode === 'none' ? (
+              {props.simple ? (
+                <button
+                  type="button"
+                  class="btn sm ghost"
+                  disabled={en.sets.length >= MAX_SETS}
+                  onClick={() => {
+                    addSet(i);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Icon name="plus" /> Añadir serie
+                </button>
+              ) : null}
+              <button
+                type="button"
+                class="btn sm ghost"
+                disabled={i === 0}
+                onClick={() => {
+                  moveExercise(i, -1);
+                  props.onResetFocus?.();
+                  setMenuOpen(false);
+                }}
+              >
+                <Icon name="chev-u" /> Subir
+              </button>
+              <button
+                type="button"
+                class="btn sm ghost"
+                disabled={i >= total - 1}
+                onClick={() => {
+                  moveExercise(i, 1);
+                  props.onResetFocus?.();
+                  setMenuOpen(false);
+                }}
+              >
+                <Icon name="chev-d" /> Bajar
+              </button>
               <button
                 type="button"
                 class="btn sm ghost"
                 onClick={() => {
-                  onPlates?.(i);
+                  if (notesOpen) {
+                    cancelNotes();
+                  } else {
+                    setNotesDraft(en.notes);
+                    setNotesOpen(true);
+                  }
                   setMenuOpen(false);
                 }}
               >
-                <Icon name="plate" /> Discos
+                <Icon name="pencil" /> {notesOpen ? 'Cerrar nota personal' : 'Nota personal'}
               </button>
-            ) : null}
-            <button
-              type="button"
-              class="btn sm ghost danger"
-              onClick={() => {
-                removeExercise(i);
-                props.onResetFocus?.();
-              }}
-            >
-              <Icon name="trash" /> Quitar ejercicio
-            </button>
-          </div>
-        ) : null}
-        <div class={`set-head${showRpe ? ' with-rpe' : ''}`}>
-          <span>#</span>
-          <span>peso ({unit})</span>
-          <span>reps</span>
-          {showRpe ? <span>rpe</span> : null}
-          <span>ok</span>
-          <span />
-        </div>
-        {en.sets.map((_set, j) => (
-          <SetRow key={j} entry={en} entryIndex={i} setIndex={j} unit={unit} locked={complete} />
-        ))}
-        {complete ? (
-          <CompletionButton
-            index={i}
-            name={en.name}
-            sets={en.sets.length}
-            onDone={props.onComplete}
-          />
-        ) : null}
-        {(en.cue || ex?.tips) ? (
-          <div class="exercise-cues">
-            {!showCue ? (
+              {(en.cue || ex?.tips) && props.simple && !showCue ? (
+                <button
+                  type="button"
+                  class="btn sm ghost"
+                  onClick={() => {
+                    setCueOpen((open) => !open);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Icon name="info" /> {cueOpen ? 'Ocultar consejo' : 'Ver consejo'}
+                </button>
+              ) : null}
               <button
                 type="button"
-                class="btn sm quiet exercise-cue-toggle"
-                aria-expanded={cueOpen}
-                aria-controls={`exercise-cue-${i}`}
-                onClick={() => setCueOpen((open) => !open)}
+                class="btn sm ghost"
+                onClick={() => {
+                  setRestDraft(en.restSec == null ? '' : String(en.restSec));
+                  setRestOpen((open) => !open);
+                  setMenuOpen(false);
+                }}
               >
-                <Icon name="info" /> {cueOpen ? 'Ocultar consejo' : 'Ver consejo'}
+                <Icon name="rest" />
+                {restOpen
+                  ? 'Cerrar descanso'
+                  : `Descanso · ${restSec ? `${restSec}s` : 'sin descanso'}`}
               </button>
-            ) : null}
-            <div
-              id={`exercise-cue-${i}`}
-              class="exercise-cue-content"
-              hidden={!showCue && !cueOpen}
-            >
-              <span class="tiny muted exercise-cue-label">Consejo del ejercicio</span>
-              {en.cue ? (
-                <div class="set-hint exercise-cue">
-                  <Icon name="info" /> <span>{en.cue}</span>
-                </div>
+              {plateMode === 'none' ? (
+                <button
+                  type="button"
+                  class="btn sm ghost"
+                  onClick={() => {
+                    onPlates?.(i);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <Icon name="plate" /> Discos
+                </button>
               ) : null}
-              {ex?.tips && ex.tips !== en.cue ? (
-                <div class="set-hint exercise-cue">
-                  <Icon name="info" /> <span>{ex.tips}</span>
-                </div>
+              <button
+                type="button"
+                class="btn sm ghost danger"
+                onClick={() => {
+                  removeExercise(i);
+                  props.onResetFocus?.();
+                }}
+              >
+                <Icon name="trash" /> Quitar ejercicio
+              </button>
+            </div>
+          ) : null}
+          <div
+            class={`set-head${showRpe && !props.simple ? ' with-rpe' : ''}${props.simple ? ' simple-set-head' : ''}`}
+          >
+            <span>{props.simple ? 'Serie' : '#'}</span>
+            <span>{props.simple ? (unit === 'lb' ? 'lb' : 'kg') : `peso (${unit})`}</span>
+            <span>{props.simple ? 'Reps' : 'reps'}</span>
+            {showRpe && !props.simple ? <span>rpe</span> : null}
+            <span>{props.simple ? '' : 'ok'}</span>
+            <span />
+          </div>
+          {en.sets.map((_set, j) => (
+            <SetRow
+              key={j}
+              entry={en}
+              entryIndex={i}
+              setIndex={j}
+              unit={unit}
+              locked={complete}
+              simple={props.simple}
+              last={j === en.sets.length - 1}
+            />
+          ))}
+          {complete ? (
+            <CompletionButton
+              index={i}
+              name={en.name}
+              sets={en.sets.length}
+              onDone={props.onComplete}
+            />
+          ) : null}
+          {en.cue || ex?.tips ? (
+            <div
+              class={`exercise-cues${props.simple && (cueOpen || showCue) ? ' simple-cue-open' : ''}`}
+            >
+              {!showCue && !props.simple ? (
+                <button
+                  type="button"
+                  class="btn sm quiet exercise-cue-toggle"
+                  aria-expanded={cueOpen}
+                  aria-controls={`exercise-cue-${i}`}
+                  onClick={() => setCueOpen((open) => !open)}
+                >
+                  <Icon name="info" /> {cueOpen ? 'Ocultar consejo' : 'Ver consejo'}
+                </button>
+              ) : null}
+              <div
+                id={`exercise-cue-${i}`}
+                class="exercise-cue-content"
+                hidden={!showCue && !cueOpen}
+              >
+                <span class="tiny muted exercise-cue-label">Consejo del ejercicio</span>
+                {en.cue ? (
+                  <div class="set-hint exercise-cue">
+                    <Icon name="info" /> <span>{en.cue}</span>
+                  </div>
+                ) : null}
+                {ex?.tips && ex.tips !== en.cue ? (
+                  <div class="set-hint exercise-cue">
+                    <Icon name="info" /> <span>{ex.tips}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {notesOpen ? (
+            <div class="exercise-note">
+              <label class="tiny muted" htmlFor={`exercise-note-${i}`}>
+                Nota personal
+              </label>
+              <input
+                ref={noteInput}
+                id={`exercise-note-${i}`}
+                class="input sm"
+                placeholder="Cómo te sentiste, molestias…"
+                aria-label={`Nota personal de ${en.name}`}
+                value={notesDraft}
+                onInput={(event: Event) =>
+                  setNotesDraft((event.currentTarget as HTMLInputElement).value)
+                }
+                onKeyDown={(event: KeyboardEvent) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    saveNotes();
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    cancelNotes();
+                  }
+                }}
+              />
+              <div class="row wrap" style="gap:6px">
+                <button type="button" class="btn sm primary" onClick={saveNotes}>
+                  Guardar
+                </button>
+                <button type="button" class="btn sm ghost" onClick={cancelNotes}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div class="prog-mini">
+            <i style={`width:${((doneSets / (en.sets.length || 1)) * 100).toFixed(0)}%`} />
+          </div>
+          {!props.simple || plateMode !== 'none' ? (
+            <div
+              class={`row wrap${props.simple ? ' simple-ex-actions' : ''}`}
+              style="gap:6px;margin-top:9px"
+            >
+              {!props.simple ? (
+                <button
+                  class="btn sm ghost"
+                  disabled={en.sets.length >= MAX_SETS}
+                  title={
+                    en.sets.length >= MAX_SETS
+                      ? `Máximo ${MAX_SETS} series por ejercicio: borra una para añadir otra`
+                      : 'Añadir una serie a este ejercicio'
+                  }
+                  onClick={() => addSet(i)}
+                >
+                  <Icon name="plus" />
+                  serie
+                </button>
+              ) : null}
+              {plateMode !== 'none' ? (
+                <button
+                  class={props.simple ? 'btn simple-plate-btn' : 'btn sm quiet'}
+                  title="Qué discos cargan este peso"
+                  onClick={() => onPlates?.(i)}
+                >
+                  {props.simple ? (
+                    <>
+                      <span class="simple-plate-label">
+                        <Icon name="plate" /> Discos
+                      </span>
+                      <Icon name="chev-r" />
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="plate" /> discos
+                    </>
+                  )}
+                </button>
               ) : null}
             </div>
-          </div>
-        ) : null}
-        {notesOpen ? (
-          <div class="exercise-note">
-            <label class="tiny muted" htmlFor={`exercise-note-${i}`}>
-              Nota personal
-            </label>
-            <input
-              ref={noteInput}
-              id={`exercise-note-${i}`}
-              class="input sm"
-              placeholder="Cómo te sentiste, molestias…"
-              aria-label={`Nota personal de ${en.name}`}
-              value={notesDraft}
-              onInput={(event: Event) =>
-                setNotesDraft((event.currentTarget as HTMLInputElement).value)
-              }
-              onKeyDown={(event: KeyboardEvent) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  saveNotes();
-                } else if (event.key === 'Escape') {
-                  event.preventDefault();
-                  cancelNotes();
-                }
-              }}
-            />
-            <div class="row wrap" style="gap:6px">
-              <button type="button" class="btn sm primary" onClick={saveNotes}>
+          ) : null}
+          {showRest ? (
+            <div class="set-hint exercise-rest">
+              <Icon name="rest" /> descanso: {restSec ? `${restSec}s` : 'sin descanso'}
+            </div>
+          ) : null}
+          {restOpen ? (
+            <div class="ex-rest-editor">
+              <input
+                ref={restInput}
+                class="input num sm mt-s"
+                type="number"
+                inputmode="numeric"
+                min="0"
+                step="5"
+                value={restDraft}
+                aria-label="descanso de este ejercicio, en segundos"
+                placeholder={`General (${prefs.restDefault}s)`}
+                title="Descanso al marcar una serie (0 = sin descanso; borrar el campo no cambia el valor)"
+                onInput={(event: Event) => {
+                  setRestDraft((event.currentTarget as HTMLInputElement).value);
+                }}
+                onKeyDown={(event: KeyboardEvent) => {
+                  if (event.key === 'Enter' && restDraft.trim() !== '') {
+                    event.preventDefault();
+                    setEntryRest(i, Math.max(0, num(restDraft)));
+                    setRestOpen(false);
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setRestOpen(false);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                class="btn sm primary"
+                disabled={restDraft.trim() === ''}
+                onClick={() => {
+                  setEntryRest(i, Math.max(0, num(restDraft)));
+                  setRestOpen(false);
+                }}
+              >
                 Guardar
               </button>
-              <button type="button" class="btn sm ghost" onClick={cancelNotes}>
+              <button type="button" class="btn sm ghost" onClick={() => setRestOpen(false)}>
                 Cancelar
               </button>
             </div>
-          </div>
-        ) : null}
-        <div class="prog-mini">
-          <i style={`width:${((doneSets / (en.sets.length || 1)) * 100).toFixed(0)}%`} />
-        </div>
-        <div class="row wrap" style="gap:6px;margin-top:9px">
-          <button
-            class="btn sm ghost"
-            disabled={en.sets.length >= MAX_SETS}
-            title={
-              en.sets.length >= MAX_SETS
-                ? `Máximo ${MAX_SETS} series por ejercicio: borra una para añadir otra`
-                : 'Añadir una serie a este ejercicio'
-            }
-            onClick={() => addSet(i)}
-          >
-            <Icon name="plus" />
-            serie
-          </button>
-          {plateMode !== 'none' ? (
-            <button
-              class="btn sm quiet"
-              title="Qué discos cargan este peso"
-              onClick={() => onPlates?.(i)}
-            >
-              <Icon name="plate" />
-              discos
-            </button>
           ) : null}
-        </div>
-        {showRest ? (
-          <div class="set-hint exercise-rest">
-            <Icon name="rest" /> descanso: {restSec ? `${restSec}s` : 'sin descanso'}
-          </div>
-        ) : null}
-        {restOpen ? (
-          <div class="ex-rest-editor">
-            <input
-              ref={restInput}
-              class="input num sm mt-s"
-              type="number"
-              inputmode="numeric"
-              min="0"
-              step="5"
-              value={restDraft}
-              aria-label="descanso de este ejercicio, en segundos"
-              placeholder={`General (${prefs.restDefault}s)`}
-              title="Descanso al marcar una serie (0 = sin descanso; borrar el campo no cambia el valor)"
-              onInput={(event: Event) => {
-                setRestDraft((event.currentTarget as HTMLInputElement).value);
-              }}
-              onKeyDown={(event: KeyboardEvent) => {
-                if (event.key === 'Enter' && restDraft.trim() !== '') {
-                  event.preventDefault();
-                  setEntryRest(i, Math.max(0, num(restDraft)));
-                  setRestOpen(false);
-                } else if (event.key === 'Escape') {
-                  event.preventDefault();
-                  setRestOpen(false);
-                }
-              }}
-            />
-            <button
-              type="button"
-              class="btn sm primary"
-              disabled={restDraft.trim() === ''}
-              onClick={() => {
-                setEntryRest(i, Math.max(0, num(restDraft)));
-                setRestOpen(false);
-              }}
-            >
-              Guardar
-            </button>
-            <button type="button" class="btn sm ghost" onClick={() => setRestOpen(false)}>
-              Cancelar
-            </button>
-          </div>
-        ) : null}
         </div>
       )}
     </div>
@@ -863,6 +955,7 @@ function EntryList(props: {
   highlight: number | null;
   onPlates: (index: number) => void;
   onComplete: (index: number) => void;
+  simple?: boolean;
 }) {
   const [expanded, setExpanded] = useState<number | null>(null);
   useEffect(() => setExpanded(null), [props.session.id]);
@@ -870,7 +963,10 @@ function EntryList(props: {
     if (props.highlight !== null) setExpanded(props.highlight);
   }, [props.highlight]);
   const entries = props.session.entries;
-  const autoFocus = Math.max(0, entries.findIndex((entry) => entry.sets.some((set) => !set.done)));
+  const autoFocus = Math.max(
+    0,
+    entries.findIndex((entry) => entry.sets.some((set) => !set.done)),
+  );
   const expandedIndex = expanded === null ? autoFocus : expanded;
   const groups = supersetGroups(entries);
   const byIndex = new Map<number, SupersetGroup>();
@@ -910,6 +1006,7 @@ function EntryList(props: {
         collapsed={expandedIndex !== i}
         onToggle={() => setExpanded(expandedIndex === i ? -1 : i)}
         onResetFocus={() => setExpanded(null)}
+        simple={props.simple}
       />
     );
   };
@@ -920,7 +1017,8 @@ function EntryList(props: {
         chunk.group ? (
           <div class="ss-group" key={`ss-${chunk.group.id}`}>
             <div class="ss-head">
-              Superserie {chunk.group.letter} · {chunk.indices.length} ejercicios · descanso al cerrar el par
+              Superserie {chunk.group.letter} · {chunk.indices.length} ejercicios · descanso al
+              cerrar el par
             </div>
             {chunk.indices.map(card)}
           </div>
@@ -937,6 +1035,7 @@ type Message = { text: string; tone: 'ok' | 'warn' };
 export function SessionCard() {
   const s = settingsSignal.value;
   const session = active.value;
+  const simpleSession = Boolean(session && s.simpleWorkoutMode);
   const [view, setView] = useState<'rest' | 'summary'>('rest');
   const [renaming, setRenaming] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -947,7 +1046,7 @@ export function SessionCard() {
   /* índice del último ejercicio añadido (señal compartida: RoutinesView también la usa) */
   const highlight = justAdded.value;
   const resting = rest.value.running;
-  const docked = useDock(Boolean(session) || resting);
+  const docked = useDock(!simpleSession && (Boolean(session) || resting));
   const sessionId = session?.id ?? null;
   const previousId = useRef(sessionId);
 
@@ -1043,7 +1142,8 @@ export function SessionCard() {
       tone: 'ok',
     });
   };
-  const finish = () => {    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
+  const finish = () => {
+    /* el volumen se captura ANTES: al terminar, la sesión activa desaparece */
     const result = finishSession();
     setNotesOpen(false);
     /* El acuse NO se pinta aquí: `finishSession` publica la sesión en
@@ -1066,11 +1166,49 @@ export function SessionCard() {
   };
 
   return (
-    <>
+    <div class={s.simpleWorkoutMode ? 'simple-workout' : 'session-card-wrap'}>
       <div
-        class={`card accent dockable${resting ? ' rest-card' : ''}${docked ? ' is-docked' : ''}`}
+        class={`${s.simpleWorkoutMode ? 'simple-session-summary' : 'card accent'} dockable${resting && !simpleSession ? ' rest-card' : ''}${docked ? ' is-docked' : ''}`}
       >
-        {resting && view === 'rest' ? (
+        {s.simpleWorkoutMode ? (
+          <>
+            <div class="simple-session-top">
+              <button
+                type="button"
+                class="simple-brand"
+                aria-label="Abrir Ajustes de entreno"
+                title="Ajustes de entreno"
+                onClick={() => go('ajustes', 'entreno')}
+              >
+                Pulso
+              </button>
+              <button type="button" class="simple-finish" onClick={finish}>
+                Finalizar
+              </button>
+            </div>
+            <div class="simple-session-heading">
+              <div class="simple-title-row">
+                <h1>{session.name || 'Entrenamiento'}</h1>
+              </div>
+              <div class="simple-progress-copy">
+                {fmtN(prog.done)} de {fmtN(prog.total)} series
+              </div>
+              <div class="simple-progress-line">
+                <i style={`width:${(prog.pct * 100).toFixed(0)}%`} />
+              </div>
+              <span class="simple-progress-pct">{Math.round(prog.pct * 100)}%</span>
+            </div>
+            {message ? (
+              <div
+                class={`tiny ${message.tone} mt-s`}
+                role="status"
+                aria-live={message.tone === 'warn' ? 'assertive' : 'polite'}
+              >
+                {message.text}
+              </div>
+            ) : null}
+          </>
+        ) : resting && view === 'rest' ? (
           <RestBox />
         ) : (
           <>
@@ -1132,14 +1270,15 @@ export function SessionCard() {
             ) : null}
           </>
         )}
-        {resting && view === 'rest' ? (
+        {!s.simpleWorkoutMode && resting && view === 'rest' ? (
           <button class="btn sm quiet mt-s" onClick={() => setView('summary')}>
             <Icon name="list" />
             Resumen
           </button>
         ) : null}
       </div>
-      <section class="card tight">
+      {s.simpleWorkoutMode && resting ? <SimpleRest /> : null}
+      <section class={s.simpleWorkoutMode ? 'simple-exercises' : 'card tight'}>
         <div class="col" style="gap:10px">
           {session.entries.length ? (
             <EntryList
@@ -1147,6 +1286,7 @@ export function SessionCard() {
               highlight={highlight}
               onPlates={setPlatesFor}
               onComplete={completeEntry}
+              simple={s.simpleWorkoutMode}
             />
           ) : (
             <div class="empty">
@@ -1155,68 +1295,72 @@ export function SessionCard() {
             </div>
           )}
         </div>
-        <div class="grid c2 mt-s">
+        <div class={s.simpleWorkoutMode ? 'simple-add-actions' : 'grid c2 mt-s'}>
           <button type="button" class="btn" onClick={() => setPickerOpen(true)}>
             <Icon name="plus" />
-            Añadir ejercicio…
+            {s.simpleWorkoutMode ? 'Añadir ejercicio' : 'Añadir ejercicio…'}
           </button>
-          <button type="button" class="btn" onClick={() => setRoutinesOpen(true)}>
-            <Icon name="list" />
-            Añadir rutina
-          </button>
+          {!s.simpleWorkoutMode ? (
+            <button type="button" class="btn" onClick={() => setRoutinesOpen(true)}>
+              <Icon name="list" />
+              Añadir rutina
+            </button>
+          ) : null}
         </div>
       </section>{' '}
-      <section class="card tight">
-        {prog.total > 0 && prog.done === prog.total ? (
-          <div class="tiny ok mb-s">¡Todas las series marcadas! Pulsa Finalizar.</div>
-        ) : null}
-        <button class="btn primary lg block" onClick={finish}>
-          <Icon name="check" />
-          Finalizar sesión
-        </button>
-        <div class="row mt-s" style="gap:8px">
-          <button class="btn ghost grow" onClick={() => setNotesOpen((open) => !open)}>
-            <Icon name="pencil" />
-            {notesOpen ? 'Cerrar nota' : 'Nota de sesión'}
+      {!s.simpleWorkoutMode ? (
+        <section class="card tight">
+          {prog.total > 0 && prog.done === prog.total ? (
+            <div class="tiny ok mb-s">¡Todas las series marcadas! Pulsa Finalizar.</div>
+          ) : null}
+          <button class="btn primary lg block" onClick={finish}>
+            <Icon name="check" />
+            Finalizar sesión
           </button>
-          <button
-            class="btn danger grow"
-            onClick={() => {
-              if (window.confirm('¿Descartar la sesión en curso? No se guardará nada.'))
-                discardSession();
-            }}
-          >
-            <Icon name="trash" />
-            Descartar
-          </button>
-        </div>
-        {notesOpen ? (
-          <input
-            class="input mt-s"
-            placeholder="Cómo fue la sesión (se guarda con ella)"
-            aria-label="Nota de la sesión"
-            value={session.notes}
-            onChange={(event: Event) =>
-              setSessionNotes((event.currentTarget as HTMLInputElement).value)
-            }
-          />
-        ) : session.notes ? (
-          <div class="tiny muted mt-s">Nota: {session.notes}</div>
-        ) : null}
-        {message ? (
-          <div
-            class={`tiny ${message.tone} mt-s`}
-            role="status"
-            aria-live={message.tone === 'warn' ? 'assertive' : 'polite'}
-          >
-            {message.text}
+          <div class="row mt-s" style="gap:8px">
+            <button class="btn ghost grow" onClick={() => setNotesOpen((open) => !open)}>
+              <Icon name="pencil" />
+              {notesOpen ? 'Cerrar nota' : 'Nota de sesión'}
+            </button>
+            <button
+              class="btn danger grow"
+              onClick={() => {
+                if (window.confirm('¿Descartar la sesión en curso? No se guardará nada.'))
+                  discardSession();
+              }}
+            >
+              <Icon name="trash" />
+              Descartar
+            </button>
           </div>
-        ) : null}
-        <div class="tiny muted mt-s">
-          {s.autoRest ? 'Descanso automático al marcar serie' : 'Descanso automático apagado'} · RPE{' '}
-          {s.showRpe ? 'on' : 'off'}
-        </div>
-      </section>
+          {notesOpen ? (
+            <input
+              class="input mt-s"
+              placeholder="Cómo fue la sesión (se guarda con ella)"
+              aria-label="Nota de la sesión"
+              value={session.notes}
+              onChange={(event: Event) =>
+                setSessionNotes((event.currentTarget as HTMLInputElement).value)
+              }
+            />
+          ) : session.notes ? (
+            <div class="tiny muted mt-s">Nota: {session.notes}</div>
+          ) : null}
+          {message ? (
+            <div
+              class={`tiny ${message.tone} mt-s`}
+              role="status"
+              aria-live={message.tone === 'warn' ? 'assertive' : 'polite'}
+            >
+              {message.text}
+            </div>
+          ) : null}
+          <div class="tiny muted mt-s">
+            {s.autoRest ? 'Descanso automático al marcar serie' : 'Descanso automático apagado'} ·
+            RPE {s.showRpe ? 'on' : 'off'}
+          </div>
+        </section>
+      ) : null}
       {pickerOpen ? (
         <ExercisePickerModal
           exclude={session.entries.map((en) => en.exId)}
@@ -1266,9 +1410,9 @@ export function SessionCard() {
           }}
         />
       ) : null}
-      {resting ? (
+      {!s.simpleWorkoutMode && resting ? (
         <RestDock show={docked} />
-      ) : (
+      ) : !s.simpleWorkoutMode ? (
         <SessionDock
           show={docked}
           name={session.name}
@@ -1277,7 +1421,7 @@ export function SessionCard() {
           volume={prog.volume}
           pct={prog.pct}
         />
-      )}
-    </>
+      ) : null}
+    </div>
   );
 }
