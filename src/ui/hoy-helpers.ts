@@ -261,6 +261,17 @@ export function repeatItems(session: Session): PlanLine[] {
       done: true,
     });
     const reps = int(top.reps, 0) || 10;
+    const matchingPlan = Array.isArray(session.plan)
+      ? session.plan.filter((item) => item?.exId === entry.exId)
+      : [];
+    /* La nota personal del historial nunca se convierte en consejo al repetir.
+       `cue` existe en sesiones nuevas; el snapshot cubre sesiones antiguas. */
+    const cue =
+      typeof entry.cue === 'string'
+        ? entry.cue
+        : matchingPlan.length === 1 && typeof matchingPlan[0]?.notes === 'string'
+          ? matchingPlan[0].notes
+          : '';
     return {
       exId: entry.exId,
       sets: Math.max(1, sets.length),
@@ -270,7 +281,7 @@ export function repeatItems(session: Session): PlanLine[] {
       weight: num(top.weight),
       reps,
       basis,
-      notes: typeof entry.notes === 'string' ? entry.notes : '',
+      ...(cue ? { notes: cue } : {}),
     };
   });
 }

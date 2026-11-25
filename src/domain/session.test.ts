@@ -22,6 +22,7 @@ import {
   finishSession,
   moveEntry,
   newEntry,
+  normalizeActiveSession,
   nextLabel,
   plateInitialWeight,
   plateTarget,
@@ -202,7 +203,7 @@ describe('startSession', () => {
     expect(session).toMatchObject({ routineId: 'rt-1', name: 'Empuje' });
     expect(session.entries[0]?.sets.map((s) => s.weight)).toEqual([50, 50]);
     expect(session.entries[0]?.sets[0]?.suggested).toBe(false);
-    expect(session.entries[0]?.notes).toBe('SUPERSERIE 1 (1/2)');
+    expect(session.entries[0]).toMatchObject({ notes: '', cue: 'SUPERSERIE 1 (1/2)' });
     expect(session.entries[1]?.sets).toHaveLength(3);
   });
 
@@ -308,7 +309,11 @@ describe('startSession', () => {
     };
     const session = nuevaSesion({ exIds: undefined, suggest: conHistorial(80), plan: [line] });
     const entry = session.entries[0];
-    expect(entry).toMatchObject({ basis: 'repetición de 24 sep 2026', notes: 'sin prisa' });
+    expect(entry).toMatchObject({
+      basis: 'repetición de 24 sep 2026',
+      notes: '',
+      cue: 'sin prisa',
+    });
     expect(entry?.sets.map((s) => s.reps)).toEqual([5, 5, 5]);
     expect(entry?.sets.map((s) => s.weight)).toEqual([100, 100, 100]);
     expect(session.plan?.[0]).toMatchObject({
@@ -798,7 +803,7 @@ describe('finishSession', () => {
     });
     const sesion = finishSession(marcar(conNotas, 0, 0)!.session, { id: 's1' });
     expect(sesion?.entries[0]).toMatchObject({
-      notes: 'al fallo',
+      personalNote: 'al fallo',
       restSec: 150,
       name: 'Press de banca',
     });
@@ -877,13 +882,51 @@ describe('entriesFromRoutine', () => {
     expect(entries[1]?.restSec).toBe(240);
   });
 
-  it('las notes del item viajan al ejercicio añadido', () => {
+  it('las notas del item viajan como consejo, sin rellenar la nota personal', () => {
     const [entry] = entriesFromRoutine(
       { items: [{ exId: 'press-banca', notes: 'SUPERSERIE 1 (1/2)' }] },
       sinHistorial,
       BIBLIOTECA,
     );
-    expect(entry?.notes).toBe('SUPERSERIE 1 (1/2)');
+    expect(entry).toMatchObject({ notes: '', cue: 'SUPERSERIE 1 (1/2)' });
+  });
+});
+
+describe('normalizeActiveSession', () => {
+  it('migra el consejo legacy igual al snapshot y conserva una nota distinta', () => {
+    const base = nuevaSesion({
+      exIds: undefined,
+      routine: {
+        id: 'rt-1',
+        name: 'Empuje',
+        items: [{ exId: 'press-banca', notes: 'Baja controlado' }],
+      },
+    });
+    const legacy = {
+      ...base,
+      entries: [{ ...base.entries[0], cue: undefined, notes: 'Baja controlado' }],
+    };
+    expect(normalizeActiveSession(legacy).entries[0]).toMatchObject({
+      notes: '',
+      cue: 'Baja controlado',
+    });
+    expect(
+      normalizeActiveSession({
+        ...legacy,
+        entries: [{ ...legacy.entries[0], notes: 'Me sentí fuerte' }],
+      }).entries[0],
+    ).toMatchObject({ notes: 'Me sentí fuerte', cue: 'Baja controlado' });
+  });
+
+  it('sin snapshot conserva el texto como nota, sin convertirlo en consejo y migra idempotente', () => {
+    const base = nuevaSesion();
+    const legacy = {
+      ...base,
+      entries: [{ ...base.entries[0], cue: undefined, notes: 'Me sentí fuerte' }],
+    };
+    const migrated = normalizeActiveSession(legacy);
+    expect(migrated.entries[0]).toMatchObject({ notes: 'Me sentí fuerte', cue: '' });
+    expect(normalizeActiveSession(migrated)).toEqual(migrated);
   });
 });
 

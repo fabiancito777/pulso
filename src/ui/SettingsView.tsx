@@ -585,7 +585,7 @@ function SecEntreno() {
         />
         <SwitchRow
           label="Consejo del ejercicio"
-          hint="Muestra la nota de la rutina y el consejo de técnica cuando están disponibles"
+          hint="Muestra el consejo directamente; apagado, puedes abrirlo desde la tarjeta. La nota personal se edita aparte desde ⋯"
           value={st.showExerciseCue}
           onChange={(v) => setSettingsPath('showExerciseCue', v)}
         />

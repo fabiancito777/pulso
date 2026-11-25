@@ -151,6 +151,7 @@ export function newEntry(opts: NewEntryOptions): ActiveEntry {
     repMax: int(opts.repMax, ex ? ex.repMax : 12),
     sets: Array.from({ length: count }, () => blankSet()),
     notes: '',
+    cue: '',
   };
 }
 
@@ -259,7 +260,8 @@ function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem): ActiveEntry {
     ...entry,
     sets: entry.sets.map((set) => ({ ...set, reps })),
     ...(item.basis ? { basis: item.basis } : {}),
-    ...(item.notes ? { notes: item.notes } : {}),
+    notes: '',
+    ...(item.notes ? { cue: item.notes } : {}),
   };
 }
 
@@ -304,8 +306,9 @@ export function startSession(opts: StartOptions): ActiveSession {
         }),
         item.weight,
       ),
-      /* las indicaciones del item (superseries, pausas…) llegan a la sesión */
-      notes: item.notes ?? '',
+      /* Consejo e indicaciones de rutina separados de la nota personal. */
+      notes: '',
+      ...(item.notes ? { cue: item.notes } : {}),
     }));
     /* copia de los items: la rutina sigue siendo editable y NO debe verse aquí dentro */
     plan = routine.items.map((item) => ({ ...item }));
@@ -350,6 +353,42 @@ export function startSession(opts: StartOptions): ActiveSession {
     /* sin plan no se añade la clave: el JSON  no la conoce y no aporta nada */
     ...(plan ? { plan } : {}),
   };
+}
+
+/**
+ * Migra sesiones activas antiguas que guardaban el consejo y la nota personal
+ * juntos en `notes`. Con snapshot, el texto igual al consejo se clasifica como
+ * consejo (caso de rutina no editada); si difiere, se conserva como nota personal
+ * y el consejo se recupera del snapshot. Sin snapshot se conserva como nota y no
+ * se muestra accidentalmente como consejo.
+ */
+export function normalizeActiveSession(session: ActiveSession): ActiveSession {
+  if (!Array.isArray(session.entries)) return session;
+  const byExercise = new Map<string, RoutineItem | null>();
+  if (Array.isArray(session.plan)) {
+    for (const item of session.plan) {
+      if (!item || typeof item.exId !== 'string') continue;
+      if (byExercise.has(item.exId)) byExercise.set(item.exId, null);
+      else byExercise.set(item.exId, item);
+    }
+  }
+  let changed = false;
+  const entries = session.entries
+    .filter((entry) => !!entry && typeof entry === 'object')
+    .map((entry) => {
+      if (typeof entry.cue === 'string' && typeof entry.notes === 'string') return entry;
+      const legacyNotes = typeof entry.notes === 'string' ? entry.notes : '';
+      const item = byExercise.get(entry.exId) ?? undefined;
+      const snapshotCue = typeof item?.notes === 'string' ? item.notes : '';
+      const hasCue = typeof entry.cue === 'string';
+      const cue = hasCue ? entry.cue : item ? snapshotCue : '';
+      const notes = hasCue ? legacyNotes : item && legacyNotes === snapshotCue ? '' : legacyNotes;
+      const next: ActiveEntry = { ...entry, notes, cue: cue ?? '' };
+      if (next.notes !== entry.notes || next.cue !== entry.cue) changed = true;
+      return next;
+    });
+  if (entries.length !== session.entries.length) changed = true;
+  return changed ? { ...session, entries } : session;
 }
 
 /* ---------- series ---------- */
@@ -692,7 +731,8 @@ export function entriesFromRoutine(
         reps,
         ...(weight ? { weight, suggested: false } : {}),
       })),
-      notes: item.notes ?? '',
+      notes: '',
+      cue: item.notes ?? '',
     });
   }
   return out;
@@ -795,7 +835,8 @@ function logEntry(entry: ActiveEntry, rpes: number[]): SessionEntry | null {
     name: entry.name,
     ...(entry.group ? { group: entry.group } : {}),
     restSec: entry.restSec ?? undefined,
-    notes: entry.notes || '',
+    cue: entry.cue ?? '',
+    ...(entry.notes ? { personalNote: entry.notes } : {}),
     ...(entry.superset ? { superset: entry.superset } : {}),
     sets,
   };

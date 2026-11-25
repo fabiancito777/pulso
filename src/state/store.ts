@@ -19,6 +19,7 @@ import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
 import { normalizePlates } from '@/domain/plates';
+import { normalizeActiveSession } from '@/domain/session';
 import { stampChanges, withDiscarded, withTombstone } from '@/domain/sync';
 import type {
   ActiveSession,
@@ -1407,16 +1408,17 @@ export const active = signal<ActiveSession | null>(asActive(initial.active));
  */
 function asActive(value: unknown): ActiveSession | null {
   return isPlainObject(value) && Array.isArray(value.entries)
-    ? (value as unknown as ActiveSession)
+    ? normalizeActiveSession(value as unknown as ActiveSession)
     : null;
 }
 
 /** Guarda la sesión en curso (`pulso.state.active`), tal cual la lee antes. */
 export function writeActive(next: ActiveSession | null): boolean {
+  const normalized = next ? normalizeActiveSession(next) : null;
   const state = readState();
-  state.active = next;
+  state.active = normalized;
   const saved = writeState(state);
-  active.value = next;
+  active.value = normalized;
   return saved;
 }
 

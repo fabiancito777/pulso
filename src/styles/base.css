@@ -228,7 +228,14 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 .ex-progress-label{font-size:11px;color:var(--muted);white-space:nowrap}
 .ex-card.collapsed .ex-head{min-height:62px}
 .ex-menu{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 10px;margin-bottom:8px;border-bottom:1px solid var(--border-soft)}
-.exercise-cues{margin-top:2px}
+.exercise-cues{margin-top:5px}
+.exercise-cue-toggle{min-height:30px;padding-inline:8px}
+.exercise-cue-content{display:grid;gap:5px;margin-top:5px}
+.exercise-cue-content[hidden]{display:none}
+.exercise-cue-label{font-weight:650}
+.set-hint.exercise-cue{align-items:flex-start;flex-wrap:nowrap;margin-top:0}
+.exercise-cue .ico{flex:0 0 14px;margin-top:1px}
+.exercise-note{display:grid;gap:5px;margin-top:9px}
 .exercise-rest{padding-top:5px;border-top:1px solid var(--border-soft)}
 .ex-rest-editor{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .ex-rest-editor .input{width:110px}

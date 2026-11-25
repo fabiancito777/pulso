@@ -289,7 +289,8 @@ describe('repeatItems', () => {
       sesion(HOY, [
         entrada('press', [serie(60, 8), serie(65, 5), serie(null, 10)], {
           restSec: 120,
-          notes: 'sin pausa',
+          notes: 'Me sentí fuerte',
+          personalNote: 'Me sentí fuerte',
         }),
       ]),
     )[0];
@@ -300,11 +301,33 @@ describe('repeatItems', () => {
       reps: 5,
       rest: 120,
       basis: 'repetición de 24 sep 2026',
-      notes: 'sin pausa',
     });
+    expect(item.notes).toBeUndefined();
     /* las reps concretas también valen como rango para la sesión */
     expect(item.repMin).toBe(5);
     expect(item.repMax).toBe(5);
+  });
+
+  it('repite el consejo cue/snapshot y nunca una nota personal', () => {
+    const base = sesion(HOY, [
+      entrada('press', [serie(60, 8)], { cue: 'Baja controlado', personalNote: 'Me sentí fuerte' }),
+    ]);
+    expect(repeatItems(base)[0]?.notes).toBe('Baja controlado');
+    const legacy = sesion(HOY, [
+      entrada('press', [serie(60, 8)], { personalNote: 'Me sentí fuerte' }),
+    ]);
+    legacy.plan = [
+      {
+        exId: 'press',
+        sets: 1,
+        repMin: 8,
+        repMax: 8,
+        rest: 90,
+        weight: null,
+        notes: 'Controla la bajada',
+      },
+    ];
+    expect(repeatItems(legacy)[0]?.notes).toBe('Controla la bajada');
   });
 
   it('una entrada sin series sigue siendo 1 serie con reps por defecto', () => {

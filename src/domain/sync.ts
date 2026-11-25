@@ -26,6 +26,7 @@
  * no se pisa. La API key es un secreto que no debe salir del navegador.
  */
 import type { ActiveEntry, ActiveSession, ActiveSet, AppState, Session } from './types';
+import { normalizeActiveSession } from './session';
 
 /** Áreas que se fusionan por «último cambio gana». Las sesiones y las rutinas van por id. */
 export const SYNC_AREAS = ['settings', 'equipment', 'exercises', 'routines', 'schedule'] as const;
@@ -669,8 +670,10 @@ export function mergeStates(
      - solo la tiene el otro → se adopta aquí;
      - ya hay una sesión CERRADA en el historial con su `liveId` → no se resucita
        (la terminaste en el otro dispositivo). */
-  const localActive = activeOf(local);
-  const remoteActive = activeOf(remote);
+  const localRawActive = activeOf(local);
+  const remoteRawActive = activeOf(remote);
+  const localActive = localRawActive ? normalizeActiveSession(localRawActive) : null;
+  const remoteActive = remoteRawActive ? normalizeActiveSession(remoteRawActive) : null;
   /* `finishedIds` = sesiones que cerraron la sesión en curso ENTERA. Las
      «parciales» (`partial`) conservan el `liveId` para enlazar el historial, pero
      la rutina sigue abierta: si contaran, sincronizar mataría el resto. */

@@ -452,12 +452,15 @@ function EntryCard(props: {
 }) {
   const { entry: en, index: i, total, unit, onPlates } = props;
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
+  const [cueOpen, setCueOpen] = useState(false);
   const [restOpen, setRestOpen] = useState(false);
   const [restDraft, setRestDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const menuGroup = useRef<HTMLDivElement>(null);
   const restInput = useRef<HTMLInputElement>(null);
+  const noteInput = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const highlight = props.highlight === true;
   const ex = exercises.value.find((e) => e.id === en.exId);
@@ -477,6 +480,9 @@ function EntryCard(props: {
     if (restOpen) restInput.current?.focus();
   }, [restOpen]);
   useEffect(() => {
+    if (notesOpen) noteInput.current?.focus();
+  }, [notesOpen]);
+  useEffect(() => {
     if (menuOpen) {
       menuGroup.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
     }
@@ -485,11 +491,23 @@ function EntryCard(props: {
     if (!props.collapsed) return;
     setMenuOpen(false);
     setNotesOpen(false);
+    setCueOpen(false);
     setRestOpen(false);
   }, [props.collapsed]);
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
+
+  const cancelNotes = () => {
+    setNotesDraft(en.notes);
+    setNotesOpen(false);
+    menuButton.current?.focus();
+  };
+  const saveNotes = () => {
+    setNotes(i, notesDraft);
+    setNotesOpen(false);
+    menuButton.current?.focus();
+  };
 
   /* El ejercicio recién añadido queda varias pantallas más abajo: si no, parece
      que no se ha añadido nada (antes `focusEntry`, views-train.js:274). El scroll va
@@ -618,11 +636,16 @@ function EntryCard(props: {
               type="button"
               class="btn sm ghost"
               onClick={() => {
-                setNotesOpen((open) => !open);
+                if (notesOpen) {
+                  cancelNotes();
+                } else {
+                  setNotesDraft(en.notes);
+                  setNotesOpen(true);
+                }
                 setMenuOpen(false);
               }}
             >
-              <Icon name="pencil" /> {notesOpen ? 'Cerrar nota' : 'Nota / consejo'}
+              <Icon name="pencil" /> {notesOpen ? 'Cerrar nota personal' : 'Nota personal'}
             </button>
             <button
               type="button"
@@ -679,30 +702,72 @@ function EntryCard(props: {
             onDone={props.onComplete}
           />
         ) : null}
-        {showCue && (en.notes || ex?.tips) ? (
+        {(en.cue || ex?.tips) ? (
           <div class="exercise-cues">
-            {en.notes ? (
-              <div class="set-hint exercise-cue">
-                <Icon name="info" /> {en.notes}
-              </div>
+            {!showCue ? (
+              <button
+                type="button"
+                class="btn sm quiet exercise-cue-toggle"
+                aria-expanded={cueOpen}
+                aria-controls={`exercise-cue-${i}`}
+                onClick={() => setCueOpen((open) => !open)}
+              >
+                <Icon name="info" /> {cueOpen ? 'Ocultar consejo' : 'Ver consejo'}
+              </button>
             ) : null}
-            {ex?.tips && ex.tips !== en.notes ? (
-              <div class="set-hint exercise-cue">
-                <Icon name="info" /> {ex.tips}
-              </div>
-            ) : null}
+            <div
+              id={`exercise-cue-${i}`}
+              class="exercise-cue-content"
+              hidden={!showCue && !cueOpen}
+            >
+              <span class="tiny muted exercise-cue-label">Consejo del ejercicio</span>
+              {en.cue ? (
+                <div class="set-hint exercise-cue">
+                  <Icon name="info" /> <span>{en.cue}</span>
+                </div>
+              ) : null}
+              {ex?.tips && ex.tips !== en.cue ? (
+                <div class="set-hint exercise-cue">
+                  <Icon name="info" /> <span>{ex.tips}</span>
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {notesOpen ? (
-          <input
-            class="input sm mt-s"
-            placeholder="Nota del ejercicio (superserie, cómo lo sentiste…)"
-            aria-label="Nota del ejercicio"
-            value={en.notes}
-            onChange={(event: Event) =>
-              setNotes(i, (event.currentTarget as HTMLInputElement).value)
-            }
-          />
+          <div class="exercise-note">
+            <label class="tiny muted" htmlFor={`exercise-note-${i}`}>
+              Nota personal
+            </label>
+            <input
+              ref={noteInput}
+              id={`exercise-note-${i}`}
+              class="input sm"
+              placeholder="Cómo te sentiste, molestias…"
+              aria-label={`Nota personal de ${en.name}`}
+              value={notesDraft}
+              onInput={(event: Event) =>
+                setNotesDraft((event.currentTarget as HTMLInputElement).value)
+              }
+              onKeyDown={(event: KeyboardEvent) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  saveNotes();
+                } else if (event.key === 'Escape') {
+                  event.preventDefault();
+                  cancelNotes();
+                }
+              }}
+            />
+            <div class="row wrap" style="gap:6px">
+              <button type="button" class="btn sm primary" onClick={saveNotes}>
+                Guardar
+              </button>
+              <button type="button" class="btn sm ghost" onClick={cancelNotes}>
+                Cancelar
+              </button>
+            </div>
+          </div>
         ) : null}
         <div class="prog-mini">
           <i style={`width:${((doneSets / (en.sets.length || 1)) * 100).toFixed(0)}%`} />

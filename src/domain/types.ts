@@ -188,7 +188,12 @@ export interface SessionEntry {
   /** El grupo se guarda como respaldo por si el ejercicio sale de la biblioteca. */
   group?: string;
   restSec?: number;
+  /** Nota personal del usuario durante la sesión (nueva propiedad). */
+  personalNote?: string;
+  /** Notas legacy; las sesiones nuevas ya no las usan para notas personales. */
   notes?: string;
+  /** Consejo que acompañó esta entrada; facilita repetir/cerrar ejercicios parciales. */
+  cue?: string;
   /** id del par de superserie (ver `domain/supersets`); ausente = ejercicio suelto */
   superset?: string | null;
   sets: SetLog[];
@@ -264,7 +269,10 @@ export interface ActiveEntry {
   repMin: number;
   repMax: number;
   sets: ActiveSet[];
+  /** Nota personal del usuario durante la sesión. */
   notes: string;
+  /** Consejo copiado de la rutina/plan al crear la entrada. */
+  cue?: string;
   /** de dónde sale el peso propuesto: "última vez 60 kg × 8 · hace 3 días" */
   basis?: string;
   /**
