@@ -58,9 +58,15 @@ npm run verify     # typecheck + lint + test + build
   correspondiente, salvo que el usuario indique otra cosa. Ejecuta `npm run verify` antes del commit,
   incluye solo los archivos de la tarea y comprueba después que la rama local y su upstream coinciden.
   El push a `main` activa el despliegue de GitHub Pages.
-- Para cambios de código, el usuario prefiere que los implementen subagentes GPT‑6 Luna con esfuerzo
-  alto y que otro Luna revise los flujos. El agente principal coordina, revisa el código y las
-  regresiones, y se encarga del commit y el push. Indica qué flujos se pudieron probar en navegador.
+- Para cambios de código, un subagente GPT‑6 Luna con esfuerzo alto implementa y otro Luna con
+  esfuerzo alto revisa los flujos y hace la validación de navegador necesaria. El agente principal
+  coordina, revisa el diff y los bugs, ejecuta `npm run verify` y se encarga del commit y el push; no
+  prueba manualmente los flujos interactivos.
+- La revisión de navegador se limita al comportamiento cambiado. Para las guías visuales cubre la
+  miniatura, abrir/cerrar el visor, cambiar de fase, visibilidad en modo súper simple y carga del
+  asset. No marques series ni pruebes el timer o flujos adyacentes salvo que hayan cambiado o haya
+  evidencia concreta de regresión. Si no se puede delegar la validación de navegador, informa ese
+  límite.
 
 ---
 
@@ -161,6 +167,10 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   guarda por perfil. `App.tsx` aplica la vista focal cuando hay sesión activa en Hoy y `SessionCard.tsx`
   reutiliza la tabla, el progreso y las acciones de sesión. La cabecera **Pulso** abre Ajustes → Entreno
   sin finalizar. Volver a Hoy conserva la sesión. El temporizador libre mantiene su vista habitual.
+- **Guías visuales** (`domain/exercise-guides.ts`): cubren 11 IDs de la rutina inicial y 2 ejemplos de
+  la biblioteca inicial, además del alias explícito del curl guardado anteriormente. La búsqueda usa
+  IDs exactos; no se infieren guías para ejercicios personalizados ni variantes. En modo súper simple
+  aparecen solo en tarjetas expandidas y sus dos fases (`Inicio`/`Final`) se alternan manualmente.
 - **Consejo y nota personal**: la prescripción guarda el texto en `RoutineItem.notes` y lo copia a
   `ActiveEntry.cue`. `ActiveEntry.notes` es la nota personal y termina en `SessionEntry.personalNote`,
   fuera del contexto del coach. Al repetir se usa el consejo del ejercicio o la copia del plan guardada

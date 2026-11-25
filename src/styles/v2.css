@@ -214,32 +214,88 @@
   top: 0;
   left: 0;
   display: block;
-  width: 200%;
   max-width: none;
   height: 100%;
   object-fit: cover;
   object-position: left center;
 }
+.exercise-demo-thumb img {
+  width: 100%;
+}
+.exercise-demo-thumb.crop-left img,
+.exercise-demo-thumb.crop-right img {
+  width: 200%;
+}
+.exercise-demo-thumb.crop-right img {
+  transform: translateX(-50%);
+}
 .simple-demo-body {
   display: grid;
   gap: 10px;
+}
+.simple-demo-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.simple-demo-stage.crop-left,
+.simple-demo-stage.crop-right {
+  width: min(100%, 320px);
+  aspect-ratio: 3 / 4;
+  margin-inline: auto;
 }
 .simple-demo-image {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 3 / 2;
   object-fit: contain;
-  border-radius: 12px;
-  background: #e9e9e9;
+  max-height: min(62vh, 520px);
 }
-.simple-demo-labels {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  text-align: center;
-  color: var(--muted);
+.simple-demo-stage.crop-left .simple-demo-image,
+.simple-demo-stage.crop-right .simple-demo-image {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 200%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+}
+.simple-demo-stage.crop-right .simple-demo-image {
+  transform: translateX(-50%);
+}
+.simple-demo-phases {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.simple-demo-phases button,
+.simple-demo-single-label {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: inherit;
   font-size: 13px;
   font-weight: 650;
+}
+.simple-demo-phases button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.simple-demo-single-label {
+  justify-self: center;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
 }
 .simple-demo-cue {
   margin: 0;

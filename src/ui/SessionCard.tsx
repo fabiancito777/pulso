@@ -25,8 +25,10 @@ import { restView } from '@/domain/rest';
 import { entryVolume, MAX_SETS, progress as sessionProgress } from '@/domain/session';
 import { supersetGroups } from '@/domain/supersets';
 import { go } from '@/app/router';
+import { EXERCISE_GUIDES } from '@/domain/exercise-guides';
 import type { SupersetGroup } from '@/domain/supersets';
 import type { ActiveEntry, ActiveSession, Unit } from '@/domain/types';
+import type { ExerciseGuide, ExerciseGuidePhase } from '@/domain/exercise-guides';
 import {
   active,
   addExercises,
@@ -66,24 +68,27 @@ import { Ring } from './Ring';
 import { RoutinePickerModal } from './RoutinePickerModal';
 import { toast } from './toast';
 
-/* Solo estos IDs describen el curl bilateral supino que ilustra el piloto.
-   Las variantes alternas, martillo y barra quedan fuera aunque compartan grupo. */
-const DUMBBELL_CURL_DEMO_IDS = new Set(['curl-de-biceps', 'curl-con-mancuernas']);
-const DUMBBELL_CURL_DEMO_SRC = `${import.meta.env.BASE_URL}exercise-demos/dumbbell-curl.webp`;
+function guideImageSrc(src: string): string {
+  const base = import.meta.env.BASE_URL.endsWith('/')
+    ? import.meta.env.BASE_URL
+    : `${import.meta.env.BASE_URL}/`;
+  return `${base}${src.replace(/^\.\//, '').replace(/^\/+/, '')}`;
+}
 
-function ExerciseDemoThumb() {
+function ExerciseDemoThumb({ phase }: { phase: ExerciseGuidePhase }) {
   const [failed, setFailed] = useState(false);
   return (
-    <span class="exercise-demo-thumb" aria-hidden="true">
+    <span
+      class={`exercise-demo-thumb${phase.crop ? ` crop-${phase.crop}` : ''}`}
+      aria-hidden="true"
+    >
       {failed ? (
         <Icon name="eye" />
       ) : (
         <img
-          src={DUMBBELL_CURL_DEMO_SRC}
+          src={guideImageSrc(phase.src)}
           alt=""
           aria-hidden="true"
-          width="960"
-          height="640"
           loading="lazy"
           onError={() => setFailed(true)}
         />
@@ -93,37 +98,62 @@ function ExerciseDemoThumb() {
 }
 
 function ExerciseDemoModal({
+  guide,
   name,
   cue,
   onClose,
 }: {
+  guide: ExerciseGuide;
   name: string;
   cue: string;
   onClose: () => void;
 }) {
-  const [failed, setFailed] = useState(false);
+  const phases = guide.phases;
+  const [phaseIndex, setPhaseIndex] = useState(0);
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const phase = phases[phaseIndex] ?? phases[0];
+  if (!phase) return null;
+  const failed = failedSources.includes(phase.src);
   return (
-    <Modal title="Curl bilateral con mancuernas" sub={name} onClose={onClose}>
+    <Modal title={name} sub="Guía visual" onClose={onClose}>
       <div class="simple-demo-body">
         {failed ? (
           <div class="simple-demo-fallback" role="status">
             <Icon name="info" />
-            <span>La guía visual no está disponible. Puedes seguir registrando tus series.</span>
+            <span>Esta fase no está disponible. Puedes seguir registrando tus series.</span>
           </div>
         ) : (
-          <img
-            class="simple-demo-image"
-            src={DUMBBELL_CURL_DEMO_SRC}
-            alt="Inicio del curl bilateral de pie con los brazos abajo y final con las mancuernas cerca de los hombros"
-            onError={() => setFailed(true)}
-          />
-        )}
-        {!failed ? (
-          <div class="simple-demo-labels" aria-hidden="true">
-            <span>Inicio</span>
-            <span>Final</span>
+          <div class={`simple-demo-stage${phase.crop ? ` crop-${phase.crop}` : ''}`}>
+            <img
+              key={phase.src}
+              class="simple-demo-image"
+              src={guideImageSrc(phase.src)}
+              alt={`${name}: ${phase.label}`}
+              onError={() =>
+                setFailedSources((previous) =>
+                  previous.includes(phase.src) ? previous : [...previous, phase.src],
+                )
+              }
+            />
           </div>
-        ) : null}
+        )}
+        {phases.length > 1 ? (
+          <div class="simple-demo-phases" role="group" aria-label="Fases del movimiento">
+            {phases.map((item, index) => (
+              <button
+                key={`${item.src}:${item.crop ?? ''}:${index}`}
+                type="button"
+                class={index === phaseIndex ? 'on' : ''}
+                aria-pressed={index === phaseIndex}
+                onClick={() => setPhaseIndex(index)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div class="simple-demo-single-label">{phase.label}</div>
+        )}
         {cue ? <p class="simple-demo-cue">{cue}</p> : null}
       </div>
     </Modal>
@@ -557,6 +587,9 @@ function EntryCard(props: {
   const ex = exercises.value.find((e) => e.id === en.exId);
   const doneSets = en.sets.filter((s) => s.done).length;
   const volume = entryVolume(en, unit);
+  const visualGuide = Object.prototype.hasOwnProperty.call(EXERCISE_GUIDES, en.exId)
+    ? EXERCISE_GUIDES[en.exId]
+    : undefined;
   const showRpe = settingsSignal.value.showRpe;
   const prefs = settingsSignal.value;
   const showCue = prefs.showExerciseCue === true;
@@ -588,7 +621,7 @@ function EntryCard(props: {
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
-  const canShowDemo = props.simple && !props.collapsed && DUMBBELL_CURL_DEMO_IDS.has(en.exId);
+  const canShowDemo = props.simple && !props.collapsed && Boolean(visualGuide?.phases.length);
 
   useEffect(() => {
     if (props.collapsed) setDemoOpen(false);
@@ -677,7 +710,7 @@ function EntryCard(props: {
             )}
           </span>
         </button>
-        {canShowDemo ? (
+        {canShowDemo && visualGuide?.phases[0] ? (
           <button
             type="button"
             class="btn sm quiet exercise-demo-trigger"
@@ -686,7 +719,7 @@ function EntryCard(props: {
             title="Ver movimiento"
             onClick={() => setDemoOpen(true)}
           >
-            <ExerciseDemoThumb />
+            <ExerciseDemoThumb key={visualGuide.phases[0].src} phase={visualGuide.phases[0]} />
           </button>
         ) : null}
         {!props.collapsed ? (
@@ -1027,8 +1060,9 @@ function EntryCard(props: {
   return (
     <>
       {card}
-      {canShowDemo && demoOpen ? (
+      {canShowDemo && demoOpen && visualGuide ? (
         <ExerciseDemoModal
+          guide={visualGuide}
           name={en.name}
           cue={en.cue?.trim() || ex?.tips?.trim() || ''}
           onClose={() => setDemoOpen(false)}
