@@ -22,7 +22,10 @@ import type { Exercise, Session, SessionEntry, SetLog, Unit } from '@/domain/typ
 
 import {
   historyExerciseIds,
+  currentWeekSummary,
+  exerciseProgressSummary,
   lastStimulusRows,
+  latestRecords,
   newPrs,
   prRows,
   prsBefore,
@@ -245,6 +248,53 @@ describe('prRows', () => {
 
   it('sin sesiones no hay récords', () => {
     expect(prRows([])).toEqual([]);
+  });
+});
+
+describe('resúmenes de la vista principal', () => {
+  it('resume la semana local de lunes a domingo sin arrastrar la anterior', () => {
+    const lista = [
+      sesion('2026-09-20', [entrada('press', [serie(80, 5)])]),
+      sesion('2026-09-21', [entrada('press', [serie(60, 5), serie(65, 5, false)])]),
+      sesion('2026-09-24', [entrada('remo', [serie(40, 8), serie(45, 8)])]),
+    ];
+    expect(currentWeekSummary(lista, '2026-09-24')).toEqual({ sessions: 2, sets: 3, volume: 980 });
+  });
+
+  it('ordena los PR vigentes por la fecha en que se alcanzaron y aplica el límite', () => {
+    const lista = [
+      sesion('2026-09-20', [entrada('press', [serie(60, 5)]), entrada('remo', [serie(50, 5)])]),
+      sesion('2026-09-22', [entrada('press', [serie(70, 5)])]),
+      sesion('2026-09-24', [entrada('remo', [serie(55, 5)])]),
+    ];
+    expect(latestRecords(lista, 1).map((record) => record.exId)).toEqual(['remo']);
+    expect(latestRecords(lista, 3).map((record) => record.exId)).toEqual(['remo', 'press']);
+  });
+
+  it('no presenta las series sin carga como récords de 0 kg', () => {
+    const lista = [
+      sesion('2026-09-24', [entrada('plank', [serie(null, 30)]), entrada('press', [serie(0, 8)])]),
+    ];
+    expect(latestRecords(lista)).toEqual([]);
+  });
+
+  it('usa la sesión más reciente por hora, junta entradas duplicadas y conserva las reps sin carga', () => {
+    const older = sesion('2026-09-24', [entrada('press', [serie(60, 8)])], {
+      startedAt: '2026-09-24T09:00:00.000Z',
+      endedAt: '2026-09-24T10:00:00.000Z',
+    });
+    const newest = sesion(
+      '2026-09-24',
+      [entrada('press', [serie(null, 10)]), entrada('press', [serie(null, 12), serie(30, 0)])],
+      { startedAt: '2026-09-24T12:00:00.000Z', endedAt: '2026-09-24T13:00:00.000Z' },
+    );
+    const summary = exerciseProgressSummary([older, newest], 'press');
+    expect(summary).toMatchObject({
+      date: '2026-09-24',
+      latest: { weight: null, reps: 12 },
+      best: { weight: 60, reps: 8, e1rm: e1rm(60, 8) },
+    });
+    expect(summary?.trend).toHaveLength(2);
   });
 });
 

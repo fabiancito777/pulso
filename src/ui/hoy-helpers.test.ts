@@ -218,9 +218,9 @@ describe('planRows', () => {
     ).toBe('4×10');
   });
 
-  it('sin límite no pinta la lista entera (se corta en 8)', () => {
+  it('incluye todos los ejercicios por defecto y admite límites explícitos', () => {
     const items = Array.from({ length: 12 }, (_, i) => ({ exId: 'press', name: `Ej ${i}` }));
-    expect(planRows(items, biblio)).toHaveLength(8);
+    expect(planRows(items, biblio)).toHaveLength(12);
     expect(planRows(items, biblio, 3)).toHaveLength(3);
   });
 });

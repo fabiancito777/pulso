@@ -859,6 +859,7 @@ export function RoutinesView() {
   /* JSON crudo de la propuesta: con él se reevalúan los nombres al crear un
      ejercicio nuevo (para que pase a verde sin volver a pedir la propuesta). */
   const [proposalRaw, setProposalRaw] = useState<unknown>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   /* generación local (sin API key): modal de plantillas + propuesta sin guardar */
   const [genOpen, setGenOpen] = useState(false);
   const [auto, setAuto] = useState<AutoProposal | null>(null);
@@ -1201,30 +1202,29 @@ export function RoutinesView() {
 
   return (
     <>
-      <div class="col rt-top">
-        <div class="grid c2">
-          <button type="button" class="btn lg primary block rt-btn" onClick={() => setEditId(null)}>
+      {list.length ? (
+        <section class="mt">
+          <div class="between rt-list-head">
+            <div class="h3 help-h3">Mis rutinas <HelpBtn id="tab.rutinas" title="Mis rutinas" /></div>
+            <button type="button" class="btn sm primary" onClick={() => setCreateOpen(true)}>
+              <Icon name="plus" /> Nueva rutina
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {!list.length ? (
+        <div class="col rt-top">
+          <button
+            type="button"
+            class="btn lg primary block rt-btn"
+            onClick={() => setCreateOpen(true)}
+          >
             <Icon name="plus" />
             Nueva rutina
           </button>
-          <button type="button" class="btn lg block rt-btn" onClick={() => setGenOpen(true)}>
-            <Icon name="wand" />
-            Generar auto
-          </button>
         </div>
-        <div class="row" style="gap:6px">
-          <button
-            type="button"
-            class="btn lg grow rt-btn"
-            disabled={wait.running}
-            onClick={() => void suggest()}
-          >
-            <Icon name="sparkles" />
-            {wait.running ? 'El coach está pensando…' : 'Sugerir rutina con IA'}
-          </button>
-          <HelpBtn id="rutinas.autoVsIa" title="Generar auto y sugerir con IA" />
-        </div>
-      </div>
+      ) : null}
 
       {notice ? <NoticeBox notice={notice} onClose={() => setNotice(null)} /> : null}
 
@@ -1260,30 +1260,25 @@ export function RoutinesView() {
         </div>
       ) : null}
 
-      <section class="mt">
-        <SectionHead
-          title="Mis rutinas"
-          help="tab.rutinas"
-          right={list.length ? String(list.length) : undefined}
-        />
-        {list.length ? (
-          <div class="col" style="gap:10px">
-            {list.map(renderCard)}
-          </div>
-        ) : (
+      {list.length ? (
+        <div class="col mt-s" style="gap:10px">
+          {list.map(renderCard)}
+        </div>
+      ) : null}
+
+      {!list.length ? (
+        <section class="mt">
+          <SectionHead title="Mis rutinas" help="tab.rutinas" />
           <div class="empty">
             <Icon name="list" />
             <div>Aún no tienes rutinas</div>
-            <div class="tiny">
-              Crea una con «Nueva rutina», genera una desde una plantilla o deja que el coach te
-              proponga una
-            </div>
+            <div class="tiny">Crea una desde cero, desde una plantilla o con el coach.</div>
           </div>
-        )}
-      </section>
+        </section>
+      ) : null}
 
       <InfoCard>
-        Las rutinas y las plantillas de «Generar auto» solo usan ejercicios permitidos que puedes
+        Las rutinas y las plantillas de «Usar plantilla» solo usan ejercicios permitidos que puedes
         hacer con tu material actual: si falta alguno, la tarjeta lo avisa. Ajusta la biblioteca en
         Ajustes → Ejercicios.
       </InfoCard>
@@ -1293,6 +1288,61 @@ export function RoutinesView() {
           onClose={() => setGenOpen(false)}
           onGenerate={(templateId, rotate) => runGenerate(templateId, rotate)}
         />
+      ) : null}
+
+      {createOpen ? (
+        <Modal
+          title="Nueva rutina"
+          sub="Elige cómo quieres empezar"
+          onClose={() => setCreateOpen(false)}
+        >
+          <div class="col rt-create-options">
+            <button
+              type="button"
+              class="card tight rt-create-option"
+              onClick={() => {
+                setCreateOpen(false);
+                setEditId(null);
+              }}
+            >
+              <span class="rt-create-icon"><Icon name="plus" /></span>
+              <span>
+                <b>Desde cero</b>
+                <span class="tiny muted">Elige ejercicios y ajusta cada serie.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="card tight rt-create-option"
+              onClick={() => {
+                setCreateOpen(false);
+                setGenOpen(true);
+              }}
+            >
+              <span class="rt-create-icon"><Icon name="wand" /></span>
+              <span>
+                <b>Usar plantilla</b>
+                <span class="tiny muted">Genera una rutina local según tu objetivo y material.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="card tight rt-create-option"
+              disabled={wait.running}
+              onClick={() => {
+                setCreateOpen(false);
+                void suggest();
+              }}
+            >
+              <span class="rt-create-icon"><Icon name="sparkles" /></span>
+              <span>
+                <b>Pedir al coach</b>
+                <span class="tiny muted">Usa tu historial; requiere API key y puede recurrir al plan local.</span>
+              </span>
+            </button>
+            <HelpBtn id="rutinas.autoVsIa" title="Opciones para crear una rutina" />
+          </div>
+        </Modal>
       ) : null}
 
       {scheduleRoutine && scheduleId ? (

@@ -172,7 +172,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Guía de la app',
     paras: [
       'Pulso tiene 7 pestañas. Hoy es tu día, Entrenar es la sesión en curso, Rutinas son tus listas guardadas, Calendario es el plan de la semana, Coach es el chat con IA, Progreso son tus récords y gráficos, y Ajustes es la configuración.',
-      'Para empezar rápido: la tarjeta grande de Hoy arranca el entreno del día. «Repetir» vuelve a montar una sesión antigua. «Auto-planificar» llena la semana, tengas o no clave de IA.',
+      'Para empezar rápido: la tarjeta de Hoy deja ver el plan antes de empezar y la última sesión tiene un botón para repetirla. Si cambias de pestaña durante un entreno, la barra compacta muestra su tiempo y progreso; «Retomar sesión» vuelve a Hoy sin cerrarlo. «Auto-planificar» llena la semana, tengas o no clave de IA.',
       'Si algo no queda claro, busca el botón ⓘ que hay al lado y tócalo: te explica esa opción. Desde aquí llegas a todas, también al glosario.',
     ],
     see: ['flow.start', 'flow.repeat', 'flow.plan'],
@@ -192,7 +192,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'app',
     title: 'Repetir una sesión',
     paras: [
-      'Hoy → «Últimas sesiones» → «Repetir». También desde Progreso → historial → una sesión → «Repetir sesión».',
+      'En Hoy, usa la tarjeta «Última sesión» o el botón «Repetir» de las últimas sesiones. También puedes abrir una sesión desde Progreso → Historial de sesiones y repetirla desde su detalle.',
       'Se abre el mismo entreno con los pesos de la última vez. Solo cambia el peso si hoy vas más fuerte: las series, los descansos y las notas vienen igual.',
     ],
     see: ['hoy.lastSessions', 'tab.progreso'],
@@ -214,8 +214,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Hoy',
     paras: [
-      'Tu día de un vistazo: el saludo, la tarjeta del día con el plan y la tira de la semana.',
-      'Debajo: las últimas sesiones con «Repetir» y dos herramientas (calculadora de discos y temporizador).',
+      'Tu día de un vistazo: el saludo, la tarjeta del plan y la tira de la semana. «Ver los N ejercicios» despliega el contenido del plan sin empezar el entreno.',
+      'La tarjeta «Última sesión» te deja repetirla con sus pesos anteriores. Más abajo aparecen las sesiones recientes y las herramientas (calculadora de discos y temporizador).',
     ],
     see: ['hoy.plan', 'flow.start'],
   },
@@ -224,7 +224,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Rutinas',
     paras: [
-      'Tus rutinas guardadas. Puedes escribir una a mano con «Nueva rutina», generarla sin conexión con «Generar auto» o pedírsela a la IA con «Sugerir rutina con IA».',
+      'Tus rutinas guardadas aparecen primero. «Nueva rutina» abre las opciones para empezar desde cero, usar una plantilla local o pedir una propuesta al coach.',
       'Cada tarjeta tiene Empezar, Editar, Agendar, Duplicar y Eliminar (Duplicar/Eliminar como iconos compactos).',
     ],
     see: ['rutinas.autoVsIa', 'rutinas.source'],
@@ -255,7 +255,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Progreso',
     paras: [
-      'Tus números: sesiones, kilos movidos y racha. Debajo, gráficos de volumen, reparto por grupo muscular, récords (el 1RM estimado) e historial de sesiones.',
+      'Arriba ves las sesiones, series y el volumen de esta semana, además de los últimos récords personales. Busca un ejercicio para consultar su evolución; «Ver estadísticas» despliega los gráficos y sus filtros.',
+      'El historial aparece debajo de las estadísticas: abre una fila para ver sus series y marcas, o usa «Ver todo» para consultar la lista completa. Desde el detalle puedes repetir una sesión.',
     ],
     see: ['prog.e1rm', 'prog.prs', 'prog.subtitle'],
   },
@@ -277,7 +278,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'El botón grande empieza la sesión que toca hoy: la app mira el Calendario, tus rutinas y tu historial para decidir qué te toca.',
       'Si no hay nada programado aparece «Sin plan para hoy»: puedes entrenar libre, elegir una de tus rutinas o saltarte el día.',
-      'El sello dice de dónde sale el plan: «IA» si lo escribió el coach con tu clave, «plan» si lo calculó tu dispositivo.',
+      '«Ver los N ejercicios» abre o pliega la lista del plan. El sello dice de dónde sale: «IA» si lo escribió el coach con tu clave, «plan» si lo calculó tu dispositivo.',
     ],
     see: ['tab.hoy', 'flow.start'],
   },
@@ -286,8 +287,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'hoy',
     title: 'Últimas sesiones',
     paras: [
-      'Tus sesiones más recientes con fecha, volumen, duración y grupos musculares. Toca una para ver el detalle de sus series.',
-      '«Repetir» (el icono de la flecha) monta otra vez esa sesión con los pesos de la última vez: solo toca ajustarlos si ese día vas más fuerte.',
+      'La tarjeta «Última sesión» repite rápidamente tu entreno más reciente. La lista de debajo muestra las sesiones recientes con fecha, volumen, duración y grupos musculares; toca una para ver sus series.',
+      '«Repetir» monta otra vez esa sesión con los pesos anteriores: solo toca ajustarlos si ese día vas más fuerte.',
     ],
     see: ['flow.repeat', 'glossary.volume'],
   },
@@ -360,7 +361,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'rutinas',
     title: 'Generar rutina automática',
     paras: [
-      '«Generar auto» coge una plantilla (Full body, Tren superior…) y la rellena con ejercicios que puedes hacer según tu material, con series, repeticiones y descanso según tu objetivo.',
+      'Desde «Nueva rutina», elige «Usar plantilla». Pulso toma una plantilla (Full body, Tren superior…) y la rellena con ejercicios que puedes hacer según tu material, con series, repeticiones y descanso según tu objetivo.',
       'Se calcula en tu dispositivo, sin conexión. Verás la propuesta antes de guardarla: si no te gusta, la descartas y no se guarda nada.',
     ],
     see: ['rutinas.autoVsIa', 'rutinas.rotate'],
@@ -378,10 +379,10 @@ export const HELP: Record<HelpId, HelpTopic> = {
   'rutinas.autoVsIa': {
     id: 'rutinas.autoVsIa',
     section: 'rutinas',
-    title: 'Generar auto y sugerir con IA',
+    title: 'Opciones para crear una rutina',
     paras: [
-      'Hay dos formas de conseguir una rutina. «Generar auto» la calcula tu dispositivo al momento y sin conexión. «Sugerir rutina con IA» se la pide al coach, que tiene en cuenta tu historial.',
-      'La segunda necesita tu clave de Google AI Studio. Si no la has puesto, la app te avisa y te lleva a Ajustes.',
+      'Desde «Nueva rutina» puedes empezar desde cero, usar una plantilla que se calcula en tu dispositivo y sin conexión, o pedir una propuesta al coach, que tiene en cuenta tu historial.',
+      'Pedir al coach necesita tu clave de Google AI Studio. Si no la has puesto, la app te lleva a Ajustes → Coach AI. Si la petición falla después de iniciar, se conserva el planificador local como alternativa.',
     ],
     see: ['rutinas.generate', 'coach.apiKey'],
   },
@@ -554,18 +555,18 @@ export const HELP: Record<HelpId, HelpTopic> = {
   'prog.subtitle': {
     id: 'prog.subtitle',
     section: 'progreso',
-    title: 'Resumen de Progreso',
+    title: 'Resumen de esta semana',
     paras: [
-      'Un resumen de tres datos: las sesiones que llevas registradas, los kilos movidos en total y los días seguidos entrenando sin faltar.',
+      'La tarjeta superior resume esta semana: sesiones completadas, series y volumen movido. El rango semanal usa la semana local actual.',
     ],
-    see: ['glossary.volume', 'glossary.streak'],
+    see: ['prog.kpis', 'glossary.volume'],
   },
   'prog.kpis': {
     id: 'prog.kpis',
     section: 'progreso',
     title: 'KPIs de Progreso',
     paras: [
-      '«Volumen total» es todo el peso que has movido (peso × repeticiones). «Esta semana» es lo mismo solo de estos días. «Tiempo total» son las horas de entreno y «Racha», los días seguidos sin faltar.',
+      'En «Ver estadísticas», «Volumen total» es todo el peso que has movido (peso × repeticiones). «Esta semana» es lo mismo solo de estos días. «Tiempo total» son las horas de entreno y «Racha», los días seguidos sin faltar.',
       'Estos números incluyen las sesiones de ejemplo hasta que las quites (llevan el sello «demo»).',
     ],
     see: ['glossary.volume', 'opt.demo'],
@@ -585,8 +586,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'progreso',
     title: 'Récords personales',
     paras: [
-      'Tus mejores marcas por ejercicio, medidas con el 1RM estimado. Un récord nuevo solo aparece cuando superas tu marca anterior, no al repetir el mismo peso.',
-      'Toca una fila para ver ese ejercicio en «Progresión», o «Ver tabla completa» para la lista entera.',
+      '«Últimos récords» muestra las marcas que mejoraste más recientemente. Toca una para abrir la evolución de ese ejercicio; «Ver tabla completa» enseña todos tus récords por 1RM estimado.',
+      'Un récord nuevo solo aparece cuando superas tu marca anterior, no al repetir el mismo peso.',
     ],
     see: ['glossary.1rm', 'prog.e1rm'],
   },
@@ -692,7 +693,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Notificaciones del sistema',
     paras: [
       'Para que te avise con el móvil bloqueado hace falta dar permiso de notificaciones. Sin permiso, la cuenta atrás no puede sonar con la pantalla apagada.',
-      'El botón de prueba manda una ahora mismo para que veas cómo llega.',
+      'Para comprobar cómo llega, abre Ajustes → Entreno → Avanzado y pulsa «Probar aviso con el móvil bloqueado».',
     ],
     see: ['opt.keepAwake', 'entreno.rest'],
   },
@@ -750,7 +751,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Modelo',
     paras: [
-      'Qué versión de Gemini usa el coach. Hay tres: «Gemini 4 Hydrogen», el más capaz y el que viene marcado; «Gemini 3.8 Flash», respaldo estable; y «Gemini 3.5 Flash-Lite», rápido y económico para el día a día.',
+      'Qué versión de Gemini usa el coach. Se cambia en Ajustes → Coach AI → Avanzado. Hay tres: «Gemini 4 Hydrogen», el más capaz y el que viene marcado; «Gemini 3.8 Flash», respaldo estable; y «Gemini 3.5 Flash-Lite», rápido y económico para el día a día.',
     ],
     see: ['opt.thinkingLevel', 'coach.apiKey'],
   },
@@ -923,7 +924,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'glosario',
     title: 'Rutina, plantilla y sesión',
     paras: [
-      'Rutina es tu lista guardada. Plantilla es el punto de partida de «Generar auto». Sesión es lo que entrenas hoy y se guarda en el historial.',
+      'Rutina es tu lista guardada. Plantilla es el punto de partida de «Usar plantilla» en Nueva rutina. Sesión es lo que entrenas hoy y se guarda en el historial.',
     ],
     see: ['rutinas.generate', 'hoy.plan'],
   },

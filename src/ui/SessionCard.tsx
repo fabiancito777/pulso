@@ -352,6 +352,14 @@ export function SessionDock({
           <span class="rest-dock-time">{fmtClock(sessionSeconds.value)}</span>
           <span class="tiny muted">{fmtVol(volume)} kg</span>
         </div>
+        <button
+          type="button"
+          class="btn sm session-dock-resume"
+          tabIndex={show ? undefined : -1}
+          onClick={() => go('hoy')}
+        >
+          Retomar sesión
+        </button>
       </div>
     </div>
   );

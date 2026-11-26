@@ -13,6 +13,44 @@
   gap: 8px;
 }
 
+.rt-list-head {
+  gap: 10px;
+  margin-bottom: 9px;
+}
+
+.rt-create-options {
+  gap: 8px;
+}
+
+.rt-create-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.rt-create-option > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rt-create-option:disabled {
+  opacity: 0.65;
+}
+
+.rt-create-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
 /* `.btn` va con `white-space:nowrap`; en móvil el botón largo necesita cortar */
 .rt-btn {
   white-space: normal;

@@ -498,49 +498,6 @@ function SecApariencia() {
           onChange={(v) => setSettingsPath('keepAwake', v)}
         />
       </div>
-      {/* Botón de prueba (`T.testRestNotice`): comprueba la capa
-          del service worker en el móvil real. Está en Apariencia, junto a los
-          avisos, igual que el resto de avisos. */}
-      <div class="card flush mt">
-        <ListButton
-          icon="timer"
-          title="Probar aviso con el móvil bloqueado"
-          sub={`Programa un aviso de prueba en ${TEST_NOTICE_SEC} segundos para comprobar que te llega`}
-          onClick={() => {
-            /* `testRestNotice` decide y programa; los toasts son de la UI
-               (`state/` no importa de `ui/`), igual que los  */
-            const result = testRestNotice(TEST_NOTICE_SEC);
-            if (result === 'rest-running') {
-              toast('Hay un descanso en curso: primero termínalo o sáltalo', {
-                kind: 'warn',
-                ms: 5000,
-              });
-              return;
-            }
-            if (result === 'notify-off') {
-              toast('Activa «Notificaciones del sistema» para probar el aviso', {
-                kind: 'warn',
-                ms: 5000,
-              });
-              return;
-            }
-            if (result === 'no-sw') {
-              toast(
-                'El aviso con el móvil bloqueado necesita la app instalada (o servida en producción)',
-                {
-                  kind: 'warn',
-                  ms: 6000,
-                },
-              );
-              return;
-            }
-            toast(`Bloquea el móvil: el aviso llega en ${TEST_NOTICE_SEC} s`, {
-              kind: 'ok',
-              ms: 4000,
-            });
-          }}
-        />
-      </div>
     </>
   );
 }
@@ -606,7 +563,55 @@ function SecEntreno() {
         Cada ejercicio trae un descanso sugerido; puedes ajustarlo a mano en la sesión, en el editor
         de rutinas o en tus ejercicios.
       </InfoCard>
+      <details class="card mt settings-advanced">
+        <summary>Avanzado</summary>
+        <p class="sub">Diagnóstico de las notificaciones de descanso con el móvil bloqueado.</p>
+        <LockedPhoneTest />
+      </details>
     </>
+  );
+}
+
+function LockedPhoneTest() {
+  return (
+    <div class="card flush mt">
+      <ListButton
+        icon="timer"
+        title="Probar aviso con el móvil bloqueado"
+        sub={`Programa un aviso de prueba en ${TEST_NOTICE_SEC} segundos para comprobar que te llega`}
+        onClick={() => {
+          const result = testRestNotice(TEST_NOTICE_SEC);
+          if (result === 'rest-running') {
+            toast('Hay un descanso en curso: primero termínalo o sáltalo', {
+              kind: 'warn',
+              ms: 5000,
+            });
+            return;
+          }
+          if (result === 'notify-off') {
+            toast('Activa «Notificaciones del sistema» para probar el aviso', {
+              kind: 'warn',
+              ms: 5000,
+            });
+            return;
+          }
+          if (result === 'no-sw') {
+            toast(
+              'El aviso con el móvil bloqueado necesita la app instalada (o servida en producción)',
+              {
+                kind: 'warn',
+                ms: 6000,
+              },
+            );
+            return;
+          }
+          toast(`Bloquea el móvil: el aviso llega en ${TEST_NOTICE_SEC} s`, {
+            kind: 'ok',
+            ms: 4000,
+          });
+        }}
+      />
+    </div>
   );
 }
 
@@ -1481,103 +1486,112 @@ function SecCoach() {
             Obtener key
           </a>
         </div>
+        <p class="sub mt-s" role="status">
+          {key
+            ? 'Estado: API key guardada; prueba la conexión para confirmarla.'
+            : 'Estado: sin API key. Las sugerencias locales y el plan semanal siguen disponibles.'}
+        </p>
         <p class="sub mt-s">
           La key se guarda solo en el almacenamiento local de este navegador y se envía directamente
           a Google (<i>generativelanguage.googleapis.com</i>).
         </p>
       </div>
-      <div class="card flush mt">
-        <SelectRow
-          inline
-          label="Modelo"
-          help="opt.model"
-          value={ai.model}
-          options={models.map((m) => ({
-            value: m.id,
-            label: m.hint ? `${m.label} — ${m.hint}` : m.label,
-          }))}
-          onChange={(v) => setSettingsPath('ai.model', v)}
-        />
-        <SelectRow
-          inline
-          label="Nivel de pensamiento (thinkingLevel)"
-          help="opt.thinkingLevel"
-          value={ai.thinkingLevel}
-          options={THINKING_LEVELS.map((t) => ({
-            value: t.key,
-            label: `${t.label} — ${t.hint ?? ''}`,
-          }))}
-          onChange={(v) => setSettingsPath('ai.thinkingLevel', v)}
-        />
-        <SwitchRow
-          label="Mostrar razonamiento del modelo"
-          hint="includeThoughts: muestra el resumen interno de Gemini"
-          help="opt.includeThoughts"
-          value={ai.includeThoughts}
-          onChange={(v) => setSettingsPath('ai.includeThoughts', v)}
-        />
-        <NumRow
-          label="Máximo de tokens de salida"
-          hint="Súbelo si las rutinas se cortan"
-          help="opt.maxTokens"
-          value={ai.maxTokens}
-          step={512}
-          min={512}
-          max={65536}
-          onChange={(v) => setSettingsPath('ai.maxTokens', v)}
-        />
-        <NumRow
-          label="Espera máxima de respuesta"
-          hint="0 = automática según el nivel de pensamiento (60/120/240/300 s)"
-          help="opt.timeoutSec"
-          value={Number(ai.timeoutSec) || 0}
-          step={30}
-          min={0}
-          max={600}
-          suffix="s"
-          onChange={(v) => setSettingsPath('ai.timeoutSec', v)}
-        />
-      </div>
-      <div class="card mt">
-        <div class="help-field">
-          <label class="field">
-            <span class="label">Instrucciones del sistema (systemInstruction)</span>
-            <textarea
-              class="input"
-              style="min-height:150px"
-              placeholder="Vacío = usa el prompt por defecto de Pulso"
-              aria-label="Instrucciones del sistema"
-              value={ai.systemPrompt ?? ''}
-              onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
-            />
-          </label>
-          <HelpBtn id="opt.systemPrompt" title="Instrucciones del sistema" />
+      <details class="card mt settings-advanced">
+        <summary>Avanzado</summary>
+        <p class="sub">Modelo, razonamiento, límites de respuesta e instrucciones personalizadas.</p>
+        <div class="card flush mt">
+          <SelectRow
+            inline
+            label="Modelo"
+            help="opt.model"
+            value={ai.model}
+            options={models.map((m) => ({
+              value: m.id,
+              label: m.hint ? `${m.label} — ${m.hint}` : m.label,
+            }))}
+            onChange={(v) => setSettingsPath('ai.model', v)}
+          />
+          <SelectRow
+            inline
+            label="Nivel de pensamiento (thinkingLevel)"
+            help="opt.thinkingLevel"
+            value={ai.thinkingLevel}
+            options={THINKING_LEVELS.map((t) => ({
+              value: t.key,
+              label: `${t.label} — ${t.hint ?? ''}`,
+            }))}
+            onChange={(v) => setSettingsPath('ai.thinkingLevel', v)}
+          />
+          <SwitchRow
+            label="Mostrar razonamiento del modelo"
+            hint="includeThoughts: muestra el resumen interno de Gemini"
+            help="opt.includeThoughts"
+            value={ai.includeThoughts}
+            onChange={(v) => setSettingsPath('ai.includeThoughts', v)}
+          />
+          <NumRow
+            label="Máximo de tokens de salida"
+            hint="Súbelo si las rutinas se cortan"
+            help="opt.maxTokens"
+            value={ai.maxTokens}
+            step={512}
+            min={512}
+            max={65536}
+            onChange={(v) => setSettingsPath('ai.maxTokens', v)}
+          />
+          <NumRow
+            label="Espera máxima de respuesta"
+            hint="0 = automática según el nivel de pensamiento (60/120/240/300 s)"
+            help="opt.timeoutSec"
+            value={Number(ai.timeoutSec) || 0}
+            step={30}
+            min={0}
+            max={600}
+            suffix="s"
+            onChange={(v) => setSettingsPath('ai.timeoutSec', v)}
+          />
         </div>
-        <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
-          <button type="button" class="btn sm" onClick={() => setShowPrompt(true)}>
-            <Icon name="eye" />
-            Ver prompt activo
-          </button>
-          <button type="button" class="btn sm ghost" onClick={() => void copyPrompt()}>
-            <Icon name="copy" />
-            Copiar prompt
-          </button>
-          <button type="button" class="btn sm ghost" onClick={restorePrompt}>
-            <Icon name="refresh" />
-            Restaurar por defecto
-          </button>
+        <div class="card mt">
+          <div class="help-field">
+            <label class="field">
+              <span class="label">Instrucciones del sistema (systemInstruction)</span>
+              <textarea
+                class="input"
+                style="min-height:150px"
+                placeholder="Vacío = usa el prompt por defecto de Pulso"
+                aria-label="Instrucciones del sistema"
+                value={ai.systemPrompt ?? ''}
+                onChange={(e) => setSettingsPath('ai.systemPrompt', e.currentTarget.value)}
+              />
+            </label>
+            <HelpBtn id="opt.systemPrompt" title="Instrucciones del sistema" />
+          </div>
+          <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn sm" onClick={() => setShowPrompt(true)}>
+              <Icon name="eye" />
+              Ver prompt activo
+            </button>
+            <button type="button" class="btn sm ghost" onClick={() => void copyPrompt()}>
+              <Icon name="copy" />
+              Copiar prompt
+            </button>
+            <button type="button" class="btn sm ghost" onClick={restorePrompt}>
+              <Icon name="refresh" />
+              Restaurar por defecto
+            </button>
+          </div>
+          <p class="sub mt-s">
+            Se guarda al perder el foco. Vacío = se usa el de fábrica, y ahí no se escribe nunca desde
+            Ajustes: lo resuelve el cliente al generar la petición.
+          </p>
         </div>
-        <p class="sub mt-s">
-          Se guarda al perder el foco. Vacío = se usa el de fábrica, y ahí no se escribe nunca desde
-          Ajustes: lo resuelve el cliente al generar la petición.
-        </p>
-      </div>
-      <InfoCard>
-        El coach recibe tu perfil, equipamiento, inventario, ejercicios permitidos e historial
-        reciente en cada petición. Aquí solo se configuran los ajustes:{' '}
-        <b>el cliente de Gemini llega con el bloque del Coach</b> (pestaña Coach, plan semanal y
-        análisis).
-      </InfoCard>
+        <InfoCard>
+          El coach recibe tu perfil, equipamiento, inventario, ejercicios permitidos e historial
+          reciente en cada petición. Aquí solo se configuran los ajustes:{' '}
+          <b>el cliente de Gemini llega con el bloque del Coach</b> (pestaña Coach, plan semanal y
+          análisis).
+        </InfoCard>
+      </details>
       {connErr ? (
         <ConnErrModal
           auth={connErr.auth}

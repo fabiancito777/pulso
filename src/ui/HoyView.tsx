@@ -136,7 +136,8 @@ function Hero({
             <div class="tiny muted hy-kicker">Plan de hoy · {dowLong(now)}</div>
             <div class="h1">{plan.title || 'Entrenamiento'}</div>
             <div class="sub">
-              {plan.items.length} ejercicios · {plan.type || 'entreno'}
+              {plan.items.length} ejercicios ·{' '}
+              {plan.items.reduce((sum, item) => sum + int(item.sets, 3), 0)} series
             </div>
           </div>
           <div class="row" style="gap:4px">
@@ -144,27 +145,27 @@ function Hero({
             <HelpBtn id="hoy.plan" title="Plan de hoy" />
           </div>
         </div>
-        <div class="col mt" style="gap:5px">
-          {planRows(plan.items, exercises.value).map((row, i) => (
-            <div key={`${row.name}-${i}`} class="row" style="gap:8px">
-              <span class="grow ellipsis tiny">{row.name}</span>
-              <span class="tiny muted num">{row.spec}</span>
-            </div>
-          ))}
-          {plan.items.length > 8 ? (
-            <div class="tiny muted">+{plan.items.length - 8} más</div>
-          ) : null}
-        </div>
         <div class="row mt" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn primary grow" onClick={onStart}>
             <Icon name="play" />
-            Empezar sesión
+            Empezar entreno de hoy
           </button>
           <button type="button" class="btn" onClick={onSkip}>
             Saltar
           </button>
           <HelpBtn id="flow.start" title="Empezar a entrenar" />
         </div>
+        <details class="hy-plan-details mt-s">
+          <summary>Ver los {plan.items.length} ejercicios</summary>
+          <div class="col mt-s" style="gap:5px">
+            {planRows(plan.items, exercises.value, plan.items.length).map((row, i) => (
+              <div key={`${row.name}-${i}`} class="row" style="gap:8px">
+                <span class="grow ellipsis tiny">{row.name}</span>
+                <span class="tiny muted num">{row.spec}</span>
+              </div>
+            ))}
+          </div>
+        </details>
       </section>
     );
   }
@@ -534,6 +535,7 @@ export function HoyView() {
 
   const cells = weekCells(schedule.value, list, now, routines.value);
   const recent = lastSessions(list, 4);
+  const latest = recent[0];
   const load = maxLoadable({ plates: s.plates, bars: s.bars, mode: 'bar' });
   const timerVisible = tool === 'timer' || rest.value.running;
 
@@ -549,6 +551,25 @@ export function HoyView() {
         onPickRoutine={() => setRoutinePick(!routinePick)}
       />
 
+      {latest ? (
+        <button
+          type="button"
+          class="card tight hy-repeat-quick mt-s"
+          onClick={() => repeat(latest)}
+        >
+          <span class="hy-repeat-copy">
+            <span class="tiny muted hy-kicker">Última sesión</span>
+            <span class="h3">{latest.name || 'Entrenamiento'}</span>
+            <span class="tiny muted">
+              {dateLabel(sessionDate(latest), 'medium')} · {setsOf(latest)} series
+            </span>
+          </span>
+          <span class="btn sm quiet">
+            <Icon name="refresh" /> Repetir sesión
+          </span>
+        </button>
+      ) : null}
+
       {routinePick ? (
         <RoutinePick
           onPick={(routineId) => {
@@ -560,49 +581,57 @@ export function HoyView() {
 
       <WeekStrip cells={cells} />
 
-      <section class="mt">
-        <SectionHead title="Herramientas" help="hoy.tools" />
-        <div class="grid c2">
-          <button
-            type="button"
-            class="card tight"
-            style="text-align:left"
-            onClick={() => setTool(tool === 'plates' ? null : 'plates')}
-          >
-            <div class="row">
-              <span class="ico accent">
-                <Icon name="plate" />
-              </span>
-              <div>
-                <div class="h3">Calculadora de discos</div>
-                <div class="tiny muted">
-                  máx {fmtW(load.totalKg)} {unitLabel(s.units)} en barra
+      <section class="hy-tools mt">
+        <details class="hy-tools-disclosure" open={tool === 'plates'}>
+          <summary class="hy-tools-summary">
+            <span class="h3">Herramientas</span>
+            <span class="tiny muted">Calculadora de discos · Temporizador</span>
+          </summary>
+          <div class="hy-tools-help">
+            <HelpBtn id="hoy.tools" title="Ayuda sobre herramientas" />
+          </div>
+          <div class="grid c2">
+            <button
+              type="button"
+              class="card tight"
+              style="text-align:left"
+              onClick={() => setTool(tool === 'plates' ? null : 'plates')}
+            >
+              <div class="row">
+                <span class="ico accent">
+                  <Icon name="plate" />
+                </span>
+                <div>
+                  <div class="h3">Calculadora de discos</div>
+                  <div class="tiny muted">
+                    máx {fmtW(load.totalKg)} {unitLabel(s.units)} en barra
+                  </div>
                 </div>
               </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            class="card tight"
-            style="text-align:left"
-            onClick={() => setTool(tool === 'timer' ? null : 'timer')}
-          >
-            <div class="row">
-              <span class="ico accent">
-                <Icon name="timer" />
-              </span>
-              <div>
-                <div class="h3">Temporizador</div>
-                <div class="tiny muted">descanso libre o isométricos</div>
+            </button>
+            <button
+              type="button"
+              class="card tight"
+              style="text-align:left"
+              onClick={() => setTool(tool === 'timer' ? null : 'timer')}
+            >
+              <div class="row">
+                <span class="ico accent">
+                  <Icon name="timer" />
+                </span>
+                <div>
+                  <div class="h3">Temporizador</div>
+                  <div class="tiny muted">descanso libre o isométricos</div>
+                </div>
               </div>
-            </div>
-          </button>
-        </div>
-        {tool === 'plates' ? (
-          <div class="mt-s">
-            <PlatesCard />
+            </button>
           </div>
-        ) : null}
+          {tool === 'plates' ? (
+            <div class="mt-s">
+              <PlatesCard />
+            </div>
+          ) : null}
+        </details>
         {timerVisible ? <FreeTimer onClose={() => setTool(null)} /> : null}
       </section>
 

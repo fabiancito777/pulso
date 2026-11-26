@@ -84,6 +84,13 @@ section{margin:0 0 20px}
 .card.flush{padding:0;overflow:hidden}
 .card.ghost{background:transparent;border-style:dashed}
 .card.accent{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:linear-gradient(180deg,var(--accent-soft),transparent 70%),var(--surface)}
+.settings-advanced{padding:0;overflow:hidden}
+.settings-advanced>summary{padding:12px 14px;cursor:pointer;font-weight:650;list-style-position:inside}
+.settings-advanced[open]>summary{border-bottom:1px solid var(--border-soft)}
+.settings-advanced>summary+*{margin-top:12px}
+.settings-advanced>summary~.card{margin-inline:12px}
+.settings-advanced>.sub{margin:10px 14px 0}
+.settings-advanced>.card.flush{margin-bottom:12px}
 .grid{display:grid;gap:10px}
 .grid.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .grid.c3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -449,6 +456,7 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 .session-dock-name{font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .session-dock-nums{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex:none}
 .session-dock .rest-dock-time{font-size:18px;min-width:0}
+.session-dock-resume{flex:none}
 body.has-dock .v2-main{padding-bottom:calc(26px + 70px)}
 .sr-strip{display:flex;align-items:center;gap:9px;padding-top:9px;border-top:1px solid var(--border-soft)}
 .sr-strip .num{font-size:19px;font-weight:650;min-width:58px}

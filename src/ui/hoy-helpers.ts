@@ -170,7 +170,7 @@ export interface PlanRow {
 }
 
 /**
- * Filas del hero (los primeros 8 ejercicios del plan). El nombre se resuelve
+ * Filas del plan de hoy. El nombre se resuelve
  * contra la biblioteca y el texto es el: `sets × reps` con las reps
  * concretas si las hay, si no la media del rango, y `@ peso` solo si hay peso
  * (un peso vacío no es 0: es «sin peso»).
@@ -178,7 +178,7 @@ export interface PlanRow {
 export function planRows(
   items: readonly PlanLine[],
   library: readonly Exercise[],
-  limit = 8,
+  limit = Number.POSITIVE_INFINITY,
 ): PlanRow[] {
   const byId = new Map(library.map((ex) => [ex.id, ex]));
   return items.slice(0, Math.max(0, limit)).map((item) => {

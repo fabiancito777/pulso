@@ -52,6 +52,12 @@ pantalla completa y funciona offline).
   `node tools/sync-dev.mjs`.
 
 ### Hoy / Entrenar
+- El plan del día recoge la sesión prevista. **Ver los N ejercicios** despliega la lista sin arrancar el
+  entreno; puedes volver a plegarla antes de empezar.
+- La tarjeta **Última sesión** ofrece **Repetir sesión** con los pesos anteriores. También puedes
+  repetir desde las últimas sesiones de Hoy o desde el historial de Progreso.
+- Si cambias a otra pestaña con una sesión activa, la barra compacta mantiene el tiempo y el progreso;
+  **Retomar sesión** vuelve a Hoy sin cerrar ni finalizarla.
 - Sesión activa con **marcado de series** (peso × reps × check), añadir/quitar series y ejercicios,
   reordenar y ver el cronómetro de la sesión. Puedes plegar cada ejercicio para ver solo su avance.
 - **Modo súper simple** (*Ajustes → Entreno*). Muestra la sesión activa en negro y lima, con **Finalizar**
@@ -114,6 +120,8 @@ pantalla completa y funciona offline).
 
 ### Rutinas
 - Biblioteca de rutinas propias (crear, editar, duplicar, borrar, agendar, empezar).
+- Las rutinas guardadas aparecen primero; **Nueva rutina** abre opciones para empezar desde cero,
+  usar una plantilla local o pedir una propuesta al coach.
 - Editor con series, rango de repeticiones y descanso por ejercicio.
 - **7 plantillas** (Full body A/B, empuje, tirón, pierna, torso completo y pierna + core) que se
   materializan usando solo ejercicios permitidos y disponibles con tu equipamiento.
@@ -133,11 +141,12 @@ pantalla completa y funciona offline).
   plan para romper un récord.
 - Propone el **descanso por ejercicio** (compuestos 180-240 s, auxiliares 90-120 s, aislamientos
   60-75 s), que puedes ajustar a mano durante la sesión, en la rutina o en tus ejercicios.
-- Configurable desde la app: **API key**, **modelo** (`gemini-4-hydrogen`, recomendado, o
-  `gemini-3.8-flash` y `gemini-3.5-flash-lite` como respaldo), **thinking level**
-  (`auto|minimal|low|medium|high|xhigh`), mostrar u ocultar el resumen de razonamiento
-  (`includeThoughts`), máximo de tokens y system prompt. No hay `temperature` ni `thinkingBudget`:
-  Gemini 3 las ignora o no las usa. Hydrogen convierte `minimal` en `low` porque rechaza ese nivel.
+- En Ajustes → Coach AI quedan a la vista la **API key**, su estado y la prueba de conexión. En
+  **Avanzado** se configuran el modelo (`gemini-4-hydrogen`, recomendado, o `gemini-3.8-flash` y
+  `gemini-3.5-flash-lite` como respaldo), el **thinking level** (`auto|minimal|low|medium|high|xhigh`),
+  el resumen de razonamiento (`includeThoughts`), el máximo de tokens, la espera y el system prompt.
+  No hay `temperature` ni `thinkingBudget`: Gemini 3 las ignora o no las usa. Hydrogen convierte
+  `minimal` en `low` porque rechaza ese nivel.
 - **Espera máxima de respuesta**. Se calcula según el nivel de pensamiento o se puede fijar en
   segundos. Mientras espera, la app muestra cuánto tiempo ha pasado y permite cancelar.
 - Botón de prueba de conexión con diagnóstico de errores.
@@ -145,6 +154,11 @@ pantalla completa y funciona offline).
 
 ### Progreso (estadísticas)
 - KPIs: volumen total y semanal (con % vs semana previa), sesiones, series, tiempo, racha actual y mejor racha.
+- La tarjeta **Esta semana** resume sesiones, series y volumen; **Últimos récords** muestra las marcas
+  mejoradas recientemente y permite abrir la tabla completa.
+- Busca un ejercicio en el historial para ver su última sesión, mejor marca y curva de 1RM estimado.
+- **Ver estadísticas** despliega los gráficos y sus filtros. El historial se lista en la misma vista;
+  **Ver todo** abre la lista completa y cada fila abre su detalle, desde donde puedes repetir la sesión.
 - Gráficos SVG propios (sin librerías): volumen por semana, sesiones, series, minutos, donut de reparto
   por grupo muscular, barras por grupo, frecuencia por día de la semana, heatmap de consistencia.
 - Progresión por ejercicio: 1RM estimado en el tiempo, récord, volumen acumulado, comparativa vs primera sesión.
@@ -181,6 +195,7 @@ pantalla completa y funciona offline).
   referenciados; se conservan los usados, los editados por el usuario y los propios. El historial sigue
   mostrando el nombre de los ejercicios retirados.
 - **Coach AI**: toda la configuración descrita arriba.
+- **Entreno**: el diagnóstico «Probar aviso con el móvil bloqueado» está en **Avanzado**.
 - **Datos**: exportar/importar copia JSON, cargar 8 semanas de ejemplo para ver las gráficas,
   quitarlas, borrar todo y ver el espacio usado.
 

@@ -28,6 +28,85 @@
   letter-spacing: 0.5px;
 }
 
+.hy-plan-details > summary,
+.hy-tools-summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.hy-plan-details[open] > summary,
+.hy-tools-disclosure[open] > .hy-tools-summary {
+  color: var(--text);
+}
+
+.hy-plan-details > div {
+  padding-top: 2px;
+}
+
+.hy-tools-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  padding-right: 34px;
+}
+
+.hy-tools-summary::after {
+  content: '⌄';
+  margin-left: auto;
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.hy-tools-disclosure[open] > .hy-tools-summary::after {
+  transform: rotate(180deg);
+}
+
+.hy-tools-summary .tiny {
+  font-weight: 400;
+}
+
+.hy-tools-help {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+}
+
+.hy-tools {
+  position: relative;
+}
+
+.hy-tools-disclosure > .grid {
+  margin-top: 8px;
+}
+
+.hy-repeat-quick {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.hy-repeat-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hy-repeat-copy .h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- temporizador libre ---------- */
 
 .hy-hint {

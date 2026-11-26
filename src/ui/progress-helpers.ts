@@ -19,12 +19,14 @@ import {
   daysSince,
   durationOf,
   e1rm,
+  exerciseSeries,
   lastTrained,
   prs,
   sessionDate,
   setKg,
   setsOf,
   volumeOf,
+  weeklySeries,
 } from '@/domain/analytics';
 import type { PersonalRecord } from '@/domain/analytics';
 import { GROUPS, groupKeysInUse, groupLabel } from '@/domain/data';
@@ -235,4 +237,104 @@ export function historyExerciseIds(sessions: readonly Session[]): string[] {
     for (const entry of session.entries) ids.add(entry.exId);
   }
   return [...ids];
+}
+
+/** Snapshot para el encabezado de esta semana (semana local de lunes a domingo). */
+export function currentWeekSummary(
+  sessions: readonly Session[],
+  todayIso: string,
+): {
+  sessions: number;
+  sets: number;
+  volume: number;
+} {
+  const week = weeklySeries(sessions, 1, todayIso)[0];
+  return { sessions: week?.sessions ?? 0, sets: week?.sets ?? 0, volume: week?.volume ?? 0 };
+}
+
+/** Récords personales más recientemente mejorados, por fecha del último PR vigente. */
+export function latestRecords(sessions: readonly Session[], limit = 3): PersonalRecord[] {
+  return Object.values(prs(sessions))
+    .filter((record) => record.e1rm > 0)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.e1rm - a.e1rm || a.exId.localeCompare(b.exId))
+    .slice(0, Math.max(0, limit));
+}
+
+export interface ExerciseProgressSummary {
+  date: string;
+  /** Mejor serie registrada en la sesión más reciente: kg (null para peso corporal) y reps. */
+  latest: { weight: number | null; reps: number };
+  /** Mejor serie histórica por 1RM estimado, con peso corporal como reps si no hay carga. */
+  best: { weight: number | null; reps: number; e1rm: number; date: string };
+  /** 1RM estimado por sesión (kg), usado por el gráfico de tendencia. */
+  trend: { date: string; e1rm: number }[];
+}
+
+/** Última sesión y mejor serie de un ejercicio. Un empate conserva la serie más antigua. */
+export function exerciseProgressSummary(
+  sessions: readonly Session[],
+  exId: string,
+): ExerciseProgressSummary | null {
+  const points = exerciseSeries(sessions, exId);
+  if (!points.length) return null;
+  const matching = sessions
+    .filter((session) =>
+      session.entries.some(
+        (entry) => entry.exId === exId && entry.sets.some((set) => set.done && set.reps > 0),
+      ),
+    )
+    .sort((a, b) => {
+      const ta = Date.parse(a.endedAt ?? a.startedAt);
+      const tb = Date.parse(b.endedAt ?? b.startedAt);
+      return (
+        (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0) ||
+        sessionDate(b).localeCompare(sessionDate(a)) ||
+        b.id.localeCompare(a.id)
+      );
+    });
+  const lastSession = matching[0];
+  if (!lastSession) return null;
+  const latestEntries = lastSession.entries.filter((entry) => entry.exId === exId);
+  const latestDone = latestEntries.flatMap((entry) =>
+    entry.sets.filter((set) => set.done && set.reps > 0),
+  );
+  if (!latestDone.length) return null;
+  const bestSet = (sets: typeof latestDone, unit: Session['unit']) =>
+    sets.reduce((best, set) => {
+      const e = e1rm(setKg(set, unit), set.reps);
+      const bestE = e1rm(setKg(best, unit), best.reps);
+      return e > bestE || (e === bestE && e === 0 && set.reps > best.reps) ? set : best;
+    });
+  const lastBest = bestSet(latestDone, lastSession.unit);
+  const allDone = sessions.flatMap((session) =>
+    session.entries
+      .filter((entry) => entry.exId === exId)
+      .flatMap((entry) =>
+        entry.sets.filter((set) => set.done && set.reps > 0).map((set) => ({ session, set })),
+      ),
+  );
+  const best = allDone.reduce(
+    (bestSoFar, current) => {
+      const e = e1rm(setKg(current.set, current.session.unit), current.set.reps);
+      return e > bestSoFar.e1rm ||
+        (e === bestSoFar.e1rm && e === 0 && current.set.reps > bestSoFar.reps)
+        ? {
+            weight: current.set.weight == null ? null : setKg(current.set, current.session.unit),
+            reps: current.set.reps,
+            e1rm: e,
+            date: sessionDate(current.session),
+          }
+        : bestSoFar;
+    },
+    { weight: null as number | null, reps: 0, e1rm: 0, date: '' },
+  );
+  return {
+    date: sessionDate(lastSession),
+    latest: {
+      weight: lastBest.weight == null ? null : setKg(lastBest, lastSession.unit),
+      reps: lastBest.reps,
+    },
+    best,
+    trend: points.map((point) => ({ date: point.iso, e1rm: point.e1rm })),
+  };
 }
