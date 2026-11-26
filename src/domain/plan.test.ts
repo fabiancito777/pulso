@@ -367,9 +367,9 @@ describe('routineFromTemplate', () => {
 });
 
 describe('plantillas de la semilla', () => {
-  /* antes las define en  ~343; aquí se fija la semilla que
-     de verdad se le pone al usuario (`seed.ts`), que es la que usa la app y a la
-     que apunta `WEEK_ROTATION`. Cambió a propósito: antes traía 9 plantillas y
+  /* aquí se fija la semilla que de verdad se le pone al usuario (`seed.ts`),
+     que es la que usa la app y a la que apunta `WEEK_ROTATION`. Cambió a
+     propósito: antes traía 9 plantillas y
      las recetas pedían `femoral`, `gluteos`, `cardio` y `movilidad`, grupos que
      esta biblioteca de 24 ejercicios no trae. */
   const SEMILLA: [string, [string, number][]][] = [

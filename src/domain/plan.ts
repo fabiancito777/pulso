@@ -8,9 +8,9 @@
  *
  * ## Reglas
  *
- * - **Plantillas**: `TEMPLATES` sale de `@/domain/seed` (la semilla de 7
- *   plantillas que ve un usuario nuevo) y `@/domain/catalog` sigue trayendo las
- *   9. Manda la semilla, porque es la que se le pone al usuario; lo que
+ * - **Plantillas**: `TEMPLATES` sale de `@/domain/seed` (las 7
+ *   plantillas que ve un usuario nuevo); el catálogo base ya no incluye
+ *   plantillas. Lo que
  *   NO se puede hacer es que una rotación apunte a un `id` que la semilla no
  *   traiga, y `plan.test.ts` fija tanto las recetas como ese cruce.
  * - **Material**: el filtro de permitidos y disponibles se hace con

@@ -5,12 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { TEMPLATES as CATALOG_TEMPLATES } from './catalog';
 import {
   DAY_TYPES,
   EQUIPMENT,
   GROUPS,
-  SEED_EXERCISES,
   TEMPLATES,
   defaultEquipment,
   equipCats,
@@ -31,7 +29,7 @@ import { slug } from './text';
 import type { Exercise } from './types';
 
 const byId = (id: string): Exercise => {
-  const ex = SEED_EXERCISES.find((e) => e.id === id);
+  const ex = seedExercises().find((e) => e.id === id);
   if (!ex) throw new Error(`no existe el ejercicio ${id}`);
   return ex;
 };
@@ -44,17 +42,15 @@ describe('catálogo', () => {
     /* 48 de la lista + 'paralelas', que antes inserta con splice */
     expect(EQUIPMENT).toHaveLength(49);
     expect(equipmentKeys).toContain('paralelas');
-    expect(SEED_EXERCISES).toHaveLength(136);
-    /* el catálogo generado sigue trayendo las 9; la que usa la app es
-       la de `seed.ts` (comprobada más abajo) */
-    expect(CATALOG_TEMPLATES).toHaveLength(9);
+    expect(seedExercises()).toHaveLength(24);
+    expect(TEMPLATES).toHaveLength(7);
     expect(DAY_TYPES).toHaveLength(4);
   });
 
   it('cada ejercicio apunta a un grupo y a un material que existen', () => {
     const groups = new Set(GROUPS.map((g) => g.key));
     const equip = new Set(equipmentKeys);
-    for (const ex of SEED_EXERCISES) {
+    for (const ex of seedExercises()) {
       expect(groups.has(ex.group), `${ex.name} → grupo ${ex.group}`).toBe(true);
       for (const key of ex.equip.split('&').flatMap((g) => g.split('|'))) {
         if (!key) continue;
@@ -64,9 +60,9 @@ describe('catálogo', () => {
   });
 
   it('no hay ids repetidos ni rangos imposibles', () => {
-    const ids = SEED_EXERCISES.map((e) => e.id);
+    const ids = seedExercises().map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const ex of SEED_EXERCISES) {
+    for (const ex of seedExercises()) {
       expect(ex.id).toBe(slug(ex.name));
       expect(ex.sets, ex.name).toBeGreaterThan(0);
       expect(ex.repMin, ex.name).toBeLessThanOrEqual(ex.repMax);
@@ -222,7 +218,22 @@ describe('semilla por defecto (lo que ve un usuario nuevo)', () => {
 });
 
 describe('disponibilidad', () => {
-  const bench = byId('press-de-banca-con-barra');
+  const bench: Exercise = {
+    id: 'fixture-press-banca',
+    name: 'Press de banca de prueba',
+    group: 'pecho',
+    equip: 'barra_olimpica&banco_plano|banco_inclinable',
+    type: 'compuesto',
+    sets: 4,
+    repMin: 6,
+    repMax: 10,
+    rest: 180,
+    allowed: true,
+    custom: false,
+    bw: false,
+    tags: [],
+    tips: '',
+  };
 
   it('sin material, dice qué falta y de qué grupo', () => {
     expect(isAvailable(bench, {})).toBe(false);
@@ -245,7 +256,7 @@ describe('disponibilidad', () => {
   });
 
   it('los ejercicios a peso corporal están siempre disponibles', () => {
-    for (const ex of SEED_EXERCISES) {
+    for (const ex of seedExercises()) {
       if (ex.equip) continue;
       expect(isAvailable(ex, {}), ex.name).toBe(true);
     }
@@ -262,20 +273,18 @@ describe('disponibilidad', () => {
 
 describe('búsqueda por nombre', () => {
   const custom: Exercise = {
-    ...byId('press-de-banca-con-barra'),
+    ...byId('press-de-piso-con-mancuernas'),
     id: 'mi-ejercicio',
     name: 'Mi ejercicio raro',
     custom: true,
   };
-  const library = [...SEED_EXERCISES, custom];
+  const library = [...seedExercises(), custom];
 
   it('da igual cómo lo escriba el modelo: acentos, mayúsculas y espacios', () => {
-    expect(findExerciseByName(library, 'press de banca con barra')?.id).toBe(
-      'press-de-banca-con-barra',
+    expect(findExerciseByName(library, 'press de piso con mancuernas')?.id).toBe(
+      'press-de-piso-con-mancuernas',
     );
-    expect(findExerciseByName(library, '  Extensión   de cuádriceps ')?.id).toBe(
-      'extension-de-cuadriceps',
-    );
+    expect(findExerciseByName(library, '  Curl de bíceps ')?.id).toBe('curl-de-biceps');
   });
 
   it('encuentra también lo que no se llama igual que su id (slug ocupado)', () => {
@@ -291,16 +300,15 @@ describe('búsqueda por nombre', () => {
 
 describe('resolución de un id guardado (historial, sesiones)', () => {
   it('prefiere la biblioteca cuando el id existe en ella', () => {
-    const propia: Exercise = { ...byId('press-de-banca-con-barra'), name: 'Mi press' };
-    expect(resolveExercise([propia], 'press-de-banca-con-barra')?.name).toBe('Mi press');
+    const propia: Exercise = { ...byId('press-de-piso-con-mancuernas'), name: 'Mi press' };
+    expect(resolveExercise([propia], 'press-de-piso-con-mancuernas')?.name).toBe('Mi press');
   });
 
-  it('cae al catálogo completo si el id no está en la biblioteca', () => {
-    // El historial de una copia  puede citar ejercicios que ya no están
-    // en la semilla de 24; sin esta caída la UI enseñaba el id crudo (M1).
-    const fuera: Exercise = { ...byId('sentadilla-goblet') };
-    expect(resolveExercise([], fuera.id)?.name).toBe(fuera.name);
-    expect(resolveExercise([], fuera.id)?.name).not.toBe(fuera.id);
+  it('usa etiquetas archivadas compactas para ids de la biblioteca retirada', () => {
+    const fuera = resolveExercise([], 'sentadilla-goblet');
+    expect(fuera?.name).toBe('Sentadilla goblet');
+    expect(fuera?.group).toBe('cuadriceps');
+    expect(resolveExercise([], 'floor-press')?.name).toBe('Floor Press');
   });
 
   it('devuelve null si no está ni en la biblioteca ni en el catálogo', () => {

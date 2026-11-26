@@ -3,11 +3,10 @@
  * nuevo (los 19 del encargo + los 5 con historial real) y las 7 plantillas de
  * rutina que salen de ellos.
  *
- * `catalog.ts` sigue trayendo el catálogo COMPLETO (136 ejercicios y 9
- * plantillas): sirve para buscar nombres que ya están en el historial y para
- * `data.test.ts`, pero **no es la semilla**. La semilla es
- * esto de aquí, que es lo que `state/store.ts` fusiona con lo guardado y lo que
- * por tanto ve alguien que abre la app por primera vez.
+ * `catalog.ts` conserva grupos y material. El catálogo ampliado se retiró de la
+ * biblioteca; `legacy-exercises.ts` mantiene solo etiquetas compactas para que
+ * los historiales antiguos sigan mostrando nombres sin volver a ofrecer esas
+ * filas en Ajustes, el picker o el coach.
  *
  * Tres reglas al tocar este fichero:
  *
@@ -26,7 +25,6 @@ import { slug } from './text';
 import type { Exercise, ExerciseOpts, ExerciseType, RoutineTemplate } from './types';
 
 /**
- * Mismo patrón que el `E()` de `catalog.ts` (no exportado: ese fichero es generado).
  * El id sale del nombre, igual que hace
  * `S.addExercise`, así que no hay que mantener dos listas de ids.
  */

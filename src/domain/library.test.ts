@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import { seedExercises } from './data';
-import { customExercises, mergeSeed } from './library';
+import { customExercises, mergeSeed, pruneLegacyStock } from './library';
 import type { Exercise } from './types';
 
 /* La semilla real (la misma que fusiona `state/store.ts` con lo guardado) */
 const SEED = seedExercises();
 const seedPress = SEED.find((e) => e.id === 'press-de-piso-con-mancuernas') as Exercise;
+const oldGoblet: Exercise = {
+  id: 'sentadilla-goblet',
+  name: 'Sentadilla goblet',
+  group: 'cuadriceps',
+  equip: 'kettlebell|mancuernas_fijas|mancuernas_ajustables',
+  type: 'compuesto',
+  sets: 3,
+  repMin: 10,
+  repMax: 15,
+  rest: 90,
+  allowed: true,
+  custom: false,
+  bw: false,
+  tags: [],
+  tips: '',
+};
 
 describe('mergeSeed', () => {
   it('siembra la biblioteca cuando no hay nada guardado', () => {
@@ -115,5 +131,44 @@ describe('flags de usuario (fav / hidden)', () => {
     const recargada = mergeSeed(SEED, persistido);
     expect(recargada.find((e) => e.id === seedPress.id)?.fav).toBe(true);
     expect(recargada).toHaveLength(SEED.length);
+  });
+});
+
+describe('retirada del catálogo ampliado', () => {
+  it('retira solo una copia stock exacta, sin uso', () => {
+    const state = { exercises: [oldGoblet] };
+    expect(pruneLegacyStock(state).exercises).toEqual([]);
+    expect(pruneLegacyStock(pruneLegacyStock(state))).toEqual({ exercises: [] });
+  });
+
+  it('conserva stock exacto referenciado desde rutina, calendario, sesión y placas', () => {
+    const states = [
+      { exercises: [oldGoblet], routines: [{ items: [{ exId: oldGoblet.id }] }] },
+      { exercises: [oldGoblet], schedule: { hoy: { plan: [{ exId: oldGoblet.id }] } } },
+      { exercises: [oldGoblet], schedule: { hoy: { plan: [{ name: oldGoblet.name }] } } },
+      { exercises: [oldGoblet], sessions: [{ entries: [{ exId: oldGoblet.id }] }] },
+      { exercises: [oldGoblet], active: { finished: [oldGoblet.id] } },
+      { exercises: [oldGoblet], settings: { plateModes: { [oldGoblet.id]: 'db2' } } },
+    ];
+    for (const state of states) expect(pruneLegacyStock(state).exercises).toEqual([oldGoblet]);
+  });
+
+  it('preserva favoritos, ocultos, desactivados, personalizados y filas editadas', () => {
+    const edited = { ...oldGoblet, tips: 'Mi técnica' };
+    const personalized = [
+      { ...oldGoblet, fav: true },
+      { ...oldGoblet, hidden: true },
+      { ...oldGoblet, allowed: false },
+      { ...oldGoblet, custom: true },
+      edited,
+    ];
+    const pruned = pruneLegacyStock({ exercises: personalized });
+    expect(pruned.exercises).toEqual(personalized);
+  });
+
+  it('no elimina una copia stock si convive con otra fila personalizada del mismo id', () => {
+    const edited = { ...oldGoblet, custom: true, tips: 'Mi técnica' };
+    const pruned = pruneLegacyStock({ exercises: [oldGoblet, edited] });
+    expect(pruned.exercises).toEqual([edited]);
   });
 });

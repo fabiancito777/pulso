@@ -713,6 +713,35 @@ describe('export / import', () => {
     expect(importado).toEqual(store.readState());
   });
 
+  it('el import elimina stock retirado sin referencias y conserva el que usa una rutina', () => {
+    const oldStock: Exercise = {
+      id: 'sentadilla-goblet',
+      name: 'Sentadilla goblet',
+      group: 'cuadriceps',
+      equip: 'kettlebell|mancuernas_fijas|mancuernas_ajustables',
+      type: 'compuesto',
+      sets: 3,
+      repMin: 10,
+      repMax: 15,
+      rest: 90,
+      allowed: true,
+      custom: false,
+      bw: false,
+      tags: [],
+      tips: '',
+    };
+    const base = store.defaultState();
+    const pruned = store.importState({ ...base, exercises: [oldStock] });
+    expect(pruned.exercises).toEqual([]);
+
+    const retained = store.importState({
+      ...base,
+      exercises: [oldStock],
+      routines: [{ id: 'old-routine', name: 'Rutina vieja', items: [{ exId: oldStock.id }] }],
+    });
+    expect(retained.exercises).toEqual([oldStock]);
+  });
+
   it('importState conserva la key actual si la copia la trae vacía', () => {
     store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: 'secreta' } });
 

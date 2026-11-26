@@ -16,7 +16,7 @@ import { today } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
 import { demoSessions } from '@/domain/demo';
 import { idFor } from '@/domain/exercise-draft';
-import { mergeSeed } from '@/domain/library';
+import { mergeSeed, pruneLegacyStock } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
 import { normalizePlates } from '@/domain/plates';
 import { normalizeActiveSession } from '@/domain/session';
@@ -54,8 +54,11 @@ export const STATE_KEY = 'pulso.state';
  * v6: se quitan `countWarmups`, `quickFinish` y `ai.autoApply`, tres ajustes que
  * no hacían nada. Se limpian del estado heredado con `delete` sobre copias,
  * igual que en v4/v5.
+ *
+ * v7: se retiran filas intactas y sin referencias del antiguo catálogo ampliado.
+ * Se conservan filas usadas, editadas, propias o marcadas por el usuario.
  */
-export const STATE_VERSION = 6;
+export const STATE_VERSION = 7;
 
 /** Claves del perfil activo (el principal conserva las históricas). */
 export const currentRestKey = (): string => restKeyFor(activeProfileId.value);
@@ -176,7 +179,7 @@ export function readProfileState(profileId: string): AppState {
     const settings = sharedKey
       ? { ...settingsClean, ai: { ...settingsClean.ai, apiKey: sharedKey } }
       : settingsClean;
-    return {
+    return pruneLegacyStock({
       ...(parsed as AppState),
       version: Math.max(version, STATE_VERSION),
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
@@ -186,7 +189,7 @@ export function readProfileState(profileId: string): AppState {
          (lectura-modificación-escritura) o en un export */
       settings: { ...settings, plates: normalizePlates(settings.plates) },
       equipment: isPlainObject(parsed.equipment) ? { ...parsed.equipment } : defaultEquipment(),
-    };
+    });
   } catch (err) {
     console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
     return defaultState();
@@ -267,7 +270,10 @@ export function writeProfileState(
   const key = stateKeyFor(profileId);
   try {
     const previousRaw = localStorage.getItem(key);
-    const next = opts.stamp === false ? state : stampChanges(previousState(key, previousRaw), state);
+    const previous = previousState(key, previousRaw);
+    const clean = pruneLegacyStock(state);
+    const next =
+      opts.stamp === false ? clean : stampChanges(previous && pruneLegacyStock(previous), clean);
     const raw = JSON.stringify(forStorage(next));
     localStorage.setItem(key, raw);
     lastWritten.set(key, { raw, state: next });
@@ -637,9 +643,8 @@ export function setEquipment(key: string, on: boolean): void {
 
 /**
  * Semilla de la biblioteca por defecto: los 24 ejercicios curados de
- * `domain/seed.ts`. El catálogo completo de `catalog.ts` (136) ya no se le pone
- * al usuario: sigue ahí para las copias  y para los tests de integridad.
- * `mergeSeed` se aplica SIEMPRE sobre esta lista, no sobre `SEED_EXERCISES`.
+ * `domain/seed.ts`. Las etiquetas del catálogo retirado no se fusionan aquí;
+ * solo se usan al mostrar ids históricos.
  */
 const SEED: readonly Exercise[] = seedExercises();
 

@@ -54,7 +54,7 @@ type NameOf = (exId: string, fallback?: unknown) => string;
 
 /**
  * Nombre legible de un ejercicio: manda el `fallback` (el nombre que viaja con la
- * sesión), luego la biblioteca o el catálogo COMPLETO (`resolveExercise`) y, como
+ * sesión), luego la biblioteca o las etiquetas históricas (`resolveExercise`) y, como
  * último recurso, el `exId` crudo. Sin esto el prompt se llenaba de slugs del
  * catálogo de 136 que no están en la semilla de 24.
  */

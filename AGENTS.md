@@ -4,7 +4,7 @@ Contexto para trabajar en esta app. Si el hilo se alarga o se pierde el contexto
 primero**: aquí está lo vital (stack, comandos, arquitectura, convenciones y las decisiones que no
 se deben "arreglar" sin querer).
 
-> Última actualización: 24-nov-2026 · flujo de entrega y modo súper simple de la sesión activa.
+> Última actualización: 25-nov-2026 · guías visuales completas y retirada del catálogo stock antiguo.
 
 ---
 
@@ -167,10 +167,15 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   guarda por perfil. `App.tsx` aplica la vista focal cuando hay sesión activa en Hoy y `SessionCard.tsx`
   reutiliza la tabla, el progreso y las acciones de sesión. La cabecera **Pulso** abre Ajustes → Entreno
   sin finalizar. Volver a Hoy conserva la sesión. El temporizador libre mantiene su vista habitual.
-- **Guías visuales** (`domain/exercise-guides.ts`): cubren 11 IDs de la rutina inicial y 2 ejemplos de
-  la biblioteca inicial, además del alias explícito del curl guardado anteriormente. La búsqueda usa
-  IDs exactos; no se infieren guías para ejercicios personalizados ni variantes. En modo súper simple
-  aparecen solo en tarjetas expandidas y sus dos fases (`Inicio`/`Final`) se alternan manualmente.
+- **Guías visuales** (`domain/exercise-guides.ts`): cubren los 24 IDs de `seedExercises()` y mantienen
+  dos aliases exactos ya guardados (`floor-press` y `curl-con-mancuernas`). No se infieren guías para
+  ejercicios personalizados ni variantes. En modo súper simple aparecen en tarjetas expandidas;
+  `Inicio`/`Final` se alternan manualmente y `Plancha` muestra una única postura estática.
+- **Biblioteca y migración**: la biblioteca disponible parte de los 24 ejercicios de `seed.ts`; el
+  catálogo stock ampliado anterior ya no se incluye como opciones de entrenamiento. Al cargar un perfil
+  antiguo, la migración retira solo ejercicios stock sin cambios del usuario y sin referencias activas.
+  Conserva los usados, los editados y los ejercicios propios. Las etiquetas antiguas siguen resolviéndose
+  en el historial aunque el ejercicio ya no esté en la biblioteca.
 - **Consejo y nota personal**: la prescripción guarda el texto en `RoutineItem.notes` y lo copia a
   `ActiveEntry.cue`. `ActiveEntry.notes` es la nota personal y termina en `SessionEntry.personalNote`,
   fuera del contexto del coach. Al repetir se usa el consejo del ejercicio o la copia del plan guardada
@@ -254,3 +259,4 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 3-nov-2026 | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso. | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`. |
 | 7-nov-2026 | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso. |
 | 24-nov-2026 | Modo súper simple por perfil y separación entre consejo y nota personal. Se documenta la entrega con commit y push. | Reduce los controles durante la sesión y preserva las notas personales al guardar. |
+| 25-nov-2026 | Guías visuales para los 24 ejercicios predeterminados y limpieza del catálogo stock ampliado en perfiles antiguos. | Las guías cubren la biblioteca inicial; la migración retira stock sin cambios y sin uso, conservando ejercicios propios, editados o referenciados y las etiquetas del historial. |

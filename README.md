@@ -58,9 +58,10 @@ pantalla completa y funciona offline).
   arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
   Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
   apagado de fábrica. En la vista habitual puedes editar el RPE y borrar series.
-- **Guías visuales**. En modo súper simple, abre uno de los 11 ejercicios de la rutina inicial o
-  selecciona **Curl de Bíceps** o **Elevación de Talones (unilateral)**. Toca la miniatura para
-  consultar las posturas de inicio y final. La sesión y el descanso siguen mientras miras la guía.
+- **Guías visuales**. En modo súper simple, expande cualquiera de los **24 ejercicios** de la
+  biblioteca predeterminada y toca su miniatura para ver las posturas de inicio y final, que se
+  alternan manualmente. **Plancha** muestra una sola postura estática. La sesión y el descanso siguen
+  mientras miras la guía.
   Las imágenes se sirven con la app. Además de las ilustraciones de Pulso, se usan recursos de
   [Open Exercise Illustrations](https://github.com/hitmanrepo/open-exercise-illustrations/tree/2786aefa4b36a08faeca8114e0d1eb0af3ef6732)
   (CC0) y fotos de [Free Exercise DB](https://github.com/yuhonas/free-exercise-db/tree/f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5)
@@ -175,8 +176,10 @@ pantalla completa y funciona offline).
 - **Ejercicios**: biblioteca por defecto de **24 ejercicios** con buscador y cuatro segmentos
   (★ Favoritos, Catálogo, Propios, Ocultos), además de acordeones por grupo muscular. Permite
   **permitir/prohibir** y marcar como favorito u oculto, individualmente o en bloque, y crear/editar/borrar
-  ejercicios propios (el catálogo base de 136 sigue detrás como fuente de datos del matcher y de los
-  ejercicios de ejemplo).
+  ejercicios propios. El catálogo stock ampliado de versiones anteriores ya no aparece como opciones.
+  Al actualizar un perfil antiguo se retiran solo los ejercicios stock que sigan intactos y no estén
+  referenciados; se conservan los usados, los editados por el usuario y los propios. El historial sigue
+  mostrando el nombre de los ejercicios retirados.
 - **Coach AI**: toda la configuración descrita arriba.
 - **Datos**: exportar/importar copia JSON, cargar 8 semanas de ejemplo para ver las gráficas,
   quitarlas, borrar todo y ver el espacio usado.
@@ -242,7 +245,7 @@ index.html              · entrada de Vite (carga src/main.tsx)
 src/main.tsx            · monta <App /> en #app e importa los estilos
 src/app/                · shell de la app (App.tsx) y router de pestañas
 src/domain/             · NÚCLEO PURO (sin DOM ni estado): discos, analítica, sesión,
-                          descanso, planner local, catálogo base y formatos
+                          descanso, planner local, taxonomía, semilla de ejercicios y formatos
 src/state/              · estado + persistencia (store, sesión activa, coach, chat)
 src/features/coach/     · cerebro del coach: contexto, memoria, historial, prompts,
                           parseo, cliente Gemini y planificador local
@@ -279,9 +282,9 @@ fuera de sí mismo, así que se prueba sin navegador.
   que no se pueden probar así se verifican con Playwright.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y
   calendario. Se quitan desde *Ajustes → Datos*.
-- **Catálogo e iconos**: `src/domain/catalog.ts` y `src/ui/icons.ts` son ficheros base congelados y,
-  si hay que tocarlos, se editan a mano con cuidado (la integridad del catálogo la vigila
-  `src/domain/data.test.ts`).
+- **Datos base e iconos**: `src/domain/catalog.ts` contiene grupos, material y opciones del coach;
+  los ejercicios iniciales están en `src/domain/seed.ts`. Ambos ficheros y `src/ui/icons.ts` se editan
+  a mano con cuidado; las comprobaciones de dominio están en `src/domain/data.test.ts`.
 - **Añadir un ejercicio**: a la semilla (`src/domain/seed.ts`) o desde *Ajustes → Ejercicios* (los propios
   se fusionan con la semilla al recargar, conservando tus flags de permitido/prohibido).
 - **Añadir una pestaña**: amplía `TABS` en `src/app/router.ts` y añade la vista en `src/ui/`.

@@ -1,27 +1,17 @@
 /**
- * Catálogo: API pública del dominio para grupos, material, ejercicios y
- * plantillas. Los datos en sí viven en dos sitios: `catalog.ts` (el catálogo
- * COMPLETO, generado des) y `seed.ts` (la semilla por defecto de 24
- * ejercicios y 7 plantillas, que es lo que de verdad se le pone a un usuario
- * nuevo). Aquí viven las funciones que los consultan.
+ * Catálogo: API pública del dominio para grupos, material y plantillas. Los
+ * ejercicios activos y las plantillas por defecto viven en `seed.ts`; el antiguo
+ * catálogo ampliado solo deja etiquetas compactas para resolver referencias
+ * históricas, no ejercicios disponibles para entrenar o proponer.
  *
- * `TEMPLATES` y `seedExercises` se vuelven a exportar DESPUÉS del
- * `export * from './catalog'`: son los que manda la app, y si se importaran de
- * `@/domain/catalog` se quedarían con las 9 plantillas y los 136 ejercicios de
- * antes.
+ * `TEMPLATES` y `seedExercises` se exportan desde `seed.ts`.
  *
  * Igual que en `plates.ts`, todo entra por parámetro: el material disponible se
  * pasa como mapa (`{ clave: boolean }`) en vez de leerlo del estado global, que
  * es lo que hacía `S.isAvailable()`  y obligaba a probarlo en el navegador.
  */
-import {
-  DEFAULT_EQUIPMENT,
-  EQUIPMENT,
-  EQUIP_PRESETS,
-  GOALS,
-  GROUPS,
-  SEED_EXERCISES,
-} from './catalog';
+import { DEFAULT_EQUIPMENT, EQUIPMENT, EQUIP_PRESETS, GOALS, GROUPS } from './catalog';
+import { LEGACY_EXERCISES } from './legacy-exercises';
 import { norm, slug } from './text';
 import type { Exercise, ExerciseType } from './types';
 
@@ -194,15 +184,20 @@ export function findExercise(exercises: readonly Exercise[], id: string): Exerci
 
 /**
  * Resuelve un ejercicio para MOSTRARLO: primero la biblioteca actual (que trae
- * los ejercicios propios y los flags del usuario) y, si no está, el catálogo
- * COMPLETO. El historial guarda ejercicios que pueden haber salido de la
- * biblioteca (la semilla son 24 de los 136), y sin este respaldo Progreso, el
- * calendario y el detalle de sesión pintarían el id crudo (`zancadas-caminando`)
- * en vez del nombre. No lo uses para decidir disponibilidad o construir
- * sesiones: ahí manda la biblioteca real.
+ * los ejercicios propios y los flags del usuario) y, si no está, las etiquetas
+ * archivadas de la biblioteca ampliada. No lo uses para decidir disponibilidad
+ * o construir sesiones: ahí manda la biblioteca real.
  */
-export function resolveExercise(exercises: readonly Exercise[], id: string): Exercise | null {
-  return findExercise(exercises, id) ?? findExercise(SEED_EXERCISES, id);
+export type ResolvedExercise = Pick<Exercise, 'id' | 'name' | 'group' | 'type'>;
+
+export function resolveExercise(
+  exercises: readonly Exercise[],
+  id: string,
+): ResolvedExercise | null {
+  const found = findExercise(exercises, id);
+  if (found) return found;
+  const old = LEGACY_EXERCISES.find((entry) => entry.id === id);
+  return old ? { id: old.id, name: old.name, group: old.group, type: old.type } : null;
 }
 
 export function allowedExercises(exercises: readonly Exercise[]): Exercise[] {
