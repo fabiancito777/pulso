@@ -58,10 +58,10 @@ pantalla completa y funciona offline).
   arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
   Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
   apagado de fábrica. En la vista habitual puedes editar el RPE y borrar series.
-- **Guías visuales**. En modo súper simple, expande cualquiera de los **24 ejercicios** de la
-  biblioteca predeterminada y toca su miniatura para ver las posturas de inicio y final, que se
-  alternan manualmente. **Plancha** muestra una sola postura estática. La sesión y el descanso siguen
-  mientras miras la guía.
+- **Guías visuales**. En la vista habitual y en modo súper simple, expande cualquiera de los **24
+  ejercicios** de la biblioteca predeterminada y toca su miniatura para ver las posturas de inicio y
+  final, que se alternan manualmente. **Plancha** muestra una sola postura estática. La sesión y el
+  descanso siguen mientras miras la guía.
   Las imágenes se sirven con la app. Además de las ilustraciones de Pulso, se usan recursos de
   [Open Exercise Illustrations](https://github.com/hitmanrepo/open-exercise-illustrations/tree/2786aefa4b36a08faeca8114e0d1eb0af3ef6732)
   (CC0) y fotos de [Free Exercise DB](https://github.com/yuhonas/free-exercise-db/tree/f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5)

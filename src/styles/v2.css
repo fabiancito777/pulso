@@ -187,7 +187,7 @@
 .simple-ex-card .ex-menu-trigger {
   flex-basis: 38px;
 }
-.simple-ex-card .exercise-demo-trigger {
+.ex-head .exercise-demo-trigger {
   flex: none;
   width: 44px;
   min-width: 44px;

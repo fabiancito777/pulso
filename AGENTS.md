@@ -63,7 +63,7 @@ npm run verify     # typecheck + lint + test + build
   coordina, revisa el diff y los bugs, ejecuta `npm run verify` y se encarga del commit y el push; no
   prueba manualmente los flujos interactivos.
 - La revisión de navegador se limita al comportamiento cambiado. Para las guías visuales cubre la
-  miniatura, abrir/cerrar el visor, cambiar de fase, visibilidad en modo súper simple y carga del
+  miniatura, abrir/cerrar el visor, cambiar de fase, visibilidad en el modo afectado y carga del
   asset. No marques series ni pruebes el timer o flujos adyacentes salvo que hayan cambiado o haya
   evidencia concreta de regresión. Si no se puede delegar la validación de navegador, informa ese
   límite.
@@ -167,10 +167,11 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   guarda por perfil. `App.tsx` aplica la vista focal cuando hay sesión activa en Hoy y `SessionCard.tsx`
   reutiliza la tabla, el progreso y las acciones de sesión. La cabecera **Pulso** abre Ajustes → Entreno
   sin finalizar. Volver a Hoy conserva la sesión. El temporizador libre mantiene su vista habitual.
-- **Guías visuales** (`domain/exercise-guides.ts`): cubren los 24 IDs de `seedExercises()` y mantienen
+- **Guías visuales** (`domain/exercise-guides.ts`): disponibles en tarjetas expandidas de la vista
+  habitual y del modo súper simple; cubren los 24 IDs de `seedExercises()` y mantienen
   dos aliases exactos ya guardados (`floor-press` y `curl-con-mancuernas`). No se infieren guías para
-  ejercicios personalizados ni variantes. En modo súper simple aparecen en tarjetas expandidas;
-  `Inicio`/`Final` se alternan manualmente y `Plancha` muestra una única postura estática.
+  ejercicios personalizados ni variantes. En ambos modos `Inicio`/`Final` se alternan manualmente y
+  `Plancha` muestra una única postura estática.
 - **Biblioteca y migración**: la biblioteca disponible parte de los 24 ejercicios de `seed.ts`; el
   catálogo stock ampliado anterior ya no se incluye como opciones de entrenamiento. Al cargar un perfil
   antiguo, la migración retira solo ejercicios stock sin cambios del usuario y sin referencias activas.
@@ -260,3 +261,4 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 7-nov-2026 | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso. |
 | 24-nov-2026 | Modo súper simple por perfil y separación entre consejo y nota personal. Se documenta la entrega con commit y push. | Reduce los controles durante la sesión y preserva las notas personales al guardar. |
 | 25-nov-2026 | Guías visuales para los 24 ejercicios predeterminados y limpieza del catálogo stock ampliado en perfiles antiguos. | Las guías cubren la biblioteca inicial; la migración retira stock sin cambios y sin uso, conservando ejercicios propios, editados o referenciados y las etiquetas del historial. |
+| 25-nov-2026 | Guías visuales accesibles también desde las tarjetas expandidas de la sesión habitual. | Reutilizar las mismas miniaturas, visor y fases en ambos modos de entrenamiento. |

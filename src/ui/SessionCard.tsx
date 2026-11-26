@@ -621,7 +621,7 @@ function EntryCard(props: {
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
-  const canShowDemo = props.simple && !props.collapsed && Boolean(visualGuide?.phases.length);
+  const canShowDemo = !props.collapsed && Boolean(visualGuide?.phases.length);
 
   useEffect(() => {
     if (props.collapsed) setDemoOpen(false);
