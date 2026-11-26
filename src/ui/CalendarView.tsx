@@ -85,6 +85,7 @@ import {
   monthLevel,
   parsePlan,
   planControls,
+  planDateChanges,
   planEngine,
   planFromJson,
   planOrigin,
@@ -174,11 +175,7 @@ function editDayExercises(
       repMax: typeof entry.repMax === 'number' ? entry.repMax : undefined,
       rest: typeof entry.rest === 'number' ? entry.rest : undefined,
       weight:
-        typeof entry.weight === 'number'
-          ? entry.weight
-          : entry.weight === null
-            ? null
-            : undefined,
+        typeof entry.weight === 'number' ? entry.weight : entry.weight === null ? null : undefined,
       notes: typeof entry.notes === 'string' ? entry.notes : undefined,
       superset: typeof entry.superset === 'string' ? entry.superset : undefined,
     });
@@ -394,14 +391,10 @@ function WeekView({
   cursor,
   selected,
   onSelect,
-  onGenerate,
-  loading,
 }: {
   cursor: string;
   selected: string | null;
   onSelect: (iso: string) => void;
-  onGenerate: () => void;
-  loading: boolean;
 }) {
   const days = weekDates(cursor);
   const from = days[0];
@@ -455,12 +448,6 @@ function WeekView({
           <Icon name="calendar" />
           <div>Semana sin plan</div>
           <div class="tiny">Arrastra o asigna rutinas a los días</div>
-          <div class="cal-empty-actions">
-            <button type="button" class="btn sm primary" onClick={onGenerate} disabled={loading}>
-              <Icon name="wand" />
-              Auto-planificar
-            </button>
-          </div>
         </div>
       ) : null}
 
@@ -699,6 +686,8 @@ function MonthView({
 function PlanCard({
   plan,
   applied,
+  currentSchedule,
+  routineNames,
   onApply,
   onRegen,
   onDiscard,
@@ -706,6 +695,8 @@ function PlanCard({
   plan: PlanResult;
   /** días que ya escribió ESTA propuesta; `null` = todavía sin aplicar */
   applied: number | null;
+  currentSchedule: typeof schedule.value;
+  routineNames: Readonly<Record<string, string>>;
   onApply: () => void;
   onRegen: () => void;
   onDiscard: () => void;
@@ -713,6 +704,11 @@ function PlanCard({
   const preview = plan.preview;
   const origin = planOrigin(preview.source);
   const training = preview.days.filter((d) => d.exercises.length).length;
+  const changes = planDateChanges(preview, currentSchedule, today(), routineNames);
+  const added = applied === null ? changes.filter((change) => change.kind === 'add').length : 0;
+  const changed =
+    applied === null ? changes.filter((change) => change.kind === 'change').length : 0;
+  const skipped = applied === null ? changes.filter((change) => change.kind === 'past').length : 0;
   return (
     <section class="card accent cal-plan">
       <div class="between">
@@ -728,28 +724,72 @@ function PlanCard({
 
       {preview.rationale ? <div class="tiny muted mt-s">{preview.rationale}</div> : null}
 
-      <div class="cal-plan-days mt-s">
-        {preview.days.map((d) => (
-          <div key={d.iso} class="cal-plan-day">
-            <div class="grow">
-              <div class="cal-plan-title">
-                {dateLabel(d.iso, 'short')} ·{' '}
-                {d.title || (d.exercises.length ? 'Entreno' : 'Descanso')}
-              </div>
-              <div class="tiny muted">
-                {[d.focus, d.exercises.join(' · ')].filter(Boolean).join(' — ') || 'sin ejercicios'}
-              </div>
-            </div>
-            <span class="tiny muted num">
-              {d.exercises.length ? `${d.exercises.length} ej.` : '—'}
-            </span>
-          </div>
-        ))}
+      <div class="tiny muted mt-s">
+        {applied === null ? 'Qué pasará con las fechas de la propuesta' : 'Fechas de la propuesta'}
       </div>
+      <div class="cal-plan-days mt-s">
+        {changes.map((change, index) => {
+          const d = preview.days[index];
+          if (!d) return null;
+          const proposedTitle = d.title || (d.exercises.length ? 'Entreno' : 'Descanso');
+          const showResult = applied === null;
+          return (
+            <div key={d.iso} class="cal-plan-day">
+              <div class="grow">
+                <div class="cal-plan-title">{dateLabel(d.iso, 'short')}</div>
+                <div class={showResult ? 'tiny' : 'tiny muted'}>
+                  {showResult
+                    ? change.kind === 'past'
+                      ? `Se omitirá · ${proposedTitle}`
+                      : change.kind === 'change'
+                        ? `${change.currentTitle || 'Plan actual'} → ${proposedTitle}`
+                        : proposedTitle
+                    : proposedTitle}
+                </div>
+                <div class="tiny muted">
+                  {[d.focus, d.exercises.join(' · ')].filter(Boolean).join(' — ') ||
+                    'sin ejercicios'}
+                </div>
+                {showResult && change.retainedPlan ? (
+                  <div class="tiny muted">{change.retainedPlan}</div>
+                ) : null}
+              </div>
+              {showResult ? (
+                <div class="cal-plan-change">
+                  <span class={`badge${change.kind === 'change' ? ' warn' : ''}`}>
+                    {change.kind === 'past'
+                      ? 'Se omite'
+                      : change.kind === 'add'
+                        ? 'Se añade'
+                        : 'Se actualizará'}
+                  </span>
+                  <span class="tiny muted num">
+                    {d.exercises.length ? `${d.exercises.length} ej.` : '—'}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {applied === null && added + changed === 0 ? (
+        <div class="tiny muted">No hay fechas futuras para aplicar.</div>
+      ) : null}
+      {applied === null ? (
+        <div class="tiny muted mt-s">
+          {added} fechas nuevas · {changed} días existentes que se actualizarán
+          {skipped ? ` · ${skipped} días pasados que se omitirán` : ''}
+        </div>
+      ) : null}
 
       <div class="row wrap mt">
         {applied === null ? (
-          <button type="button" class="btn primary grow" onClick={onApply}>
+          <button
+            type="button"
+            class="btn primary grow"
+            onClick={onApply}
+            disabled={added + changed === 0}
+          >
             <Icon name="check" />
             Aplicar al calendario
           </button>
@@ -768,9 +808,7 @@ function PlanCard({
           Descartar
         </button>
       </div>
-      <div class="tiny muted mt-s">
-        Se agendarán {training} días de entreno de {preview.days.length}.
-      </div>
+      <div class="tiny muted mt-s">{training} días de entreno en la propuesta.</div>
     </section>
   );
 }
@@ -782,6 +820,7 @@ export function CalendarView() {
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
   const [loading, setLoading] = useState<PlanEngine | null>(null);
+  const [showPlannerChoices, setShowPlannerChoices] = useState(false);
   /* espera de la IA: segundos, aviso de lentitud y Cancelar */
   const wait = useCoachWait();
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -892,6 +931,7 @@ export function CalendarView() {
       }
       setPlan(parsed);
       setApplied(null);
+      setShowPlannerChoices(false);
       if (engine === 'ia') {
         const first = parsed.preview.days[0]?.iso;
         /* la IA planifica la semana de hoy: la vista salta ahí para verlo */
@@ -982,6 +1022,10 @@ export function CalendarView() {
         <PlanCard
           plan={plan}
           applied={applied}
+          currentSchedule={schedule.value}
+          routineNames={Object.fromEntries(
+            routines.value.map((routine) => [routine.id, routine.name]),
+          )}
           onApply={applyPlan}
           onRegen={regenPlan}
           onDiscard={discardPlan}
@@ -1028,43 +1072,52 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div class="cal-plan-bar">
+      <div class="cal-planner">
         <button
           type="button"
-          class="btn primary block"
-          onClick={generateLocalPlan}
+          class="btn primary cal-planner-trigger"
+          aria-expanded={showPlannerChoices}
+          onClick={() => setShowPlannerChoices((open) => !open)}
           disabled={loading !== null}
         >
           <Icon name="wand" />
-          {loading === 'local' ? 'Generando…' : 'Auto-planificar'}
+          {loading
+            ? loading === 'local'
+              ? 'Preparando semana…'
+              : 'Pidiendo al coach…'
+            : 'Planificar semana'}
+          {!loading ? <Icon name={showPlannerChoices ? 'chev-u' : 'chev-d'} /> : null}
         </button>
-        {controls.ai ? (
-          <button
-            type="button"
-            class="btn block"
-            onClick={() => void requestPlan('ia')}
-            disabled={loading !== null}
-          >
-            <Icon name="sparkles" />
-            {loading === 'ia' ? 'Generando…' : 'Con IA'}
+        {showPlannerChoices && !loading ? (
+          <div class="cal-planner-choices">
+            <button type="button" class="btn primary" onClick={generateLocalPlan}>
+              <Icon name="wand" />
+              Plan local
+              <span class="tiny muted">En este dispositivo, sin conexión</span>
+            </button>
+            {controls.ai ? (
+              <button type="button" class="btn" onClick={() => void requestPlan('ia')}>
+                <Icon name="sparkles" />
+                Pedir al coach
+                <span class="tiny muted">Puede usar tu conversación anterior</span>
+              </button>
+            ) : (
+              <div class="tiny muted cal-planner-note">
+                El plan local está disponible sin configurar la API del coach.
+              </div>
+            )}
+            <HelpBtn id="cal.autoplan" title="Planificar semana" />
+          </div>
+        ) : null}
+        {loading === 'ia' && wait.running ? (
+          <button type="button" class="btn sm ghost" onClick={wait.cancel}>
+            Cancelar
           </button>
         ) : null}
-        <HelpBtn id="cal.autoplan" title="Auto-planificar" />
       </div>
-      {controls.foot ? (
-        <div class="row cal-plan-foot" style="gap:6px">
-          <span class="tiny muted grow">{controls.foot}</span>
-        </div>
-      ) : null}
 
       {mode === 'week' ? (
-        <WeekView
-          cursor={cursor}
-          selected={selected}
-          onSelect={selectDay}
-          onGenerate={generateLocalPlan}
-          loading={loading !== null}
-        />
+        <WeekView cursor={cursor} selected={selected} onSelect={selectDay} />
       ) : (
         <MonthView cursor={cursor} selected={selected} onSelect={selectDay} />
       )}

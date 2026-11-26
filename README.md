@@ -8,6 +8,10 @@ y **todo funciona sin key** (el planificador local cubre sugerencias y plan sema
 
 > Las convenciones, la arquitectura y el flujo de entrega están en [AGENTS.md](AGENTS.md).
 
+En móvil, la barra inferior mantiene Hoy, Rutinas, Calendario y Progreso a un toque; **Más** abre un
+único menú para Coach y Ajustes. Los enlaces directos siguen funcionando y Más queda marcado en esas
+rutas. El acceso a perfiles permanece en la barra superior.
+
 ---
 
 ## Cómo abrirla
@@ -60,6 +64,9 @@ pantalla completa y funciona offline).
   **Retomar sesión** vuelve a Hoy sin cerrar ni finalizarla.
 - Sesión activa con **marcado de series** (peso × reps × check), añadir/quitar series y ejercicios,
   reordenar y ver el cronómetro de la sesión. Puedes plegar cada ejercicio para ver solo su avance.
+- Al pulsar **Finalizar sesión**, el resumen confirma series, duración y récords nuevos. **Ver detalle**
+  despliega volumen, RPE, series por ejercicio y nota; **Listo** cierra la hoja y **Ver progreso** abre
+  las estadísticas. Calendario y Repetir quedan como accesos secundarios.
 - **Modo súper simple** (*Ajustes → Entreno*). Muestra la sesión activa en negro y lima, con **Finalizar**
   arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
   Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
@@ -68,6 +75,9 @@ pantalla completa y funciona offline).
   ejercicios** de la biblioteca predeterminada y toca su miniatura para ver las posturas de inicio y
   final, que se alternan manualmente. **Plancha** muestra una sola postura estática. La sesión y el
   descanso siguen mientras miras la guía.
+  En el editor de rutinas, puedes abrir la miniatura de un resultado antes de añadirlo y volver a
+  consultar la guía desde la fila del ejercicio añadido. No se infieren guías para ejercicios propios
+  ni variantes.
   Las imágenes se sirven con la app. Además de las ilustraciones de Pulso, se usan recursos de
   [Open Exercise Illustrations](https://github.com/hitmanrepo/open-exercise-illustrations/tree/2786aefa4b36a08faeca8114e0d1eb0af3ef6732)
   (CC0) y fotos de [Free Exercise DB](https://github.com/yuhonas/free-exercise-db/tree/f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5)
@@ -132,6 +142,9 @@ pantalla completa y funciona offline).
 - Asignar cualquier rutina a un día, o guardar un plan de ejercicios concreto para ese día.
 - **Auto-planificación semanal**: heurística local o plan con IA, con al menos 48 h entre grupos
   musculares, días de descanso activo y pesos sugeridos desde tu historial.
+- Antes de guardar, una vista previa muestra qué fechas y días del calendario cambiarían. Puedes
+  aplicar la propuesta, pedir otra o descartarla; el calendario no se modifica hasta **Aplicar al
+  calendario**. Sin clave se usa el planificador local; con clave puedes pedir al coach.
 - Vista mensual con heatmap de adherencia y resumen semanal (volumen por grupo, planificadas vs hechas).
 
 ### Coach AI (Gemini)

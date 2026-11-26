@@ -4,7 +4,7 @@ Contexto para trabajar en esta app. Si el hilo se alarga o se pierde el contexto
 primero**: aquí está lo vital (stack, comandos, arquitectura, convenciones y las decisiones que no
 se deben "arreglar" sin querer).
 
-> Última actualización: 25-nov-2026 · guías visuales completas y retirada del catálogo stock antiguo.
+> Última actualización: 26-nov-2026 · navegación móvil, planificación con vista previa y guías visuales en rutinas.
 
 ---
 
@@ -76,7 +76,7 @@ npm run verify     # typecheck + lint + test + build
 index.html            · entrada de Vite (CSP en meta) → src/main.tsx
 src/main.tsx          · tema antes del primer pintado, install prompt, errores globales,
                         ?demo=1, monta <App /> y registra el SW
-src/app/              · shell (App.tsx: appbar, nav v2-tabs, rutas) y router por hash
+src/app/              · shell (App.tsx: appbar, navegación v2-tabs, rutas) y router por hash
 src/domain/           · núcleo PURO (sin DOM ni signals): discos, analítica, sesión, descanso,
                         supersets, planner, fechas, formatos, catálogo y semilla
 src/features/coach/   · contexto, memoria, historial, prompts, parseo tolerante, esquemas,
@@ -141,9 +141,10 @@ router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashcha
 - **CSS**: `base.css` es la base y los componentes compartidos; `v2.css` y las hojas por vista
   añaden lo suyo. Evita duplicar reglas: el proyecto arrastró durante meses restos de la v1
   (`.nav*`, `.restbar*`, `.chart-wrap`…) que se limpiaron el 3-nov-2026.
-- **Nav**: `v2-tabs` es un **carril horizontal con scroll** (`overflow-x:auto`) que centra la pestaña
-  activa y difumina el borde cuando queda contenido fuera. En modo súper simple se oculta únicamente
-  mientras hay una sesión activa en Hoy. En las demás vistas debe seguir accesible por desplazamiento.
+- **Nav**: `v2-tabs` muestra cinco accesos fijos en móvil: Hoy, Rutinas, Calendario, Progreso y Más.
+  Coach y Ajustes se abren desde el mismo modal de Más; los enlaces directos y las subsecciones de
+  Ajustes siguen funcionando, y Más aparece seleccionado en esas dos rutas. La barra se oculta en
+  modo súper simple únicamente mientras hay una sesión activa en Hoy; en las demás vistas sigue visible.
 
 ---
 
@@ -168,10 +169,12 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   reutiliza la tabla, el progreso y las acciones de sesión. La cabecera **Pulso** abre Ajustes → Entreno
   sin finalizar. Volver a Hoy conserva la sesión. El temporizador libre mantiene su vista habitual.
 - **Guías visuales** (`domain/exercise-guides.ts`): disponibles en tarjetas expandidas de la vista
-  habitual y del modo súper simple; cubren los 24 IDs de `seedExercises()` y mantienen
+  habitual, del modo súper simple y en el editor de rutinas (antes de añadir desde resultados y en las
+  filas añadidas); cubren los 24 IDs de `seedExercises()` y mantienen
   dos aliases exactos ya guardados (`floor-press` y `curl-con-mancuernas`). No se infieren guías para
   ejercicios personalizados ni variantes. En ambos modos `Inicio`/`Final` se alternan manualmente y
-  `Plancha` muestra una única postura estática.
+  `Plancha` muestra una única postura estática. La miniatura y el visor se comparten en
+  `ui/ExerciseGuidePreview.tsx`; su diálogo usa `Modal` y la pila compartida.
 - **Biblioteca y migración**: la biblioteca disponible parte de los 24 ejercicios de `seed.ts`; el
   catálogo stock ampliado anterior ya no se incluye como opciones de entrenamiento. Al cargar un perfil
   antiguo, la migración retira solo ejercicios stock sin cambios del usuario y sin referencias activas.
@@ -184,6 +187,9 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   conserva como nota el texto ambiguo. Los interruptores `showExerciseCue` y `showExerciseRest` solo
   controlan qué se muestra en la tarjeta. El menú `⋯` del modo súper simple permite consultar el
   consejo y editar el descanso. En la vista habitual, el consejo tiene su propio acceso en la tarjeta.
+- **Resumen al terminar** (`ui/SessionDoneSheet.tsx`): series, duración y récords nuevos quedan a la
+  vista; volumen, RPE, serie a serie y nota se despliegan con «Ver detalle». «Listo» es la acción
+  principal; Progreso, Calendario y Repetir siguen disponibles como accesos secundarios.
 
 ### Timer de descanso
 `src/domain/rest.ts` calcula **por timestamp** (`endsAt - now`), no acumulando: sigue siendo correcto
@@ -223,6 +229,9 @@ planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
   con `local.ts` y marcan `origin: 'local'` + `fallback` (motivo conservado para la vista). La base
   local viaja además DENTRO del prompt como borrador a mejorar (`localHead` en `prompts.ts`).
 - **`applyWeek` descarta los días anteriores a hoy** (`skipped`); las fechas se comparan como ISO local.
+- **Vista previa antes de aplicar**: la propuesta enseña el impacto por fechas y días antes de escribir
+  el calendario. Solo «Aplicar al calendario» confirma los cambios; pedir otra propuesta o descartarla
+  no altera el plan guardado. Sin key se usa el planificador local; con key se puede pedir al coach.
 
 ### Sincronización y perfiles
 Código de pareja → se deriva una clave (AES-GCM) y el servidor (Worker + KV, `sync-worker/`) solo ve
@@ -264,3 +273,5 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 25-nov-2026 | Guías visuales accesibles también desde las tarjetas expandidas de la sesión habitual. | Reutilizar las mismas miniaturas, visor y fases en ambos modos de entrenamiento. |
 | 25-nov-2026 | Rutinas prioriza las guardadas y concentra creación en «Nueva rutina» → Desde cero / Usar plantilla / Pedir al coach. Coach AI deja key, estado y prueba de conexión a la vista; opciones de modelo y prompt pasan a Avanzado. El diagnóstico del aviso con móvil bloqueado está en Ajustes → Entreno → Avanzado. | Menos acciones competidoras y acceso directo a las opciones de configuración comunes. |
 | 25-nov-2026 | Hoy permite desplegar los ejercicios del plan, repetir la última sesión desde una tarjeta y retomar una sesión activa desde la barra compacta al cambiar de pestaña. Progreso muestra el resumen semanal y los últimos récords antes de búsqueda, estadísticas plegables e historial. | Accesos más directos a entrenar y revisar el progreso. |
+| 26-nov-2026 | Navegación inferior móvil con cinco accesos fijos y un modal compartido para Coach y Ajustes; se conserva el estado por ruta y el acceso a perfiles. | Los destinos principales caben en pantalla y Coach/Ajustes siguen disponibles sin perder los enlaces directos. |
+| 26-nov-2026 | El cierre de sesión prioriza series, duración y récords con detalle plegable; las guías visuales se reutilizan desde el editor de rutinas. La planificación semanal muestra el impacto por fecha antes de aplicarse. | Confirmar lo guardado de un vistazo y revisar ejercicios y cambios del calendario antes de actuar. |

@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TEMPLATES } from '@/domain/data';
 import { routines, type Routine } from '@/state/store';
 
-import { sessionDockMode, tabSub } from './App';
+import { isMoreRoute, sessionDockMode, tabSub } from './App';
 
 const original = routines.value;
 
@@ -85,6 +85,19 @@ describe('sessionDockMode (dónde vive la sesión)', () => {
         showSession: false,
         floatingDock: true,
       });
+    }
+  });
+});
+
+describe('isMoreRoute (estado de Más según la ruta)', () => {
+  it('marca Coach y Ajustes, incluso si Ajustes está en una subsección', () => {
+    expect(isMoreRoute('coach')).toBe(true);
+    expect(isMoreRoute('ajustes')).toBe(true);
+  });
+
+  it('deja los destinos visibles en la barra fuera de Más', () => {
+    for (const tab of ['hoy', 'rutinas', 'calendario', 'progreso']) {
+      expect(isMoreRoute(tab)).toBe(false);
     }
   });
 });

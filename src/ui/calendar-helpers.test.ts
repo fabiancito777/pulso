@@ -25,6 +25,7 @@ import {
   normalizePlan,
   parsePlan,
   planControls,
+  planDateChanges,
   planEngine,
   planFromJson,
   planOrigin,
@@ -287,6 +288,42 @@ describe('propuesta: local vs IA', () => {
     });
     expect(planFromJson({ days: [] })).toBeNull();
     expect(planFromJson(undefined)).toBeNull();
+  });
+
+  it('preview de fechas distingue altas, actualizaciones y días pasados omitidos', () => {
+    const yesterday = addDays(today(), -1);
+    const existing = addDays(today(), 2);
+    const fresh = addDays(today(), 3);
+    const preview = planFromJson({
+      days: [
+        { date: yesterday, title: 'Pasado', exercises: [] },
+        { date: existing, title: 'Nuevo título', exercises: [] },
+        { date: fresh, title: 'Primera propuesta', exercises: [] },
+      ],
+    })?.preview;
+    expect(preview).not.toBeUndefined();
+    const dates = planDateChanges(preview!, { [existing]: { routineId: 'routine-a' } }, today(), {
+      'routine-a': 'Rutina guardada',
+    });
+    expect(dates).toEqual([
+      { iso: yesterday, kind: 'past', currentTitle: '', retainedPlan: '' },
+      {
+        iso: existing,
+        kind: 'change',
+        currentTitle: 'Rutina guardada',
+        retainedPlan: 'Se conservará Rutina guardada',
+      },
+      { iso: fresh, kind: 'add', currentTitle: '', retainedPlan: '' },
+    ]);
+  });
+
+  it('no resuelve IDs de rutina usando propiedades heredadas', () => {
+    const iso = addDays(today(), 1);
+    const preview = planFromJson({ days: [{ date: iso, exercises: [] }] })?.preview;
+    expect(
+      planDateChanges(preview!, { [iso]: { routineId: 'constructor' } }, today(), {}).at(0)
+        ?.currentTitle,
+    ).toBe('');
   });
 });
 

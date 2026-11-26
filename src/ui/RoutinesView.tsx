@@ -59,6 +59,7 @@ import {
 } from '@/state/store';
 import type { Routine } from '@/state/store';
 import { HelpBtn } from './HelpModal';
+import { ExerciseGuidePreview } from './ExerciseGuidePreview';
 import { useCoachWait, WaitMeta } from './coach-wait';
 import { Icon } from './Icon';
 import { InfoCard, SectionHead, TextRow } from './kit';
@@ -589,7 +590,17 @@ function RoutineEditor({
       <div class="card tight rt-item" key={`${item.exId}:${index}`}>
         <div class="rt-item-head">
           <div class="grow">
-            <div class="h3 ellipsis">{ex ? ex.name : item.exId}</div>
+            <div class="rt-item-name-row">
+              <div class="h3 ellipsis">{ex ? ex.name : item.exId}</div>
+              {ex ? (
+                <ExerciseGuidePreview
+                  exerciseId={ex.id}
+                  name={ex.name}
+                  cue={inLib?.tips?.trim() ?? ''}
+                  className="btn sm quiet rt-guide-trigger"
+                />
+              ) : null}
+            </div>
             <div class="tiny muted">
               {ex ? `${groupLabel(ex.group)} · ${ex.type}` : 'fuera de la biblioteca'}
               {pair ? ` · SS ${pair.letter} (${pair.position}/${pair.size})` : ''}
@@ -782,19 +793,32 @@ function RoutineEditor({
         <div class="rt-results">
           {matches.length ? (
             matches.map((ex) => (
-              <button type="button" class="rt-result" key={ex.id} onClick={() => addItem(ex)}>
-                <Icon name="plus" />
-                <span class="grow">
-                  <span class="rt-result-name ellipsis">{ex.name}</span>
-                  <span class="tiny muted">
-                    {groupLabel(ex.group)} · {ex.sets} × {ex.repMin}-{ex.repMax}
+              <div class="rt-result" key={ex.id}>
+                <button
+                  type="button"
+                  class="rt-result-add"
+                  aria-label={`Añadir ${ex.name} a la rutina`}
+                  onClick={() => addItem(ex)}
+                >
+                  <Icon name="plus" />
+                  <span class="grow">
+                    <span class="rt-result-name ellipsis">{ex.name}</span>
+                    <span class="tiny muted">
+                      {groupLabel(ex.group)} · {ex.sets} × {ex.repMin}-{ex.repMax}
+                    </span>
                   </span>
-                </span>
-                {!ex.allowed ? <span class="badge danger">off</span> : null}
-                {!isAvailable(ex, equipment.value) ? (
-                  <span class="badge warn">sin equipo</span>
-                ) : null}
-              </button>
+                  {!ex.allowed ? <span class="badge danger">off</span> : null}
+                  {!isAvailable(ex, equipment.value) ? (
+                    <span class="badge warn">sin equipo</span>
+                  ) : null}
+                </button>
+                <ExerciseGuidePreview
+                  exerciseId={ex.id}
+                  name={ex.name}
+                  cue={ex.tips?.trim() ?? ''}
+                  className="btn sm quiet rt-guide-trigger"
+                />
+              </div>
             ))
           ) : (
             <div class="tiny muted">

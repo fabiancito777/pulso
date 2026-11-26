@@ -229,6 +229,48 @@ export interface PlanResult {
   preview: PlanPreview;
 }
 
+/** Cambio visible que `applyWeek` hará en una fecha de la propuesta. */
+export interface PlanDateChange {
+  iso: string;
+  kind: 'add' | 'change' | 'past';
+  currentTitle: string;
+  retainedPlan: string;
+}
+
+/**
+ * Fechas de la propuesta marcadas como nuevas, actualización de un día
+ * guardado, o día pasado omitido. `applyWeek` ignora las anteriores a hoy.
+ */
+export function planDateChanges(
+  preview: PlanPreview,
+  current: Readonly<Record<string, ScheduleDay | undefined>>,
+  todayIso: string,
+  routineNames: Readonly<Record<string, string>> = {},
+): PlanDateChange[] {
+  return preview.days.map((day) => {
+    const saved = current[day.iso];
+    const routineId = typeof saved?.routineId === 'string' ? saved.routineId : '';
+    const hasSavedExercises =
+      Boolean(routineId) || (Array.isArray(saved?.plan) && saved.plan.length > 0);
+    return {
+      iso: day.iso,
+      kind: day.iso < todayIso ? 'past' : saved ? 'change' : 'add',
+      currentTitle:
+        (typeof saved?.title === 'string' ? saved.title.trim() : '') ||
+        (routineId && Object.prototype.hasOwnProperty.call(routineNames, routineId)
+          ? routineNames[routineId]
+          : '') ||
+        '',
+      retainedPlan:
+        day.exercises.length === 0 && hasSavedExercises
+          ? routineId && Object.prototype.hasOwnProperty.call(routineNames, routineId)
+            ? `Se conservará ${routineNames[routineId]}`
+            : 'Se conservarán los ejercicios actuales'
+          : '',
+    };
+  });
+}
+
 /**
  * Normaliza la respuesta del coach en algo previsualizable. Devuelve `null` si
  * no parece un plan (ni un objeto con `days` con fechas válidas), para que la

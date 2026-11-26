@@ -9,13 +9,14 @@
  *
  * Reglas que no conviene romper:
  *
- * - **No la cierra el tiempo**: se queda hasta que el usuario la cierra (o usa
- *   uno de los atajos del pie). Un aviso que se esfuma solo no confirma nada.
+ * - **No la cierra el tiempo**: permanece hasta que el usuario elige una acción.
  * - **Todo sale del resumen ya calculado** (`sessionDoneSummary`): aquí solo se
  *   formatea. Si no hay sesión anterior o no hay récords, esas filas NO se
  *   pintan; nada de «+0 kg» ni de huecos vacíos.
  * - Vive en la pila de modales (`ui/Modal.tsx`), no en un diálogo propio.
  */
+import { useState } from 'preact/hooks';
+
 import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { label as dateLabel } from '@/domain/dates';
 import { resolveExercise } from '@/domain/data';
@@ -57,6 +58,7 @@ export function SessionDoneSheet({
 }: SessionDoneSheetProps) {
   const { session, records } = summary;
   const delta = deltaText(summary);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   return (
     <Modal
@@ -65,64 +67,28 @@ export function SessionDoneSheet({
       onClose={onClose}
       foot={
         <>
-          {onRepeat ? (
-            <button
-              type="button"
-              class="btn"
-              onClick={() => {
-                onClose();
-                onRepeat(session);
-              }}
-            >
-              Repetir
-            </button>
-          ) : null}
           <button
             type="button"
             class="btn"
             onClick={() => {
               onClose();
-              onCalendar();
-            }}
-          >
-            Calendario
-          </button>
-          <button
-            type="button"
-            class="btn primary"
-            onClick={() => {
-              onClose();
               onProgress();
             }}
           >
-            Progreso
+            Ver progreso
+          </button>
+          <button type="button" class="btn primary" onClick={onClose}>
+            Listo
           </button>
         </>
       }
     >
-      <div class="card tight accent">
-        <div class="row">
-          <span class="ico accent">
-            <Icon name="check" />
-          </span>
-          <div class="grow">
-            <div class="h3">Guardada</div>
-            <div class="tiny muted">
-              {summary.sets} {summary.sets === 1 ? 'serie' : 'series'} ·{' '}
-              {summary.exercises} {summary.exercises === 1 ? 'ejercicio' : 'ejercicios'}
-              {summary.streak > 1 ? ` · racha de ${summary.streak} días` : ''}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="grid c3 mt">
-        <Kpi label="Volumen" value={fmtVol(summary.volume)} delta={delta ?? 'kg movidos'} />
+      <div class="grid c2">
         <Kpi label="Series" value={fmtN(summary.sets, 0)} delta={`${summary.exercises} ejercicios`} />
         <Kpi
           label="Duración"
           value={fmtDur(summary.duration)}
-          delta={session.rpe ? `RPE ${fmtN(session.rpe, 1)}` : 'sin RPE'}
+          delta={summary.streak > 1 ? `racha de ${summary.streak} días` : 'sesión completada'}
         />
       </div>
 
@@ -149,39 +115,86 @@ export function SessionDoneSheet({
         </div>
       ) : null}
 
-      <div class="card flush mt">
-        <div class="list">
-          {session.entries.map((entry, i) => {
-            const ex = resolveExercise(exercises.value, entry.exId);
-            const sets = Array.isArray(entry.sets) ? entry.sets : [];
-            const text = sets
-              .map((set) => {
-                const reps = fmtN(set.reps);
-                const load =
-                  set.weight === null || set.weight === undefined
-                    ? `×${reps}`
-                    : `${fmtN(set.weight)}×${reps}`;
-                return `${load}${set.rpe ? ` (RPE ${fmtN(set.rpe, 1)})` : ''}`;
-              })
-              .join(' · ');
-            return (
-              <div key={`${entry.exId}-${i}`} class="list-item">
-                <div class="li-main">
-                  <div class="li-title">{ex ? ex.name : entry.name || entry.exId}</div>
-                  <div class="li-sub num">{text || 'sin series'}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <button
+        type="button"
+        class="btn ghost mt"
+        aria-expanded={detailsOpen}
+        onClick={() => setDetailsOpen((open) => !open)}
+      >
+        <Icon name={detailsOpen ? 'chev-u' : 'chev-d'} />
+        {detailsOpen ? 'Ocultar detalle' : 'Ver detalle'}
+      </button>
 
-      {session.notes ? (
-        <div class="card tight mt">
-          <div class="tiny muted">Nota</div>
-          <div class="tiny">{session.notes}</div>
-        </div>
+      {detailsOpen ? (
+        <>
+          <div class="grid c2 mt-s">
+            <Kpi label="Volumen" value={fmtVol(summary.volume)} delta={delta ?? 'kg movidos'} />
+            <Kpi
+              label="RPE medio"
+              value={session.rpe ? fmtN(session.rpe, 1) : '—'}
+              delta={session.rpe ? 'esfuerzo percibido' : 'sin RPE'}
+            />
+          </div>
+          <div class="card flush mt">
+            <div class="list">
+              {session.entries.map((entry, i) => {
+                const ex = resolveExercise(exercises.value, entry.exId);
+                const sets = Array.isArray(entry.sets) ? entry.sets : [];
+                const text = sets
+                  .map((set) => {
+                    const reps = fmtN(set.reps);
+                    const load =
+                      set.weight === null || set.weight === undefined
+                        ? `×${reps}`
+                        : `${fmtN(set.weight)}×${reps}`;
+                    return `${load}${set.rpe ? ` (RPE ${fmtN(set.rpe, 1)})` : ''}`;
+                  })
+                  .join(' · ');
+                return (
+                  <div key={`${entry.exId}-${i}`} class="list-item">
+                    <div class="li-main">
+                      <div class="li-title">{ex ? ex.name : entry.name || entry.exId}</div>
+                      <div class="li-sub num">{text || 'sin series'}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {session.notes ? (
+            <div class="card tight mt">
+              <div class="tiny muted">Nota</div>
+              <div class="tiny">{session.notes}</div>
+            </div>
+          ) : null}
+        </>
       ) : null}
+
+      <div class="row wrap mt-s" aria-label="Otras acciones">
+        <button
+          type="button"
+          class="btn sm ghost"
+          onClick={() => {
+            onClose();
+            onCalendar();
+          }}
+        >
+          Calendario
+        </button>
+        {onRepeat ? (
+          <button
+            type="button"
+            class="btn sm ghost"
+            onClick={() => {
+              onClose();
+              onRepeat(session);
+            }}
+          >
+            Repetir
+          </button>
+        ) : null}
+      </div>
     </Modal>
   );
 }

@@ -27,6 +27,7 @@ import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
 import { openHelp } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
+import { Modal } from '@/ui/Modal';
 import { Onboarding } from '@/ui/Onboarding';
 import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
@@ -94,63 +95,24 @@ function SessionClock() {
   );
 }
 
-/**
- * Barra de navegación inferior. En móvil el carril de 7 chips NO cabe (≈660 px
- * para 390), así que se desliza en horizontal: aquí se centra la pestaña activa
- * al cambiar de vista y se difuminan los bordes que tienen contenido fuera, para
- * que se lea como «desliza» y no como un chip cortado (mismo recurso que el
- * carril de acciones del Coach).
- */
-function BottomNav({ current }: { current: string }) {
-  const nav = useRef<HTMLElement | null>(null);
-  const [edges, setEdges] = useState({ start: false, end: false });
+export function isMoreRoute(current: string): boolean {
+  return current === 'coach' || current === 'ajustes';
+}
 
-  /*
-   * Todo en UN efecto porque las dos cosas van juntas: al cambiar de pestaña hay
-   * que CENTRAR la activa y, acto seguido, medir los bordes con la posición ya
-   * aplicada. Separarlos en dos efectos hacía que el `scroll` del centrado no
-   * llegara a tiempo y el degradado saliera desfasado un tick.
-   */
-  useEffect(() => {
-    const el = nav.current;
-    if (!el) return;
-    const measure = (): void => {
-      const start = el.scrollLeft > 4;
-      const end = el.scrollWidth - el.clientWidth - el.scrollLeft > 4;
-      /* solo cambia si de verdad cambió: un objeto nuevo por cada tick de scroll
-         dispararía un repintado de más */
-      setEdges((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
-    };
-
-    const chip = el.querySelector<HTMLElement>('.chip.on');
-    if (chip) {
-      /* Centra la activa: en una barra de 7 chips puede quedar fuera (Progreso,
-         Ajustes). Instantáneo a propósito: con `smooth` el carril se queda a
-         medias al encadenar pestañas. Se calcula el scrollLeft a mano en vez de
-         `scrollIntoView` para no arrastrar la página. */
-      el.scrollTo({
-        left: chip.offsetLeft - (el.clientWidth - chip.clientWidth) / 2,
-        behavior: 'auto',
-      });
-    }
-    measure();
-
-    el.addEventListener('scroll', measure, { passive: true });
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener('scroll', measure);
-      ro.disconnect();
-    };
-  }, [current]);
-
+/** Navegación inferior fija: los destinos menos frecuentes viven en «Más». */
+function BottomNav({
+  current,
+  moreOpen,
+  onMore,
+}: {
+  current: string;
+  moreOpen: boolean;
+  onMore: () => void;
+}) {
+  const visibleTabs = TABS.filter((t) => t.key !== 'coach' && t.key !== 'ajustes');
   return (
-    <nav
-      class={`v2-tabs${edges.start ? ' has-start' : ''}${edges.end ? ' has-end' : ''}`}
-      aria-label="Navegación principal"
-      ref={nav}
-    >
-      {TABS.map((t) => (
+    <nav class="v2-tabs" aria-label="Navegación principal">
+      {visibleTabs.map((t) => (
         <button
           key={t.key}
           type="button"
@@ -160,10 +122,48 @@ function BottomNav({ current }: { current: string }) {
           onClick={() => go(t.key)}
         >
           <Icon name={t.icon} />
-          {t.label}
+          <span>{t.label}</span>
         </button>
       ))}
+      <button
+        type="button"
+        class={`chip${isMoreRoute(current) ? ' on accent' : ''}`}
+        title="Más opciones"
+        aria-haspopup="dialog"
+        aria-expanded={moreOpen}
+        aria-current={isMoreRoute(current) ? 'page' : undefined}
+        onClick={onMore}
+      >
+        <Icon name="bars" />
+        <span>Más</span>
+      </button>
     </nav>
+  );
+}
+
+function MoreModal({ current, onClose }: { current: string; onClose: () => void }) {
+  const destinations = TABS.filter((t) => t.key === 'coach' || t.key === 'ajustes');
+  return (
+    <Modal title="Más" sub="Coach y configuración" onClose={onClose}>
+      <div class="more-destinations">
+        {destinations.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            class={`list-item tappable${t.key === current ? ' on accent' : ''}`}
+            aria-current={t.key === current ? 'page' : undefined}
+            onClick={() => {
+              onClose();
+              go(t.key);
+            }}
+          >
+            <Icon name={t.icon} />
+            <span class="li-main"><span class="li-title">{t.label}</span></span>
+            {t.key === current ? <span class="tiny muted">Actual</span> : null}
+          </button>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -241,6 +241,7 @@ export function App() {
   );
 
   useEffect(() => applyTheme(s.theme, s.accent), [s.theme, s.accent]);
+  useEffect(() => setMoreOpen(false), [route.value.tab, route.value.sub]);
 
   /* Onboarding de primera vez (spec `onboarding.md`, hueco 1): 350 ms después de
      arrancar y solo si sigue sin verse. No se abre
@@ -248,6 +249,7 @@ export function App() {
      cierre lo detecta la signal `meta` (el modal la escribe al cerrarse). */
   const [boarding, setBoarding] = useState(false);
   const [profilesOpen, setProfilesOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const profile = activeProfile.value;
   useEffect(() => {
     if (meta.value.onboarded === true) return;
@@ -363,7 +365,15 @@ export function App() {
         ) : null}
       </main>
 
-      {!focusedWorkout ? <BottomNav current={current.key} /> : null}
+      {!focusedWorkout ? (
+        <BottomNav
+          current={current.key}
+          moreOpen={moreOpen}
+          onMore={() => setMoreOpen(true)}
+        />
+      ) : null}
+
+      {moreOpen ? <MoreModal current={current.key} onClose={() => setMoreOpen(false)} /> : null}
 
       <FinishedSheet />
 

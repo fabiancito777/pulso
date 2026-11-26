@@ -25,10 +25,8 @@ import { restView } from '@/domain/rest';
 import { entryVolume, MAX_SETS, progress as sessionProgress } from '@/domain/session';
 import { supersetGroups } from '@/domain/supersets';
 import { go } from '@/app/router';
-import { EXERCISE_GUIDES } from '@/domain/exercise-guides';
 import type { SupersetGroup } from '@/domain/supersets';
 import type { ActiveEntry, ActiveSession, Unit } from '@/domain/types';
-import type { ExerciseGuide, ExerciseGuidePhase } from '@/domain/exercise-guides';
 import {
   active,
   addExercises,
@@ -60,6 +58,7 @@ import {
 } from '@/state/session';
 import { equipment as equipmentSignal, exercises, settings as settingsSignal } from '@/state/store';
 import { ExercisePickerModal } from './ExercisePickerModal';
+import { ExerciseGuidePreview } from './ExerciseGuidePreview';
 import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
 import { Modal } from './Modal';
@@ -67,98 +66,6 @@ import { PlatesModal } from './PlatesModal';
 import { Ring } from './Ring';
 import { RoutinePickerModal } from './RoutinePickerModal';
 import { toast } from './toast';
-
-function guideImageSrc(src: string): string {
-  const base = import.meta.env.BASE_URL.endsWith('/')
-    ? import.meta.env.BASE_URL
-    : `${import.meta.env.BASE_URL}/`;
-  return `${base}${src.replace(/^\.\//, '').replace(/^\/+/, '')}`;
-}
-
-function ExerciseDemoThumb({ phase }: { phase: ExerciseGuidePhase }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <span
-      class={`exercise-demo-thumb${phase.crop ? ` crop-${phase.crop}` : ''}`}
-      aria-hidden="true"
-    >
-      {failed ? (
-        <Icon name="eye" />
-      ) : (
-        <img
-          src={guideImageSrc(phase.src)}
-          alt=""
-          aria-hidden="true"
-          loading="lazy"
-          onError={() => setFailed(true)}
-        />
-      )}
-    </span>
-  );
-}
-
-function ExerciseDemoModal({
-  guide,
-  name,
-  cue,
-  onClose,
-}: {
-  guide: ExerciseGuide;
-  name: string;
-  cue: string;
-  onClose: () => void;
-}) {
-  const phases = guide.phases;
-  const [phaseIndex, setPhaseIndex] = useState(0);
-  const [failedSources, setFailedSources] = useState<string[]>([]);
-  const phase = phases[phaseIndex] ?? phases[0];
-  if (!phase) return null;
-  const failed = failedSources.includes(phase.src);
-  return (
-    <Modal title={name} sub="Guía visual" onClose={onClose}>
-      <div class="simple-demo-body">
-        {failed ? (
-          <div class="simple-demo-fallback" role="status">
-            <Icon name="info" />
-            <span>Esta fase no está disponible. Puedes seguir registrando tus series.</span>
-          </div>
-        ) : (
-          <div class={`simple-demo-stage${phase.crop ? ` crop-${phase.crop}` : ''}`}>
-            <img
-              key={phase.src}
-              class="simple-demo-image"
-              src={guideImageSrc(phase.src)}
-              alt={`${name}: ${phase.label}`}
-              onError={() =>
-                setFailedSources((previous) =>
-                  previous.includes(phase.src) ? previous : [...previous, phase.src],
-                )
-              }
-            />
-          </div>
-        )}
-        {phases.length > 1 ? (
-          <div class="simple-demo-phases" role="group" aria-label="Fases del movimiento">
-            {phases.map((item, index) => (
-              <button
-                key={`${item.src}:${item.crop ?? ''}:${index}`}
-                type="button"
-                class={index === phaseIndex ? 'on' : ''}
-                aria-pressed={index === phaseIndex}
-                onClick={() => setPhaseIndex(index)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div class="simple-demo-single-label">{phase.label}</div>
-        )}
-        {cue ? <p class="simple-demo-cue">{cue}</p> : null}
-      </div>
-    </Modal>
-  );
-}
 
 /** Reloj de la sesión. Aislado a propósito: es lo que se repinta cada segundo. */
 function Clock() {
@@ -583,7 +490,6 @@ function EntryCard(props: {
   const [notesDraft, setNotesDraft] = useState('');
   const [cueOpen, setCueOpen] = useState(false);
   const [restOpen, setRestOpen] = useState(false);
-  const [demoOpen, setDemoOpen] = useState(false);
   const [restDraft, setRestDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -595,9 +501,6 @@ function EntryCard(props: {
   const ex = exercises.value.find((e) => e.id === en.exId);
   const doneSets = en.sets.filter((s) => s.done).length;
   const volume = entryVolume(en, unit);
-  const visualGuide = Object.prototype.hasOwnProperty.call(EXERCISE_GUIDES, en.exId)
-    ? EXERCISE_GUIDES[en.exId]
-    : undefined;
   const showRpe = settingsSignal.value.showRpe;
   const prefs = settingsSignal.value;
   const showCue = prefs.showExerciseCue === true;
@@ -629,11 +532,7 @@ function EntryCard(props: {
   /* todas marcadas: el «×» de borrar deja su sitio a «Completar» y no se puede
      deshacer el ejercicio por accidente al guardarlo como sesión suelta */
   const complete = en.sets.length > 0 && doneSets === en.sets.length;
-  const canShowDemo = !props.collapsed && Boolean(visualGuide?.phases.length);
-
-  useEffect(() => {
-    if (props.collapsed) setDemoOpen(false);
-  }, [props.collapsed]);
+  const canShowDemo = !props.collapsed;
 
   const cancelNotes = () => {
     setNotesDraft(en.notes);
@@ -718,17 +617,12 @@ function EntryCard(props: {
             )}
           </span>
         </button>
-        {canShowDemo && visualGuide?.phases[0] ? (
-          <button
-            type="button"
-            class="btn sm quiet exercise-demo-trigger"
-            aria-label={`Ver movimiento de ${en.name}`}
-            aria-haspopup="dialog"
-            title="Ver movimiento"
-            onClick={() => setDemoOpen(true)}
-          >
-            <ExerciseDemoThumb key={visualGuide.phases[0].src} phase={visualGuide.phases[0]} />
-          </button>
+        {canShowDemo ? (
+          <ExerciseGuidePreview
+            exerciseId={en.exId}
+            name={en.name}
+            cue={en.cue?.trim() || ex?.tips?.trim() || ''}
+          />
         ) : null}
         {!props.collapsed ? (
           <button
@@ -1065,19 +959,7 @@ function EntryCard(props: {
     </div>
   );
 
-  return (
-    <>
-      {card}
-      {canShowDemo && demoOpen && visualGuide ? (
-        <ExerciseDemoModal
-          guide={visualGuide}
-          name={en.name}
-          cue={en.cue?.trim() || ex?.tips?.trim() || ''}
-          onClose={() => setDemoOpen(false)}
-        />
-      ) : null}
-    </>
-  );
+  return card;
 }
 
 /**

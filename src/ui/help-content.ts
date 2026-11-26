@@ -39,7 +39,7 @@ export type HelpSection = (typeof HELP_SECTIONS)[number];
 /** Título visible de cada sección en el índice de la guía. */
 export const SECTION_LABELS: Record<HelpSection, string> = {
   app: 'Cómo usar Pulso',
-  tabs: 'Las 7 pestañas',
+  tabs: 'Navegación',
   hoy: 'Pestaña Hoy',
   entreno: 'Durante el entreno',
   rutinas: 'Rutinas',
@@ -55,10 +55,11 @@ export const HELP_IDS = [
   /* --- cómo usar la app --- */
   'guide',
   'flow.start',
+  'flow.finish',
   'flow.repeat',
   'flow.plan',
 
-  /* --- las 7 pestañas --- */
+  /* --- destinos principales y «Más» --- */
   'tab.hoy',
   'tab.rutinas',
   'tab.calendario',
@@ -84,6 +85,7 @@ export const HELP_IDS = [
   'rutinas.autoVsIa',
   'rutinas.source',
   'rutinas.focus',
+  'rutinas.guides',
   'rutinas.schedule',
 
   /* --- calendario --- */
@@ -171,11 +173,11 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'app',
     title: 'Guía de la app',
     paras: [
-      'Pulso tiene 7 pestañas. Hoy es tu día, Entrenar es la sesión en curso, Rutinas son tus listas guardadas, Calendario es el plan de la semana, Coach es el chat con IA, Progreso son tus récords y gráficos, y Ajustes es la configuración.',
+      'La barra inferior muestra Hoy, Rutinas, Calendario, Progreso y Más. Abre Más para entrar a Coach o Ajustes. También puedes abrir esas vistas desde sus enlaces directos; Más queda marcado mientras estás en una de ellas. La sesión activa se abre en Hoy y, en modo súper simple, la barra se oculta solo durante esa sesión.',
       'Para empezar rápido: la tarjeta de Hoy deja ver el plan antes de empezar y la última sesión tiene un botón para repetirla. Si cambias de pestaña durante un entreno, la barra compacta muestra su tiempo y progreso; «Retomar sesión» vuelve a Hoy sin cerrarlo. «Auto-planificar» llena la semana, tengas o no clave de IA.',
       'Si algo no queda claro, busca el botón ⓘ que hay al lado y tócalo: te explica esa opción. Desde aquí llegas a todas, también al glosario.',
     ],
-    see: ['flow.start', 'flow.repeat', 'flow.plan'],
+    see: ['flow.start', 'flow.finish', 'flow.repeat', 'flow.plan'],
   },
   'flow.start': {
     id: 'flow.start',
@@ -186,6 +188,16 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Marca cada serie con el botón «ok» de su fila; el descanso arranca solo. Al terminar, «Finalizar sesión» guarda el entreno y marca el día como hecho.',
     ],
     see: ['tab.hoy', 'entreno.suggested'],
+  },
+  'flow.finish': {
+    id: 'flow.finish',
+    section: 'app',
+    title: 'Al terminar una sesión',
+    paras: [
+      'Al pulsar «Finalizar sesión», verás las series y la duración, además de los récords nuevos si los hubo.',
+      '«Ver detalle» despliega el volumen, el RPE, las series de cada ejercicio y tu nota. «Ver progreso» abre las estadísticas; Calendario y Repetir siguen disponibles como acciones secundarias.',
+    ],
+    see: ['flow.start', 'tab.progreso'],
   },
   'flow.repeat': {
     id: 'flow.repeat',
@@ -208,7 +220,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     see: ['cal.autoplan', 'cal.planProposal'],
   },
 
-  /* ---------- las 7 pestañas ---------- */
+  /* ---------- navegación ---------- */
   'tab.hoy': {
     id: 'tab.hoy',
     section: 'tabs',
@@ -227,7 +239,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
       'Tus rutinas guardadas aparecen primero. «Nueva rutina» abre las opciones para empezar desde cero, usar una plantilla local o pedir una propuesta al coach.',
       'Cada tarjeta tiene Empezar, Editar, Agendar, Duplicar y Eliminar (Duplicar/Eliminar como iconos compactos).',
     ],
-    see: ['rutinas.autoVsIa', 'rutinas.source'],
+    see: ['rutinas.autoVsIa', 'rutinas.source', 'rutinas.guides'],
   },
   'tab.calendario': {
     id: 'tab.calendario',
@@ -244,6 +256,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Coach',
     paras: [
+      'Abre Coach desde Más. Es el chat con IA y el planificador semanal.',
       'El chat con el coach, 6 acciones rápidas y la «Memoria del coach», que puedes editar.',
       'Puede montarte la sesión de hoy, sugerir una rutina, revisar tu volumen o tu reparto por músculo, atacar un récord y generar ejercicios nuevos. Ve tu historial, tu plan y tu material, así que sus propuestas encajan con lo que entrenas.',
       'Necesita una clave de Google AI Studio. Sin ella, la app sigue funcionando con el planificador local.',
@@ -265,6 +278,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Ajustes',
     paras: [
+      'Abre Ajustes desde Más. Los enlaces directos y las subsecciones siguen disponibles.',
       'Aquí lo configuras todo. Tiene 8 subsecciones: Perfil, Apariencia, Entreno, Equipo, Discos, Ejercicios, Coach AI y Datos.',
     ],
     see: ['opt.goal', 'guide'],
@@ -406,6 +420,16 @@ export const HELP: Record<HelpId, HelpTopic> = {
     ],
     see: ['glossary.routine'],
   },
+  'rutinas.guides': {
+    id: 'rutinas.guides',
+    section: 'rutinas',
+    title: 'Guías visuales en el editor',
+    paras: [
+      'En el editor, toca la miniatura junto a un resultado para revisar su movimiento antes de añadirlo. También puedes abrir la guía desde la fila del ejercicio una vez añadido.',
+      'Las guías están disponibles para los ejercicios predeterminados que tienen ilustración; los ejercicios propios y sus variantes no reciben una guía automática.',
+    ],
+    see: ['tab.rutinas', 'guide'],
+  },
   'rutinas.schedule': {
     id: 'rutinas.schedule',
     section: 'rutinas',
@@ -443,7 +467,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Auto-planificar',
     paras: [
       '«Auto-planificar» rellena la semana con tus rutinas, tu material y tu historial. Con clave lo hace el coach (botón «Con IA»); sin clave, tu dispositivo.',
-      'Nunca escribe el calendario por su cuenta: verás la propuesta y solo se guarda si pulsas «Aplicar al calendario».',
+      'Antes de aplicarla, revisa la vista previa: muestra qué fechas y días cambiarían. Puedes aplicar la propuesta, pedir otra o descartarla; el calendario solo cambia al pulsar «Aplicar al calendario».',
     ],
     see: ['cal.planProposal', 'cal.noKey'],
   },
@@ -452,7 +476,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'calendario',
     title: 'Propuesta de semana',
     paras: [
-      'Así quedaría la semana antes de guardarla. El sello dice quién la ha calculado.',
+      'Así quedaría la semana antes de guardarla. El sello dice quién la ha calculado y la vista previa indica las fechas que cambiarían.',
       'Puedes aplicarla, pedir otra o descartarla. Hasta que pulses «Aplicar al calendario», tu plan no cambia.',
     ],
     see: ['cal.autoplan', 'glossary.localPlan'],
