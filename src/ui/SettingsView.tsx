@@ -59,6 +59,8 @@ import {
   createProfile,
   deleteProfile,
   demoData,
+  demoMode,
+  demoSessions,
   equipment,
   exercises,
   exportAllProfiles,
@@ -1712,13 +1714,16 @@ function SecDatos() {
   const disponible = installable.value;
   const instalada = installed();
   const sess = sessions.value.length;
-  /* las de ejemplo llevan `demo: true` (mismo selector que `clearDemo`) */
-  const demo = sessions.value.filter((s) => s.demo === true).length;
+  const demo = demoSessions.value.length;
   const kb = Math.round(storageBytes() / 1024);
   return (
     <>
       <div class="grid c2">
-        <Kpi label="Sesiones" value={sess} delta={demo ? `${demo} de ejemplo` : 'guardadas'} />
+        <Kpi
+          label="Sesiones reales"
+          value={sess}
+          delta={demo ? `${demo} en la demo temporal` : 'guardadas'}
+        />
         <Kpi
           label="Almacenamiento"
           value={fmtN(kb)}
@@ -1847,30 +1852,26 @@ function SecDatos() {
         />
         <ListButton
           icon="zap"
-          title="Cargar 8 semanas de ejemplo"
+          title={demoMode.value ? 'Abrir demostración en Progreso' : 'Ver demostración en Progreso'}
           help="opt.demo"
           sub={
             demo
-              ? `Ahora mismo hay ${demo} sesiones de ejemplo`
-              : 'Sesiones ficticias para ver las gráficas'
+              ? `${demo} sesiones temporales; no se mezclan con tu historial`
+              : 'Vista temporal con sesiones ficticias, separada de tus entrenamientos'
           }
           onClick={() => {
-            const n = demoData(8);
-            setMsg(
-              n
-                ? `Añadidas ${n} sesiones de ejemplo (se marcan como ejemplo y las puedes quitar).`
-                : 'No se pudo generar el ejemplo.',
-            );
+            const n = demoMode.value ? demo : demoData(8);
+            if (n) go('progreso');
+            else setMsg('No se pudo generar el ejemplo.');
           }}
         />
         <ListButton
           icon="trash"
-          title="Quitar datos de ejemplo"
-          sub="Deja solo tus sesiones reales"
+          title="Salir de la demostración"
+          sub="Cierra la vista temporal y borra sus datos de ejemplo"
           onClick={() => {
-            if (!window.confirm('Se quitan solo las sesiones de ejemplo. ¿Seguro?')) return;
             const n = clearDemo();
-            setMsg(n ? `Quitadas ${n} sesiones de ejemplo.` : 'No había sesiones de ejemplo.');
+            setMsg(n ? `Cerrada la demostración (${n} sesiones temporales).` : 'No había una demostración abierta.');
           }}
         />
         <ListButton

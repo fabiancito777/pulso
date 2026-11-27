@@ -258,7 +258,7 @@ const LOCAL_TEXT = [
 ].join('\n');
 
 describe('resultLine con respuesta LOCAL (fallback tras un fallo de la API)', () => {
-  it('el pie dice «Plan local (sin IA)» con el motivo, nunca «Coach IA»', () => {
+  it('el pie indica que se generó en el dispositivo, con el motivo, nunca «Coach IA»', () => {
     const line = resultLine(
       'suggest',
       out({
@@ -270,7 +270,7 @@ describe('resultLine con respuesta LOCAL (fallback tras un fallo de la API)', ()
       'gemini-3.8-flash',
     );
 
-    expect(line.notes).toContain('Plan local (sin IA)');
+    expect(line.notes).toContain('Generado en tu dispositivo');
     expect(line.notes).toContain('IA no disponible: RESOURCE_EXHAUSTED: la cuota se agotó');
     expect(line.notes).toContain('92.1 s');
     expect(line.notes).not.toContain('Coach IA');
@@ -288,9 +288,9 @@ describe('resultLine con respuesta LOCAL (fallback tras un fallo de la API)', ()
       'gemini-3.8-flash',
     );
 
-    expect(line.text.startsWith('**Aviso:**')).toBe(true);
+    expect(line.text.startsWith('**Generado en tu dispositivo:**')).toBe(true);
     expect(line.text).toContain('no pude usar la IA (RESOURCE_EXHAUSTED: la cuota se agotó)');
-    expect(line.text).toContain('planificador de tu dispositivo, no la IA');
+    expect(line.text).toContain('planificador local, no de la IA');
     expect(line.text).toContain('Sugerencia genérica de cuerpo completo: aún no hay historial');
     /* «Aplicar» no cambia: el JSON se sigue sacando del texto */
     expect((line.payload as { source: string }).source).toBe('local');
@@ -298,7 +298,7 @@ describe('resultLine con respuesta LOCAL (fallback tras un fallo de la API)', ()
 
   it('sin key (fallback sin error) el motivo es «sin API key»', () => {
     const line = resultLine('plan', out({ origin: 'local', text: LOCAL_TEXT }), 'g');
-    expect(line.notes).toContain('Plan local (sin IA)');
+    expect(line.notes).toContain('Generado en tu dispositivo');
     expect(line.notes).toContain('sin API key');
     expect(line.text).toContain('no hay API key configurada');
   });

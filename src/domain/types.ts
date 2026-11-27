@@ -371,6 +371,10 @@ export interface PlanItem {
   repMax?: number;
   rest?: number;
   weight?: number | null;
+  /** Series guardadas al repetir una sesión; no forma parte de planes normales. */
+  repeatSets?: { weight: number | null; reps: number }[];
+  /** Unidad en que se registraron las series repetidas. */
+  sourceUnit?: Unit;
   /** id del par de superserie que propone el coach (dos seguidos, mismo id) */
   superset?: string | null;
 }

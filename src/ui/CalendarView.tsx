@@ -59,7 +59,6 @@ import { localWeek } from '@/features/coach/local';
 import { promptHistory } from '@/state/chat';
 import { applyWeek, hasApiKey, runCoachTask } from '@/state/coach';
 import {
-  addRoutine,
   equipment,
   exercises,
   findRoutine,
@@ -89,16 +88,17 @@ import {
   planEngine,
   planFromJson,
   planOrigin,
+  restoreDayPlanPatch,
   restDayPatch,
   weekCounts,
   weekSubtitle,
 } from './calendar-helpers';
-import type { DayState, DayStatus, DayType, PlanEngine, PlanResult } from './calendar-helpers';
+import type { DayState, DayStatus, PlanEngine, PlanResult } from './calendar-helpers';
 import { HelpBtn } from './HelpModal';
 import { useCoachWait, WaitMeta } from './coach-wait';
 import { Icon } from './Icon';
 import { Kpi } from './kit';
-import { requestEditRoutine } from './routines-helpers';
+import { requestEditRoutineDraft } from './routines-helpers';
 
 type ViewMode = 'week' | 'month';
 
@@ -116,23 +116,6 @@ const BADGE_CLASS: Record<DayState, string> = {
   free: 'badge',
 };
 
-/** Clase de la barrita de la franja semanal (mismos nombres que antes). */
-const STRIP_CLASS: Record<DayState, string> = {
-  done: 'st-done',
-  rest: 'st-rest',
-  skipped: 'st-skip',
-  planned: 'planned',
-  free: '',
-};
-
-/** Icono por tipo de día (no hay "cardio" en el catálogo, se usa el rayo). */
-const TYPE_ICON: Record<DayType, string> = {
-  entreno: 'dumbbell',
-  cardio: 'zap',
-  movilidad: 'target',
-  descanso: 'moon',
-};
-
 /** Sesiones de un día concreto. Usa `sessionDate` por si una sesión vieja solo trae `startedAt`. */
 function sessionsOn(iso: string): Session[] {
   return sessions.value.filter((s) => sessionDate(s) === iso);
@@ -148,24 +131,17 @@ function dayPlanEntries(day: ScheduleDay | undefined): Record<string, unknown>[]
   return Array.isArray(raw) ? raw.filter(isRecord) : [];
 }
 
-/**
- * Abre el editor de rutinas para los ejercicios del día. Si el día ya tiene
- * rutina, basta con pedir su edición; si solo tiene `day.plan`, se convierte en
- * una rutina nueva (con los items que traigan `exId`) que pasa a ser la rutina
- * del día antes de abrir el editor.
- */
+/** Abre el editor con un borrador local; no escribe hasta que se guarda. */
 function editDayExercises(
   iso: string,
   routine: ReturnType<typeof findRoutine>,
   planEntries: readonly Record<string, unknown>[],
 ): void {
-  if (routine) {
-    requestEditRoutine(routine.id);
-    go('rutinas');
-    return;
-  }
+  const day = schedule.value[iso];
+  if (day?.status === 'rest' || day?.type === 'descanso') return;
+  const entries: readonly (RoutineItem | Record<string, unknown>)[] = routine?.items ?? planEntries;
   const items: RoutineItem[] = [];
-  for (const entry of planEntries) {
+  for (const entry of entries) {
     const exId = typeof entry.exId === 'string' ? entry.exId.trim() : '';
     if (!exId) continue;
     items.push({
@@ -181,17 +157,15 @@ function editDayExercises(
     });
   }
   if (!items.length) return;
-  const day = schedule.value[iso];
   const focusRaw: unknown = day?.focus;
   const sourceRaw: unknown = day?.source;
-  const created = addRoutine({
-    name: dayTitle(day, '') || 'Rutina del plan',
+  requestEditRoutineDraft({
+    iso,
+    name: dayTitle(day, routine?.name ?? '') || 'Rutina del plan',
     focus: typeof focusRaw === 'string' ? focusRaw : '',
     source: typeof sourceRaw === 'string' ? sourceRaw : 'ia',
     items,
   });
-  setDay(iso, { routineId: created.id, plan: undefined });
-  requestEditRoutine(created.id);
   go('rutinas');
 }
 
@@ -208,16 +182,21 @@ function assignRoutine(iso: string, routineId: string): void {
     title: routine?.name ?? '',
     status: 'planned',
     source: 'manual',
+    restorePlan: undefined,
   });
 }
 
 /** Marca el día como descanso: el título manda, la rutina asignada se conserva. */
 function markRest(iso: string): void {
-  setDay(iso, restDayPatch());
+  setDay(iso, restDayPatch(schedule.value[iso]));
 }
 
 function clearDay(iso: string): void {
   setDay(iso, clearDayPatch());
+}
+
+function restoreDay(iso: string): void {
+  setDay(iso, restoreDayPlanPatch(schedule.value[iso]));
 }
 
 /** Cambia el estado desde el detalle del día (el `cal:day-status` ). */
@@ -227,6 +206,7 @@ function setStatus(iso: string, status: DayStatus): void {
     return;
   }
   const patch: Partial<ScheduleDay> = { status, source: 'manual' };
+  patch.restorePlan = undefined;
   /* un día que era descanso y vuelve a "planificado" pierde el tipo, no la rutina */
   if (dayType(schedule.value[iso]) === 'descanso') {
     patch.type = undefined;
@@ -273,9 +253,15 @@ function SessionRow({ session }: { session: Session }) {
 }
 
 /** Acciones rápidas de cualquier día (compartidas por tarjeta y detalle). */
-function DayActions({ iso, state }: { iso: string; state: DayState }) {
+function DayActions({ iso, state, day }: { iso: string; state: DayState; day?: ScheduleDay }) {
+  const canRestore = Boolean(day?.restorePlan && typeof day.restorePlan === 'object');
   return (
     <div class="cal-day-actions">
+      {canRestore ? (
+        <button type="button" class="btn sm ghost" onClick={() => restoreDay(iso)}>
+          Restaurar plan
+        </button>
+      ) : null}
       <button
         type="button"
         class="btn sm ghost"
@@ -299,90 +285,28 @@ function DayActions({ iso, state }: { iso: string; state: DayState }) {
 }
 
 /** Tarjeta de un día de la semana: tipo, título, rutina, sesión y acciones. */
-function WeekDayCard({ iso, selected }: { iso: string; selected: boolean }) {
+function WeekDayRow({ iso, selected, onSelect }: { iso: string; selected: boolean; onSelect: (iso: string) => void }) {
   const day = schedule.value[iso];
   const daySessions = sessionsOn(iso);
   const state = dayState(day, daySessions.length);
   const routine = findRoutine(typeof day?.routineId === 'string' ? day.routineId : '');
   const title = dayTitle(day, routine?.name ?? '');
-  const type = dayType(day);
   const isToday = iso === today();
 
   return (
-    <article
+    <button
       id={`cal-${iso}`}
-      class={`cal-day ${state}${isToday ? ' today' : ''}${selected ? ' sel' : ''}`}
+      type="button"
+      class={`cal-week-row ${state}${isToday ? ' today' : ''}${selected ? ' sel' : ''}`}
+      aria-expanded={selected}
+      onClick={() => onSelect(iso)}
     >
-      <div class="cal-day-head">
-        <span class="cal-day-when">
-          <b>{dow(iso)}</b> <span class="num">{parse(iso).getDate()}</span>
-          {isToday ? <span class="badge a">hoy</span> : null}
-        </span>
-        <div class="row" style="gap:6px">
-          <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
-          <HelpBtn id="cal.states" title="Estados de un día" />
-        </div>
-      </div>
-
-      <span class="chip cal-type">
-        <Icon name={type ? TYPE_ICON[type] : 'calendar'} />
-        {dayTypeLabel(day, state)}
-      </span>
-
-      <div class="cal-day-title" title={title}>
-        {title || 'Sin plan todavía'}
-      </div>
-
-      <RoutineSelect iso={iso} day={day} />
-
-      {daySessions.length ? <SessionRow session={daySessions[0]} /> : null}
-
-      <DayActions iso={iso} state={state} />
-    </article>
-  );
-}
-
-/** Franja de 7 columnas (el `week-strip` ): de un vistazo y para saltar a un día. */
-function WeekStrip({
-  days,
-  selected,
-  onSelect,
-}: {
-  days: string[];
-  selected: string | null;
-  onSelect: (iso: string) => void;
-}) {
-  const todayIso = today();
-  return (
-    <div class="week-strip">
-      {days.map((iso) => {
-        const day = schedule.value[iso];
-        const daySessions = sessionsOn(iso);
-        const state = dayState(day, daySessions.length);
-        const routine = findRoutine(typeof day?.routineId === 'string' ? day.routineId : '');
-        const title = dayTitle(day, routine?.name ?? '');
-        const vol = daySessions.reduce((sum, s) => sum + volumeOf(s), 0);
-        return (
-          <button
-            key={iso}
-            type="button"
-            class={`day-cell ${STRIP_CLASS[state]}${iso === todayIso ? ' today' : ''}${
-              selected === iso ? ' sel' : ''
-            }`}
-            title={title || dateLabel(iso)}
-            onClick={() => onSelect(iso)}
-          >
-            <span class="dnum">{parse(iso).getDate()}</span>
-            <span class="ddow">{dow(iso)}</span>
-            <span class="dtag">{title || (iso === todayIso ? 'hoy' : 'libre')}</span>
-            <span class="dvol">
-              {vol ? fmtVol(vol) : state === 'done' ? 'hecho' : dayTypeLabel(day, state)}
-            </span>
-            <span class="dstat" />
-          </button>
-        );
-      })}
-    </div>
+      <span class="cal-week-date"><b>{dow(iso)}</b> {parse(iso).getDate()}{isToday ? ' · hoy' : ''}</span>
+      <span class="cal-week-title">{title || 'Sin plan todavía'}</span>
+      <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
+      <span class="cal-week-type">{dayTypeLabel(day, state)}</span>
+      <Icon name="chev-r" />
+    </button>
   );
 }
 
@@ -427,8 +351,6 @@ function WeekView({
         <Kpi label="Series" value={fmtN(sets, 0)} delta={`${minutes} min`} />
       </div>
 
-      <WeekStrip days={days} selected={selected} onSelect={onSelect} />
-
       {routines.value.length === 0 ? (
         <div class="card tight cal-hint">
           <div class="row">
@@ -447,13 +369,18 @@ function WeekView({
         <div class="empty cal-empty">
           <Icon name="calendar" />
           <div>Semana sin plan</div>
-          <div class="tiny">Arrastra o asigna rutinas a los días</div>
+          <div class="tiny">Asigna rutinas a los días desde su detalle</div>
         </div>
       ) : null}
 
-      <div class="cal-days">
+      <div class="cal-week-rows">
         {days.map((iso) => (
-          <WeekDayCard key={iso} iso={iso} selected={selected === iso} />
+          <div key={iso} class="cal-week-entry">
+            <WeekDayRow iso={iso} selected={selected === iso} onSelect={onSelect} />
+            {selected === iso ? (
+              <DayDetail iso={iso} onClose={() => onSelect(iso)} />
+            ) : null}
+          </div>
         ))}
       </div>
     </>
@@ -479,6 +406,7 @@ function MonthCell({
   const level = monthLevel(count);
   return (
     <button
+      id={`cal-${iso}`}
       type="button"
       class={`month-cell${modifier}${level ? ` ${level}` : ''}${iso === today() ? ' today' : ''}${
         selected ? ' cal-sel' : ''
@@ -501,7 +429,7 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
   const hasPlan = planEntries.length > 0;
 
   return (
-    <aside class="cal-detail">
+    <aside id={`cal-detail-${iso}`} class="cal-detail cal-week-detail" tabIndex={-1}>
       <div class="between">
         <div class="grow">
           <div class="h3">{dateLabel(iso, 'medium')}</div>
@@ -514,7 +442,10 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
         </button>
       </div>
 
-      <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
+      <div class="row" style="gap:6px">
+        <span class={BADGE_CLASS[state]}>{DAY_STATE_LABEL[state]}</span>
+        <HelpBtn id="cal.states" title="Estados de un día" />
+      </div>
 
       <div class="seg">
         {DAY_STATUSES.map((status) => (
@@ -587,6 +518,8 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
         <button
           type="button"
           class="btn sm ghost"
+          disabled={state === 'rest'}
+          title={state === 'rest' ? 'Restaura el plan antes de editarlo' : undefined}
           onClick={() => editDayExercises(iso, routine, planEntries)}
         >
           <Icon name="pencil" />
@@ -605,7 +538,7 @@ function DayDetail({ iso, onClose }: { iso: string; onClose: () => void }) {
         </div>
       ) : null}
 
-      <DayActions iso={iso} state={state} />
+      <DayActions iso={iso} state={state} day={day} />
     </aside>
   );
 }
@@ -856,8 +789,17 @@ export function CalendarView() {
   }
 
   function selectDay(iso: string): void {
-    setSelected(selected === iso ? null : iso);
-    document.getElementById(`cal-${iso}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const closing = selected === iso;
+    setSelected(closing ? null : iso);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(closing ? `cal-${iso}` : `cal-detail-${iso}`);
+      if (!target) return;
+      if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+      target.scrollIntoView({
+        block: closing ? 'nearest' : 'start',
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      });
+    });
   }
 
   /**

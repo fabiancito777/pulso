@@ -58,6 +58,9 @@ pantalla completa y funciona offline).
 ### Hoy / Entrenar
 - El plan del día recoge la sesión prevista. **Ver los N ejercicios** despliega la lista sin arrancar el
   entreno; puedes volver a plegarla antes de empezar.
+- **Empezar** es la acción principal del plan; **Saltar** aparece en su menú, marca hoy como descanso y conserva
+  la planificación. Puedes usar **Restaurar plan** desde Hoy o Calendario. **Entrenar libre** sigue disponible
+  durante el descanso.
 - La tarjeta **Última sesión** ofrece **Repetir sesión** con los pesos anteriores. También puedes
   repetir desde las últimas sesiones de Hoy o desde el historial de Progreso.
 - Si cambias a otra pestaña con una sesión activa, la barra compacta mantiene el tiempo y el progreso;
@@ -125,7 +128,9 @@ pantalla completa y funciona offline).
 - **Inventario en kg o lb (mezclables)**: cada disco guarda su medida y su unidad; el cálculo se hace
   **siempre en kilogramos** y el resultado se muestra en ambas unidades (p. ej. un disco de 45 lb aparece
   como «20,41 kg · 45 lb»), también el máximo cargable y la equivalencia del objetivo.
-- Repetir cualquier sesión anterior con los pesos que usaste, entrenamiento libre, o el plan del día.
+- **Repetir cualquier sesión anterior** recupera serie por serie los pesos y repeticiones registrados,
+  además del descanso y las indicaciones del ejercicio. Las series nuevas quedan sin marcar, sin RPE ni nota
+  personal; la nota original se conserva solo en el historial. También puedes entrenar libre o iniciar el plan del día.
 - Panel del día: tira semanal, KPIs (sesiones, volumen, series), últimas sesiones.
 
 ### Rutinas
@@ -133,13 +138,19 @@ pantalla completa y funciona offline).
 - Las rutinas guardadas aparecen primero; **Nueva rutina** abre opciones para empezar desde cero,
   usar una plantilla local o pedir una propuesta al coach.
 - Editor con series, rango de repeticiones y descanso por ejercicio.
+- Al editar desde Calendario, el editor trabaja sobre un borrador de ese día. **Guardar plan del día** escribe
+  los cambios solo en esa fecha; cancelar descarta el borrador y no crea una rutina ni modifica una compartida.
 - **7 plantillas** (Full body A/B, empuje, tirón, pierna, torso completo y pierna + core) que se
   materializan usando solo ejercicios permitidos y disponibles con tu equipamiento.
 - Generador automático (rotando ejercicios que ya hiciste recientemente) y generador con IA.
 
 ### Plan (calendario)
-- Vista semanal con estado por día (planificado / hecho / descanso / saltado) y navegación entre semanas.
+- Vista semanal en siete filas compactas; al seleccionar un día se abre el mismo detalle que en la vista mensual.
+  Incluye estados (planificado / hecho / descanso / saltado) y navegación entre semanas.
 - Asignar cualquier rutina a un día, o guardar un plan de ejercicios concreto para ese día.
+- **Descanso** conserva el plan previo para restaurarlo. **Limpiar** elimina rutina, ejercicios del plan, tipo,
+  título, estado, foco y copia de restauración, pero mantiene las sesiones registradas. **Editar ejercicios del día**
+  crea un borrador propio de esa fecha: cancelar no guarda ni crea rutinas y Guardar solo cambia ese día.
 - **Auto-planificación semanal**: heurística local o plan con IA, con al menos 48 h entre grupos
   musculares, días de descanso activo y pesos sugeridos desde tu historial.
 - Antes de guardar, una vista previa muestra qué fechas y días del calendario cambiarían. Puedes
@@ -163,9 +174,13 @@ pantalla completa y funciona offline).
 - **Espera máxima de respuesta**. Se calcula según el nivel de pensamiento o se puede fijar en
   segundos. Mientras espera, la app muestra cuánto tiempo ha pasado y permite cancelar.
 - Botón de prueba de conexión con diagnóstico de errores.
-- **Todo funciona sin IA**: el planificador local cubre sugerencias y plan semanal sin key.
+- **Todo funciona sin IA**: el planificador local cubre sugerencias y plan semanal sin key. Las propuestas locales
+  se identifican como generadas en el dispositivo y pueden aplicarse sin conectar el coach.
 
 ### Progreso (estadísticas)
+- Puedes abrir una **demostración temporal** con sesiones de ejemplo desde Progreso o Ajustes → Datos. Las sesiones
+  de demostración no se mezclan con tu historial guardado ni se sincronizan; salir de la demostración vuelve a tus
+  datos reales. También puedes generar otra muestra desde el panel.
 - KPIs: volumen total y semanal (con % vs semana previa), sesiones, series, tiempo, racha actual y mejor racha.
 - La tarjeta **Esta semana** resume sesiones, series y volumen; **Últimos récords** muestra las marcas
   mejoradas recientemente y permite abrir la tabla completa.

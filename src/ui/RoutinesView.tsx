@@ -40,7 +40,7 @@ import { trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
 import { promptHistory } from '@/state/chat';
-import { applySuggestionAsRoutine, hasApiKey, partitionUnresolved, runCoachTask } from '@/state/coach';
+import { applySuggestionAsRoutine, partitionUnresolved, runCoachTask } from '@/state/coach';
 import { createExerciseFromAI } from '@/state/exercise-create';
 import { addRoutineToSession, startFromRoutine } from '@/state/session';
 import {
@@ -78,11 +78,12 @@ import {
   sourceBadge,
   takeRoutineEditRequest,
   templateSummary,
+  takeRoutineEditDraft,
   toSuggestion,
   validScheduleIso,
   weightOrNull,
 } from './routines-helpers';
-import type { AutoProposal, RoutineSuggestion } from './routines-helpers';
+import type { AutoProposal, RoutineEditDraft, RoutineSuggestion } from './routines-helpers';
 import { toast } from './toast';
 
 import '../styles/routines.css';
@@ -115,6 +116,7 @@ function NoticeBox({ notice, onClose }: { notice: Notice; onClose: () => void })
 function ProposalCard({
   proposal,
   proposalRaw,
+  generatedLocally,
   unit,
   library,
   onApply,
@@ -123,6 +125,7 @@ function ProposalCard({
 }: {
   proposal: RoutineSuggestion;
   proposalRaw: unknown;
+  generatedLocally: boolean;
   unit: string;
   library: readonly Exercise[];
   onApply: () => void;
@@ -153,7 +156,7 @@ function ProposalCard({
           <div class="h3 ellipsis">{proposal.title}</div>
           <div class="tiny muted">{proposal.focus || 'propuesta del coach para hoy'}</div>
         </div>
-        <span class="badge a">IA</span>
+        <span class={generatedLocally ? 'badge' : 'badge a'}>{generatedLocally ? 'local' : 'IA'}</span>
       </div>
 
       {proposal.rationale.length ? (
@@ -474,21 +477,24 @@ function ScheduleModal({
  */
 function RoutineEditor({
   routineId,
+  draft,
   onDone,
 }: {
   routineId: string | null;
+  draft: RoutineEditDraft | null;
   onDone: (notice: Notice | null) => void;
 }) {
   const routine = findRoutine(routineId);
   const library = exercises.value;
   const unit = settings.value.units;
 
-  const [name, setName] = useState(routine ? routine.name : '');
-  const [focus, setFocus] = useState(typeof routine?.focus === 'string' ? routine.focus : '');
+  const [name, setName] = useState(draft?.name ?? (routine ? routine.name : ''));
+  const [focus, setFocus] = useState(draft?.focus ?? (typeof routine?.focus === 'string' ? routine.focus : ''));
   const [notes, setNotes] = useState(typeof routine?.notes === 'string' ? routine.notes : '');
   const [items, setItems] = useState<RoutineItem[]>(
-    routine ? routine.items.map((item) => ({ ...item })) : [],
+    draft ? draft.items.map((item) => ({ ...item })) : routine ? routine.items.map((item) => ({ ...item })) : [],
   );
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
 
@@ -566,6 +572,25 @@ function RoutineEditor({
       notes: notes.trim(),
       items: items.map((item) => ({ ...item })),
     };
+    if (draft) {
+      const day = schedule.value[draft.iso];
+      if (day?.status === 'rest' || day?.type === 'descanso') {
+        setError('Este día está marcado como descanso. Restáuralo desde el calendario antes de editarlo.');
+        return;
+      }
+      setDay(draft.iso, {
+        type: 'entreno',
+        status: day?.status ?? 'planned',
+        title: finalName,
+        focus: focus.trim(),
+        source: draft.source ?? 'manual',
+        routineId: undefined,
+        plan: items.map((item) => ({ ...item })),
+        restorePlan: undefined,
+      });
+      onDone({ kind: 'ok', text: `Plan del ${dateLabel(draft.iso, 'medium')} actualizado` });
+      return;
+    }
     if (routine) {
       const updated = updateRoutine(routine.id, patchData);
       if (!updated) {
@@ -586,6 +611,8 @@ function RoutineEditor({
     const ex = inLib ?? resolveExercise(library, item.exId);
     const missing = inLib ? !isAvailable(inLib, equipment.value) : false;
     const pair = supersetPosition(items, index);
+    const itemKey = `${item.exId}:${index}`;
+    const expanded = expandedItems.includes(itemKey);
     return (
       <div class="card tight rt-item" key={`${item.exId}:${index}`}>
         <div class="rt-item-head">
@@ -606,50 +633,9 @@ function RoutineEditor({
               {pair ? ` · SS ${pair.letter} (${pair.position}/${pair.size})` : ''}
             </div>
           </div>
-          <button
-            type="button"
-            class={`btn sm ${pair ? 'quiet' : 'ghost'}`}
-            title={
-              pair
-                ? 'Separar la superserie'
-                : 'Emparejar con el siguiente ejercicio (series seguidas, descanso al cerrar el par)'
-            }
-            disabled={!pair && index >= items.length - 1}
-            onClick={() => togglePair(index)}
-          >
-            {pair ? `SS ${pair.letter}` : 'Superserie'}
-          </button>
-          <div class="row" style="gap:3px">
-            <button
-              type="button"
-              class="icon-btn"
-              aria-label="Subir"
-              disabled={index === 0}
-              onClick={() => move(index, -1)}
-            >
-              <Icon name="chev-u" />
-            </button>
-            <button
-              type="button"
-              class="icon-btn"
-              aria-label="Bajar"
-              disabled={index === items.length - 1}
-              onClick={() => move(index, 1)}
-            >
-              <Icon name="chev-d" />
-            </button>
-            <button
-              type="button"
-              class="icon-btn"
-              aria-label="Quitar ejercicio"
-              onClick={() => setItems(pruneSupersets(items.filter((_, i) => i !== index)))}
-            >
-              <Icon name="trash" />
-            </button>
-          </div>
         </div>
 
-        <div class="rt-nums">
+        <div class="rt-nums rt-core-nums">
           <label class="field">
             <span class="label">Series</span>
             <input
@@ -683,6 +669,19 @@ function RoutineEditor({
               onChange={(e) => patch(index, { repMax: bounded(e.currentTarget.value, 1, 50, 12) })}
             />
           </label>
+        </div>
+
+        <button
+          type="button"
+          class="btn sm ghost rt-more-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpandedItems((current) => expanded ? current.filter((key) => key !== itemKey) : [...current, itemKey])}
+        >
+          {expanded ? 'Menos opciones' : 'Más opciones'} <Icon name={expanded ? 'chev-u' : 'chev-d'} />
+        </button>
+
+        {expanded ? <div class="rt-more-options">
+        <div class="rt-nums rt-two">
           <label class="field">
             <span class="label">Descanso (s)</span>
             <input
@@ -695,9 +694,6 @@ function RoutineEditor({
               onChange={(e) => patch(index, { rest: bounded(e.currentTarget.value, 0, 600, 90) })}
             />
           </label>
-        </div>
-
-        <div class="rt-nums rt-two">
           <label class="field">
             <span class="label">Peso base ({unit})</span>
             <input
@@ -722,6 +718,16 @@ function RoutineEditor({
           </label>
         </div>
 
+        <div class="row wrap rt-item-actions">
+          <button type="button" class={`btn sm ${pair ? 'quiet' : 'ghost'}`} disabled={!pair && index >= items.length - 1} onClick={() => togglePair(index)}>
+            {pair ? `Separar SS ${pair.letter}` : 'Emparejar en superserie'}
+          </button>
+          <button type="button" class="btn sm ghost" disabled={index === 0} onClick={() => move(index, -1)}><Icon name="chev-u" /> Subir</button>
+          <button type="button" class="btn sm ghost" disabled={index === items.length - 1} onClick={() => move(index, 1)}><Icon name="chev-d" /> Bajar</button>
+          <button type="button" class="btn sm dangerline" onClick={() => setItems(pruneSupersets(items.filter((_, i) => i !== index)))}><Icon name="trash" /> Quitar</button>
+        </div>
+        </div> : null}
+
         {missing ? (
           <div class="tiny warn mt-s">Ahora mismo te falta material para este ejercicio.</div>
         ) : null}
@@ -737,10 +743,10 @@ function RoutineEditor({
           Volver
         </button>
         <div class="grow">
-          <b>{routine ? 'Editar rutina' : 'Nueva rutina'}</b>
+          <b>{draft ? 'Editar plan del día' : routine ? 'Editar rutina' : 'Nueva rutina'}</b>
           <div class="tiny muted">
             {items.length} {items.length === 1 ? 'ejercicio' : 'ejercicios'}
-            {routine ? ` · origen ${sourceBadge(routine.source).label}` : ''}
+            {draft ? ` · ${dateLabel(draft.iso, 'medium')}` : routine ? ` · origen ${sourceBadge(routine.source).label}` : ''}
           </div>
         </div>
       </div>
@@ -762,6 +768,7 @@ function RoutineEditor({
           help="rutinas.focus"
           onChange={setFocus}
         />
+        {!draft ? <>
         <div class="divider" />
         <label class="field">
           <span class="label">Notas</span>
@@ -773,6 +780,7 @@ function RoutineEditor({
             onInput={(e) => setNotes(e.currentTarget.value)}
           />
         </label>
+        </> : null}
       </section>
 
       <section class="card mt">
@@ -848,10 +856,10 @@ function RoutineEditor({
         </div>
       ) : null}
 
-      <div class="row wrap rt-actions">
+      <div class="row wrap rt-actions rt-save-bar">
         <button type="button" class="btn primary" onClick={save}>
           <Icon name="check" />
-          Guardar rutina
+          {draft ? 'Guardar plan del día' : 'Guardar rutina'}
         </button>
         <button type="button" class="btn ghost" onClick={() => onDone(null)}>
           Cancelar
@@ -859,7 +867,7 @@ function RoutineEditor({
       </div>
 
       <InfoCard>
-        Los cambios se guardan al pulsar <b>Guardar rutina</b>. El peso base queda fijo en la
+        Los cambios se guardan al pulsar <b>{draft ? 'Guardar plan del día' : 'Guardar rutina'}</b>. El peso base queda fijo en la
         rutina; si lo dejas vacío, la sesión propone el peso según tu historial.
       </InfoCard>
     </>
@@ -875,11 +883,13 @@ export function RoutinesView() {
 
   /* `undefined` = listado · `null` = rutina nueva · string = editar esa rutina */
   const [editId, setEditId] = useState<string | null | undefined>(undefined);
+  const [editDraft, setEditDraft] = useState<RoutineEditDraft | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   /* espera del coach: segundos, aviso de lentitud y Cancelar */
   const wait = useCoachWait();
   const [proposal, setProposal] = useState<RoutineSuggestion | null>(null);
+  const [proposalLocal, setProposalLocal] = useState(false);
   /* JSON crudo de la propuesta: con él se reevalúan los nombres al crear un
      ejercicio nuevo (para que pase a verde sin volver a pedir la propuesta). */
   const [proposalRaw, setProposalRaw] = useState<unknown>(null);
@@ -894,6 +904,11 @@ export function RoutinesView() {
   /* Otra pestaña puede pedir que abramos una rutina en el editor (p. ej. desde
      el chat del coach). Se consume al montar: una sola petición, no una cola. */
   useEffect(() => {
+    const draft = takeRoutineEditDraft();
+    if (draft) {
+      setEditDraft(draft);
+      return;
+    }
     const id = takeRoutineEditRequest();
     if (id && routines.value.some((routine) => routine.id === id)) {
       setEditId(id);
@@ -902,33 +917,27 @@ export function RoutinesView() {
 
   const byId = new Map(library.map((ex) => [ex.id, ex] as const));
 
-  if (editId !== undefined) {
+  if (editId !== undefined || editDraft !== null) {
     return (
       <RoutineEditor
-        key={editId ?? 'nueva'}
-        routineId={editId}
+        key={editDraft ? `dia:${editDraft.iso}` : editId ?? 'nueva'}
+        routineId={editId ?? null}
+        draft={editDraft}
         onDone={(next) => {
           setEditId(undefined);
+          setEditDraft(null);
           setNotice(next);
         }}
       />
     );
   }
 
-  /** Pide una rutina al coach. Sin API key ni se intenta: se va a Ajustes. */
+  /** Pide una rutina al coach o, sin API key, al planificador del dispositivo. */
   async function suggest(): Promise<void> {
     if (wait.running) return;
-    if (!hasApiKey()) {
-      setNotice({
-        kind: 'warn',
-        text: 'Configura tu API key de Gemini para que el coach te proponga una rutina.',
-        action: { label: 'Abrir Coach AI', run: () => go('ajustes', 'coach') },
-      });
-      go('ajustes', 'coach');
-      return;
-    }
     const signal = wait.start();
     setProposal(null);
+    setProposalLocal(false);
     setProposalRaw(null);
     try {
       /* transcript del chat como `contents`: la propuesta se apoya en lo que el
@@ -952,6 +961,7 @@ export function RoutinesView() {
         return;
       }
       setProposal(parsed);
+      setProposalLocal(outcome.origin === 'local');
       /* Si la llamada falló (cuota/red/clave), `runCoachTask` resuelve con el
          planificador LOCAL: la propuesta sirve, pero no se puede pintar como
          si la hubiera escrito la IA (mismo aviso que Hoy y Calendario). */
@@ -960,8 +970,8 @@ export function RoutinesView() {
           ? {
               kind: 'warn',
               text: outcome.fallback
-                ? `No pude usar la IA (${outcome.fallback.message}): esta propuesta la ha generado el planificador de tu dispositivo.`
-                : 'Sin API key: esta propuesta la ha generado el planificador de tu dispositivo.',
+                ? `No pude usar la IA (${outcome.fallback.message}). Propuesta generada en tu dispositivo.`
+                : 'Propuesta generada en tu dispositivo; aquí no hace falta una API key.',
             }
           : null,
       );
@@ -1269,10 +1279,11 @@ export function RoutinesView() {
           <ProposalCard
             proposal={proposal}
             proposalRaw={proposalRaw}
+            generatedLocally={proposalLocal}
             unit={unit}
             library={library}
             onApply={applyProposal}
-            onDiscard={() => setProposal(null)}
+            onDiscard={() => { setProposal(null); setProposalLocal(false); }}
             onCreate={createNewExercise}
           />
         </div>
@@ -1361,7 +1372,7 @@ export function RoutinesView() {
               <span class="rt-create-icon"><Icon name="sparkles" /></span>
               <span>
                 <b>Pedir al coach</b>
-                <span class="tiny muted">Usa tu historial; requiere API key y puede recurrir al plan local.</span>
+                <span class="tiny muted">Usa tu historial; con API key consulta al coach y sin ella genera en tu dispositivo.</span>
               </span>
             </button>
             <HelpBtn id="rutinas.autoVsIa" title="Opciones para crear una rutina" />

@@ -33,7 +33,7 @@ import type { DayState } from './calendar-helpers';
 /* ---------- plan de hoy ---------- */
 
 /** Los tres estados del hero: día hecho, con plan o sin nada programado. */
-export type TodayStatus = 'done' | 'plan' | 'empty';
+export type TodayStatus = 'done' | 'plan' | 'rest' | 'empty';
 
 /**
  * `PlanItem` con lo que antes metía dentro de `day.plan` y de la repetición:
@@ -63,6 +63,8 @@ export interface TodayPlan {
   routineId: string | null;
   /** Origen del plan (`ia`, `plan`…): para el badge del hero. */
   source: string;
+  /** Hay un plan guardado que se puede restaurar después de saltar el día. */
+  canRestorePlan: boolean;
 }
 
 /** Items de una rutina en la forma que entiende `startFromPlan`/`resolvePlan`. */
@@ -142,7 +144,13 @@ export function todayPlan(
 
   const doneToday = sessions.filter((s) => sessionDate(s) === todayIso).length;
   const status: TodayStatus =
-    day?.status === 'done' || doneToday > 0 ? 'done' : items.length ? 'plan' : 'empty';
+    day?.status === 'done' || doneToday > 0
+      ? 'done'
+      : dayState(day, doneToday) === 'rest'
+        ? 'rest'
+        : items.length
+          ? 'plan'
+          : 'empty';
 
   /* El tipo sin escribir: una rutina o un `day.plan` es «Entreno» (antes lo
      resolvía en el hero con `plan.type || 'entreno'`), lo demás lo decide el
@@ -158,6 +166,7 @@ export function todayPlan(
     items,
     routineId,
     source: typeof day?.source === 'string' ? day.source : routine ? 'plan' : '',
+    canRestorePlan: Boolean(day?.restorePlan && typeof day.restorePlan === 'object'),
   };
 }
 
@@ -245,8 +254,9 @@ export function weekCells(
 /* ---------- repetir una sesión ---------- */
 
 /**
- * Items para repetir una sesión: nº de series, el peso y las reps de la
- * serie MEJOR cargada (mayor peso) y el `basis` que dirá de dónde sale el peso.
+ * Items para repetir una sesión, conservando el peso y las reps de cada serie
+ * registrada y la unidad de origen. El flujo de inicio las convierte a la unidad
+ * preferida y crea series nuevas sin marcas ni RPE.
  *
  * Una entrada sin series (JSON a mano) sigue devolviendo 1 serie: no se puede
  * repetir un ejercicio con 0 series.
@@ -255,12 +265,17 @@ export function repeatItems(session: Session): PlanLine[] {
   const basis = `repetición de ${dateLabel(sessionDate(session), 'medium')}`;
   return session.entries.map((entry) => {
     const sets = Array.isArray(entry.sets) ? entry.sets : [];
-    const top = sets.reduce((best, set) => (num(set.weight) > num(best.weight) ? set : best), {
-      weight: 0,
-      reps: 10,
-      done: true,
-    });
+    const top = sets.length
+      ? sets.reduce((best, set) => (num(set.weight) > num(best.weight) ? set : best))
+      : { weight: 0, reps: 10, done: true };
     const reps = int(top.reps, 0) || 10;
+    const recorded = sets.length
+      ? sets.map((set) => ({
+          weight: set.weight === null || set.weight === undefined ? null : num(set.weight),
+          reps: int(set.reps, reps) || reps,
+        }))
+      : [{ weight: num(top.weight), reps }];
+    const repsList = recorded.map((set) => set.reps);
     const matchingPlan = Array.isArray(session.plan)
       ? session.plan.filter((item) => item?.exId === entry.exId)
       : [];
@@ -274,13 +289,16 @@ export function repeatItems(session: Session): PlanLine[] {
           : '';
     return {
       exId: entry.exId,
-      sets: Math.max(1, sets.length),
-      repMin: reps,
-      repMax: reps,
+      sets: recorded.length,
+      repMin: Math.min(...repsList),
+      repMax: Math.max(...repsList),
       rest: int(entry.restSec, 90),
-      weight: num(top.weight),
+      weight: top.weight === null ? null : num(top.weight),
       reps,
       basis,
+      repeatSets: recorded,
+      sourceUnit: session.unit,
+      ...(entry.superset ? { superset: entry.superset } : {}),
       ...(cue ? { notes: cue } : {}),
     };
   });

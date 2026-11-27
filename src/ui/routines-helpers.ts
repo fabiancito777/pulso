@@ -54,6 +54,31 @@ export function takeRoutineEditRequest(): string | null {
   return id;
 }
 
+/** Borrador aislado para editar los ejercicios de un día del calendario. */
+export interface RoutineEditDraft {
+  iso: string;
+  name: string;
+  focus: string;
+  source?: string;
+  items: RoutineItem[];
+}
+
+/** Solicitud efímera: editar un día no debe modificar una rutina compartida. */
+export const routineDraftEditRequest = signal<RoutineEditDraft | null>(null);
+
+export function requestEditRoutineDraft(draft: RoutineEditDraft): void {
+  routineDraftEditRequest.value = {
+    ...draft,
+    items: draft.items.map((item) => ({ ...item })),
+  };
+}
+
+export function takeRoutineEditDraft(): RoutineEditDraft | null {
+  const draft = routineDraftEditRequest.value;
+  routineDraftEditRequest.value = null;
+  return draft;
+}
+
 /* ---------- búsqueda de ejercicios ---------- */
 
 /** Puntuación 0-1 de un ejercicio frente a lo escrito (nombre o grupo muscular). */
@@ -460,6 +485,7 @@ export function scheduleRoutinePatch(routine: { id: string; name?: string }): Pa
     status: 'planned',
     title: typeof routine.name === 'string' && routine.name.trim() ? routine.name : 'Entrenamiento',
     source: 'manual',
+    restorePlan: undefined,
   };
 }
 

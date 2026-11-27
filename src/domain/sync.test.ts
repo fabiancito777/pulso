@@ -481,6 +481,16 @@ describe('stripForSync', () => {
     expect(activeOf(out)?.id).toBe('a');
   });
 
+  it('elimina las sesiones de ejemplo del payload sincronizado', () => {
+    const state = baseState({
+      sessions: [session('real', '2026-09-10'), { ...session('demo', '2026-09-11'), demo: true }],
+      demoSessions: [{ id: 'ephemeral' }],
+    });
+    const out = stripForSync(state);
+    expect(out.sessions?.map((entry) => entry.id)).toEqual(['real']);
+    expect(out).not.toHaveProperty('demoSessions');
+  });
+
   it('un estado vacío no tiene nada que sincronizar', () => {
     expect(hasSyncContent(baseState())).toBe(false);
     expect(hasSyncContent(baseState({ sessions: [session('a', '2026-09-10')] }))).toBe(true);

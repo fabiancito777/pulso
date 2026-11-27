@@ -6,15 +6,15 @@ import { resolveExercise } from '@/domain/data';
 import { addDays, label as dateLabel, startOfWeek, today } from '@/domain/dates';
 import { fmtN, fmtVol } from '@/domain/format';
 import { norm } from '@/domain/text';
-import { exercises, sessions, demoData } from '@/state/store';
+import { demoMode, exercises, sessions } from '@/state/store';
 import { pickExercise, pickedExercise } from '@/state/progress';
 
 import { LineChart, ProgressCharts } from './charts';
 import { Icon } from './Icon';
 import { LastStimulus } from './LastStimulus';
+import { DemoDataPanel } from './DemoDataPanel';
 import { PrTableButton } from './PrTableModal';
 import { SessionHistory } from './SessionHistory';
-import { toast } from './toast';
 import {
   currentWeekSummary,
   exerciseProgressSummary,
@@ -39,10 +39,6 @@ function setLabel(set: { weight: number | null; reps: number }): string {
 }
 
 function EmptyAction() {
-  function loadDemo(): void {
-    const added = demoData(8);
-    toast(`Datos de ejemplo: ${added} sesiones cargadas`, { kind: 'ok', ms: 4000 });
-  }
   return (
     <div class="pg2-empty-action">
       <Icon name="chart" />
@@ -52,9 +48,6 @@ function EmptyAction() {
       </div>
       <button type="button" class="btn primary" onClick={() => go('hoy')}>
         Ir a entrenar
-      </button>
-      <button type="button" class="btn quiet" onClick={loadDemo}>
-        Cargar datos de ejemplo
       </button>
     </div>
   );
@@ -96,7 +89,7 @@ function WeekCard() {
   );
 }
 
-function RecentRecords() {
+function RecentRecords({ onSelect }: { onSelect: (id: string) => void }) {
   const records = latestRecords(sessions.value, 3);
   return (
     <section class="card">
@@ -108,7 +101,7 @@ function RecentRecords() {
               type="button"
               class="pg2-record"
               key={record.exId}
-              onClick={() => pickExercise(record.exId)}
+              onClick={() => onSelect(record.exId)}
             >
               <span class="pg2-record-name">{exerciseName(record.exId)}</span>
               <span class="pg2-record-value">
@@ -171,10 +164,15 @@ function ExerciseProgress() {
       : exactMatches.find((item) => item.id === pickedExercise.value);
   const selected = exactQuery ?? (query ? null : chosen);
   const stats = selected ? exerciseProgressSummary(sessions.value, selected.id) : null;
-  const chartPoints = (stats?.trend ?? [])
-    .filter((point) => point.e1rm > 0)
-    .slice(-8)
-    .map((point) => ({ label: dateLabel(point.date, 'short'), value: point.e1rm }));
+  const repsOnly = Boolean(stats && stats.best.e1rm <= 0);
+  const chartPoints = repsOnly
+    ? (stats?.repsTrend ?? [])
+        .slice(-8)
+        .map((point) => ({ label: dateLabel(point.date, 'short'), value: point.reps }))
+    : (stats?.trend ?? [])
+        .filter((point) => point.e1rm > 0)
+        .slice(-8)
+        .map((point) => ({ label: dateLabel(point.date, 'short'), value: point.e1rm }));
   const estimable = chartPoints.length > 0;
   const showOptions = shown.length > 0 && (!query || exactMatches.length > 1 || !exactQuery);
 
@@ -186,7 +184,7 @@ function ExerciseProgress() {
   };
 
   return (
-    <section class="card pg2-exercise" id="pg2-exercise-progress">
+    <section class="card pg2-exercise" id="pg2-exercise-progress" tabIndex={-1}>
       <label class="pg2-label" for="pg2-exercise-search">
         Progreso por ejercicio
       </label>
@@ -241,22 +239,24 @@ function ExerciseProgress() {
               </strong>
             </div>
           </div>
-          <div class="tiny muted pg2-trend-heading">1RM estimado · últimas sesiones con carga</div>
+          <div class="tiny muted pg2-trend-heading">
+            {repsOnly ? 'Repeticiones · últimas sesiones' : '1RM estimado · últimas sesiones con carga'}
+          </div>
           {estimable ? (
             <LineChart
               series={[
                 {
-                  name: '1RM estimado',
+                  name: repsOnly ? 'Repeticiones' : '1RM estimado',
                   color: 'var(--accent)',
                   points: chartPoints,
                 },
               ]}
-              format="w"
+              format={repsOnly ? 'n' : 'w'}
               height={126}
-              ariaLabel={`Tendencia de 1RM estimado de ${selected.name}`}
+              ariaLabel={`${repsOnly ? 'Evolución de repeticiones' : 'Tendencia de 1RM estimado'} de ${selected.name}`}
             />
           ) : (
-            <div class="pg2-section-empty">Sin cargas registradas para estimar el 1RM.</div>
+            <div class="pg2-section-empty">Sin datos para mostrar la evolución.</div>
           )}
         </div>
       ) : null}
@@ -265,14 +265,26 @@ function ExerciseProgress() {
 }
 
 export function ProgressView() {
+  if (demoMode.value) return <DemoDataPanel />;
+
+  const selectRecord = (id: string): void => {
+    pickExercise(id);
+    requestAnimationFrame(() => {
+      const section = document.getElementById('pg2-exercise-progress');
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      section?.focus({ preventScroll: true });
+    });
+  };
+
   if (!sessions.value.length) {
-    return <EmptyAction />;
+    return <><DemoDataPanel /><EmptyAction /></>;
   }
 
   return (
     <div class="pg2-view">
+      <DemoDataPanel />
       <WeekCard />
-      <RecentRecords />
+      <RecentRecords onSelect={selectRecord} />
       <ExerciseProgress />
       <details class="card pg2-statistics">
         <summary>Ver estadísticas</summary>

@@ -40,7 +40,7 @@ import {
   stopRestTimer,
 } from '@/state/session';
 import { exercises, routines, schedule, sessions, setDay, settings } from '@/state/store';
-import { restDayPatch } from './calendar-helpers';
+import { restoreDayPlanPatch, restDayPatch } from './calendar-helpers';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { HelpBtn } from './HelpModal';
 import { greeting, lastSessions, planRows, repeatItems, todayPlan, weekCells } from './hoy-helpers';
@@ -87,6 +87,7 @@ function Hero({
   plan,
   onStart,
   onSkip,
+  onRestore,
   onExtra,
   onFree,
   onPickRoutine,
@@ -94,6 +95,7 @@ function Hero({
   plan: TodayPlan;
   onStart: () => void;
   onSkip: () => void;
+  onRestore: () => void;
   onExtra: () => void;
   /** «Entrenar libre»: abre el selector de ejercicios. */
   onFree: () => void;
@@ -101,6 +103,33 @@ function Hero({
   onPickRoutine: () => void;
 }) {
   const now = today();
+
+  if (plan.status === 'rest') {
+    return (
+      <section class="card hy-rest-plan">
+        <div class="between">
+          <div>
+            <div class="tiny muted hy-kicker">Hoy · {dowLong(now)}</div>
+            <div class="h2">Día de descanso</div>
+            {plan.canRestorePlan ? (
+              <div class="sub">El plan se conserva en Calendario</div>
+            ) : null}
+          </div>
+          <Icon name="moon" />
+        </div>
+        <div class="row mt" style="gap:8px;flex-wrap:wrap">
+          {plan.canRestorePlan ? (
+            <button type="button" class="btn primary" onClick={onRestore}>
+              Restaurar plan
+            </button>
+          ) : null}
+          <button type="button" class="btn ghost" onClick={onFree}>
+            Entrenar libre
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   if (plan.status === 'done') {
     return (
@@ -134,7 +163,7 @@ function Hero({
         <div class="between">
           <div style="min-width:0">
             <div class="tiny muted hy-kicker">Plan de hoy · {dowLong(now)}</div>
-            <div class="h1">{plan.title || 'Entrenamiento'}</div>
+            <div class="h1 hy-plan-title">{plan.title || 'Entrenamiento'}</div>
             <div class="sub">
               {plan.items.length} ejercicios ·{' '}
               {plan.items.reduce((sum, item) => sum + int(item.sets, 3), 0)} series
@@ -148,11 +177,14 @@ function Hero({
         <div class="row mt" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn primary grow" onClick={onStart}>
             <Icon name="play" />
-            Empezar entreno de hoy
+            Empezar
           </button>
-          <button type="button" class="btn" onClick={onSkip}>
-            Saltar
-          </button>
+          <details class="hy-plan-menu">
+            <summary class="btn">⋯</summary>
+            <button type="button" class="btn sm" onClick={onSkip}>
+              Saltar · descansar hoy
+            </button>
+          </details>
           <HelpBtn id="flow.start" title="Empezar a entrenar" />
         </div>
         <details class="hy-plan-details mt-s">
@@ -521,8 +553,13 @@ export function HoyView() {
   }
 
   function skipToday(): void {
-    setDay(now, restDayPatch());
+    setDay(now, restDayPatch(schedule.value[now]));
     toast('Día marcado como descanso', { kind: 'ok', ms: 1600 });
+  }
+
+  function restoreToday(): void {
+    setDay(now, restoreDayPlanPatch(schedule.value[now]));
+    toast('Plan restaurado', { kind: 'ok', ms: 1600 });
   }
 
   function repeat(session: Session): void {
@@ -546,6 +583,7 @@ export function HoyView() {
         plan={plan}
         onStart={startToday}
         onSkip={skipToday}
+        onRestore={restoreToday}
         onExtra={() => setPickOpen(true)}
         onFree={() => setPickOpen(true)}
         onPickRoutine={() => setRoutinePick(!routinePick)}

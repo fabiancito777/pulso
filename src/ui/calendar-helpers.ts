@@ -157,6 +157,9 @@ export function clearDayPatch(): Partial<ScheduleDay> {
     routineId: undefined,
     title: undefined,
     source: undefined,
+    plan: undefined,
+    focus: undefined,
+    restorePlan: undefined,
   };
 }
 
@@ -167,8 +170,40 @@ export function clearDayPatch(): Partial<ScheduleDay> {
  * Como `setDay` hace merge y no borra claves, la rutina asignada se CONSERVA
  * (igual que ): el día queda en descanso pero se puede retomar después.
  */
-export function restDayPatch(): Partial<ScheduleDay> {
-  return { status: 'rest', type: 'descanso', title: 'Descanso', source: 'manual' };
+const RESTORE_KEYS = ['status', 'type', 'routineId', 'title', 'source', 'plan', 'focus'] as const;
+
+/** Marca descanso y conserva una copia del plan para poder restaurarlo después. */
+export function restDayPatch(day?: ScheduleDay | null): Partial<ScheduleDay> {
+  const previous = day?.restorePlan;
+  const hasPlan = Boolean(
+    day &&
+      (day.routineId ||
+        (Array.isArray(day.plan) && day.plan.length > 0) ||
+        day.status === 'planned'),
+  );
+  const restorePlan = previous && typeof previous === 'object'
+    ? previous
+    : hasPlan && day
+      ? Object.fromEntries(RESTORE_KEYS.map((key) => [key, day[key]]))
+      : undefined;
+  return {
+    status: 'rest',
+    type: 'descanso',
+    title: 'Descanso',
+    source: 'manual',
+    ...(restorePlan ? { restorePlan } : {}),
+  };
+}
+
+/** Restaura los campos originales del plan tras «Saltar»; no toca sessionId. */
+export function restoreDayPlanPatch(day?: ScheduleDay | null): Partial<ScheduleDay> {
+  const snapshot = day?.restorePlan;
+  if (!snapshot || typeof snapshot !== 'object') return {};
+  const fields = snapshot as Record<string, unknown>;
+  return {
+    ...Object.fromEntries(RESTORE_KEYS.map((key) => [key, fields[key]])),
+    restorePlan: undefined,
+  };
 }
 
 /* ---------- plan del coach IA ---------- */

@@ -28,7 +28,7 @@
  *   récords que el usuario pegó en turnos anteriores siguen disponibles al
  *   pedir un entreno con el chip (P1).
  * - **Fallback local visible** (`origin`/`fallback` del `CoachOutcome`): una
- *   propuesta del planificador del dispositivo se firma «Plan local (sin IA)»
+ *   propuesta local se firma «Generado en tu dispositivo»
  *   y lleva el motivo arriba en el texto; nunca «Coach IA».
  * - El textarea de entrada usa `onInput` (no `change`): el borrador es estado
  *   local y Enter tiene que ver el valor ACTUAL; los campos que se PERSISTEN al
@@ -109,7 +109,7 @@ function footerOf(out: CoachOutcome, model: string): string {
  * diagnóstico), y era imposible distinguirlo de una respuesta buena.
  */
 function localFooter(out: CoachOutcome, task: CoachTask): string {
-  const etiqueta = task === 'suggest' || task === 'plan' ? 'Plan local (sin IA)' : 'Sin IA';
+  const etiqueta = task === 'suggest' || task === 'plan' ? 'Generado en tu dispositivo' : 'Sin IA';
   const motivo = out.fallback ? `IA no disponible: ${out.fallback.message}` : 'sin API key';
   return [etiqueta, motivo, `${(out.ms / 1000).toFixed(1)} s`].join(' · ');
 }
@@ -123,7 +123,7 @@ function localAviso(out: CoachOutcome): string {
   const motivo = out.fallback
     ? `no pude usar la IA (${out.fallback.message})`
     : 'no hay API key configurada';
-  return `**Aviso:** ${motivo}; esta propuesta la ha generado el planificador de tu dispositivo, no la IA.`;
+  return `**Generado en tu dispositivo:** ${motivo}; esta propuesta viene del planificador local, no de la IA.`;
 }
 
 /** JSON de `suggest`/`plan` ya parseado; `null` si no parece una propuesta. */
@@ -1021,7 +1021,7 @@ export function CoachView() {
   async function run(task: CoachTask, userText: string, jump?: QuickAction['jump']): Promise<void> {
     const text = userText.trim();
     if (wait.running || !text) return;
-    if (!hasKey) {
+    if (!hasKey && task !== 'suggest' && task !== 'plan') {
       addChat({
         role: 'sys',
         text: 'El coach está sin API key: añade la de Google AI Studio en Ajustes para que pueda responder.',

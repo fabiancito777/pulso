@@ -2,6 +2,7 @@ import { render } from 'preact';
 
 import { App } from '@/app/App';
 import { runDemoBoot } from '@/app/demo-boot';
+import { go } from '@/app/router';
 import { initInstall } from '@/platform/install';
 import { applyTheme } from '@/platform/theme';
 import { registerSW } from '@/platform/sw';
@@ -58,6 +59,7 @@ if (typeof window !== 'undefined') {
    onboarding por visto ANTES del primer pintado, para que la app nazca cargada.
    Sin la query o con datos ya existentes no hace nada. */
 const demoAdded = runDemoBoot(location.search);
+if (demoAdded > 0) go('progreso');
 
 const root = document.getElementById('app');
 if (root) render(<App />, root);

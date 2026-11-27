@@ -268,6 +268,8 @@ export interface ExerciseProgressSummary {
   best: { weight: number | null; reps: number; e1rm: number; date: string };
   /** 1RM estimado por sesión (kg), usado por el gráfico de tendencia. */
   trend: { date: string; e1rm: number }[];
+  /** Máximas reps de cada sesión; permite seguir el progreso sin cargas externas. */
+  repsTrend: { date: string; reps: number }[];
 }
 
 /** Última sesión y mejor serie de un ejercicio. Un empate conserva la serie más antigua. */
@@ -336,5 +338,16 @@ export function exerciseProgressSummary(
     },
     best,
     trend: points.map((point) => ({ date: point.iso, e1rm: point.e1rm })),
+    repsTrend: sessions
+      .map((session) => {
+        const reps = session.entries
+          .filter((entry) => entry.exId === exId)
+          .flatMap((entry) => entry.sets)
+          .filter((set) => set.done && set.reps > 0)
+          .reduce((bestReps, set) => Math.max(bestReps, set.reps), 0);
+        return { date: sessionDate(session), reps };
+      })
+      .filter((point) => point.reps > 0)
+      .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }

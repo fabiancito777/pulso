@@ -179,19 +179,23 @@ describe('todayPlan', () => {
   });
 
   it('el tipo resuelto cubre los días que el plan dejó a medias', () => {
-    expect(todayPlan({ type: 'descanso' }, [], [], HOY).type).toBe('Descanso');
-    expect(todayPlan({ status: 'rest' }, [], [], HOY).type).toBe('Descanso');
+    expect(todayPlan({ type: 'descanso' }, [], [], HOY)).toMatchObject({
+      type: 'Descanso', status: 'rest',
+    });
+    expect(todayPlan({ status: 'rest' }, [], [], HOY)).toMatchObject({
+      type: 'Descanso', status: 'rest',
+    });
     /* un día con plan suelto es «Entreno»: antes lo rellenaba en el hero */
     expect(todayPlan({ plan: [{ exId: 'remo' }] }, [], [], HOY).type).toBe('Entreno');
     expect(todayPlan(undefined, [], [], HOY).type).toBe('Libre');
   });
 
-  it('saltar NO borra el plan: se sigue ofreciendo el hero', () => {
-    /* `Saltar` solo escribe `restDayPatch()` (status + type + título): el hero
-       sigue en 'plan' y la celda de la semana pasa a descanso. Paridad con antes. */
-    const plan = todayPlan({ routineId: 'rt_1', ...restDayPatch() }, [rutina], [], HOY);
-    expect(plan.status).toBe('plan');
+  it('saltar conserva el plan y muestra descanso hasta restaurarlo', () => {
+    const original = { routineId: 'rt_1', status: 'planned', type: 'entreno', source: 'ia' };
+    const plan = todayPlan({ ...original, ...restDayPatch(original) }, [rutina], [], HOY);
+    expect(plan.status).toBe('rest');
     expect(plan.type).toBe('Descanso');
+    expect(plan.canRestorePlan).toBe(true);
     expect(plan.items).toHaveLength(1);
   });
 });
@@ -284,7 +288,7 @@ describe('weekCells', () => {
 /* ---------- repetir una sesión ---------- */
 
 describe('repeatItems', () => {
-  it('carga el peso y las reps de la MEJOR serie, con su basis', () => {
+  it('preserva peso y reps de cada serie, con su basis', () => {
     const item = repeatItems(
       sesion(HOY, [
         entrada('press', [serie(60, 8), serie(65, 5), serie(null, 10)], {
@@ -299,13 +303,19 @@ describe('repeatItems', () => {
       sets: 3,
       weight: 65,
       reps: 5,
+      repeatSets: [
+        { weight: 60, reps: 8 },
+        { weight: 65, reps: 5 },
+        { weight: null, reps: 10 },
+      ],
+      sourceUnit: 'kg',
       rest: 120,
       basis: 'repetición de 24 sep 2026',
     });
     expect(item.notes).toBeUndefined();
     /* las reps concretas también valen como rango para la sesión */
     expect(item.repMin).toBe(5);
-    expect(item.repMax).toBe(5);
+    expect(item.repMax).toBe(10);
   });
 
   it('repite el consejo cue/snapshot y nunca una nota personal', () => {

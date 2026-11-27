@@ -979,6 +979,7 @@ export function applyWeek(
       status: type === 'descanso' ? 'rest' : 'planned',
       focus,
       source,
+      restorePlan: undefined,
     };
     if (items.length) {
       /* Los días del plan NO crean rutinas desechables: si el modelo enlaza una

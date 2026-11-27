@@ -108,11 +108,41 @@
   margin-top: 10px;
 }
 
-.cal-days {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
-  gap: 10px;
+.cal-week-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
+
+.cal-week-entry,
+.cal-week-detail,
+.cal-week-row,
+.month-cell {
+  scroll-margin-block-start: calc(var(--appbar-h, 64px) + 12px);
+}
+
+.cal-week-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto 74px 16px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.cal-week-row.today { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.cal-week-row.sel { box-shadow: 0 0 0 2px var(--accent-soft); }
+.cal-week-row.done { background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.cal-week-date { font-size: 12px; text-transform: capitalize; white-space: nowrap; }
+.cal-week-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cal-week-type { color: var(--muted); font-size: 11px; text-align: right; }
+.cal-week-row > .ico { width: 15px; height: 15px; color: var(--muted); }
 
 .cal-day {
   display: flex;
@@ -420,4 +450,8 @@
     width: 100%;
     text-align: center;
   }
+
+  .cal-week-row { grid-template-columns: 67px minmax(0, 1fr) auto 14px; gap: 5px; padding-inline: 7px; }
+  .cal-week-row .badge { font-size: 10px; padding: 2px 5px; }
+  .cal-week-type { display: none; }
 }

@@ -24,10 +24,12 @@ import {
   lastUsed,
   matchExercises,
   nextFreeDay,
+  requestEditRoutineDraft,
   routineSets,
   scheduleRoutinePatch,
   sourceBadge,
   templateSummary,
+  takeRoutineEditDraft,
   toSuggestion,
   validScheduleIso,
   weightOrNull,
@@ -440,11 +442,28 @@ describe('scheduleRoutinePatch', () => {
       status: 'planned',
       title: 'Torso A',
       source: 'manual',
+      restorePlan: undefined,
     });
   });
 
   it('sin nombre usa «Entrenamiento»', () => {
     expect(scheduleRoutinePatch({ id: 'rt1' }).title).toBe('Entrenamiento');
+  });
+});
+
+describe('rutina como borrador del calendario', () => {
+  it('copia los items y consume la solicitud una sola vez', () => {
+    const item = { exId: 'press', sets: 3 };
+    const items = [item];
+    requestEditRoutineDraft({ iso: HOY, name: 'Torso', focus: 'Pecho', items });
+    item.sets = 8;
+    expect(takeRoutineEditDraft()).toEqual({
+      iso: HOY,
+      name: 'Torso',
+      focus: 'Pecho',
+      items: [{ exId: 'press', sets: 3 }],
+    });
+    expect(takeRoutineEditDraft()).toBeNull();
   });
 });
 

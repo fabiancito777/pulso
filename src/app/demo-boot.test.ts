@@ -8,9 +8,8 @@
  * visita taparía la demo, como evitaba antes con `S.setMeta({onboarded: true})`).
  *
  * `localStorage` va simulado ANTES del import dinámico (`storageAvailable` se
- * decide al cargar `state/store`, patrón de `store.test.ts`), y los tests van en
- * ese orden a propósito: primero el guard de «ya hay sesiones» (con `ran` aún en
- * false) y después la carga, para que cada guard tenga su propio caso.
+ * decide al cargar `state/store`, patrón de `store.test.ts`). Los ejemplos viven
+ * en memoria y nunca forman parte de `sessions`.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -67,24 +66,27 @@ describe('runDemoBoot', () => {
     expect(store.meta.value.onboarded).toBe(false);
   });
 
-  it('con sesiones ya cargadas no hace nada (aunque pida la query)', () => {
+  it('si la demo ya está abierta no la vuelve a generar', () => {
     const previas = store.demoData(1);
     expect(previas).toBeGreaterThan(0);
 
     expect(boot.runDemoBoot('?demo=1')).toBe(0);
-    expect(store.sessions.value).toHaveLength(previas);
+    expect(store.demoSessions.value).toHaveLength(previas);
     expect(store.meta.value.onboarded).toBe(false);
   });
 
-  it('con `?demo=1` y sin sesiones: carga la demo y marca el onboarding', () => {
+  it('con `?demo=1`: carga una demo aislada sin tocar el historial real', () => {
     store.writeState(store.defaultState());
     store.refresh();
+    store.appendSessions([
+      { id: 'real', date: '2026-09-01', startedAt: '2026-09-01T10:00:00.000Z', unit: 'kg', entries: [] },
+    ]);
 
     const added = boot.runDemoBoot('?demo=1');
     expect(added).toBeGreaterThan(0);
-    expect(store.sessions.value).toHaveLength(added);
-    expect(store.sessions.value.every((s) => s.demo === true)).toBe(true);
-    expect(store.meta.value.onboarded).toBe(true);
+    expect(store.demoSessions.value).toHaveLength(added);
+    expect(store.sessions.value.map((session) => session.id)).toEqual(['real']);
+    expect(store.meta.value.onboarded).toBe(false);
   });
 
   it('una segunda llamada no duplica sesiones', () => {
@@ -92,4 +94,5 @@ describe('runDemoBoot', () => {
     expect(boot.runDemoBoot('?demo=1')).toBe(0);
     expect(store.sessions.value).toHaveLength(antes);
   });
+
 });

@@ -83,6 +83,35 @@
   font-size: 11px;
 }
 
+.pg2-demo-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg2-demo-entry > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.pg2-demo-entry small {
+  color: var(--muted);
+}
+
+.pg2-demo-view {
+  display: grid;
+  gap: 12px;
+}
+
+.pg2-demo-chart h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
 .pg2-record-list {
   display: grid;
   gap: 2px;
@@ -163,6 +192,13 @@
 
 .pg2-exercise-result {
   margin-top: 16px;
+}
+.pg2-exercise {
+  scroll-margin-top: calc(var(--appbar-h, 64px) + 14px);
+}
+.pg2-exercise:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .pg2-exercise-stats {
   grid-template-columns: repeat(2, minmax(0, 1fr));

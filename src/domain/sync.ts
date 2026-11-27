@@ -797,6 +797,10 @@ export function stripForSync(state: AppState): AppState {
       ai: { ...asObj(settings.ai), apiKey: '' },
     } as AppState['settings'],
   };
+  copy.sessions = (Array.isArray(copy.sessions) ? copy.sessions : []).filter(
+    (session): session is Session => isObj(session) && session.demo !== true,
+  );
+  delete copy.demoSessions;
   delete copy.chat;
   return copy;
 }

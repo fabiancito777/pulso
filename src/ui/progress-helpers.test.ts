@@ -296,6 +296,17 @@ describe('resúmenes de la vista principal', () => {
     });
     expect(summary?.trend).toHaveLength(2);
   });
+
+  it('conserva evolución de repeticiones para ejercicios sin peso externo', () => {
+    const lista = [
+      sesion('2026-09-20', [entrada('dominadas', [serie(null, 6), serie(null, 5)])]),
+      sesion('2026-09-24', [entrada('dominadas', [serie(0, 8)])]),
+    ];
+    expect(exerciseProgressSummary(lista, 'dominadas')?.repsTrend).toEqual([
+      { date: '2026-09-20', reps: 6 },
+      { date: '2026-09-24', reps: 8 },
+    ]);
+  });
 });
 
 /* ---------- topExercises / historyExerciseIds ---------- */

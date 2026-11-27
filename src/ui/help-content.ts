@@ -246,7 +246,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'tabs',
     title: 'Calendario',
     paras: [
-      'El plan de la semana o del mes. Toca un día y verás su rutina y las sesiones que ya has registrado.',
+      'La semana muestra siete filas compactas; toca un día para abrir el mismo detalle que en la vista mensual, con estado, rutina, ejercicios y sesiones.',
+      '«Limpiar» quita la planificación de ese día sin borrar las sesiones registradas. «Descanso» conserva el plan y permite restaurarlo después.',
       '«Auto-planificar» rellena la semana: con IA si tienes clave, o en tu dispositivo si no.',
     ],
     see: ['cal.states', 'cal.autoplan'],
@@ -290,7 +291,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'hoy',
     title: 'Plan de hoy',
     paras: [
-      'El botón grande empieza la sesión que toca hoy: la app mira el Calendario, tus rutinas y tu historial para decidir qué te toca.',
+      '«Empezar» inicia la sesión que toca hoy: la app mira el Calendario, tus rutinas y tu historial. «Saltar» está en el menú del plan y marca el día como descanso, conservando el plan para poder restaurarlo.',
       'Si no hay nada programado aparece «Sin plan para hoy»: puedes entrenar libre, elegir una de tus rutinas o saltarte el día.',
       '«Ver los N ejercicios» abre o pliega la lista del plan. El sello dice de dónde sale: «IA» si lo escribió el coach con tu clave, «plan» si lo calculó tu dispositivo.',
     ],
@@ -447,7 +448,9 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'calendario',
     title: 'Estados de un día',
     paras: [
-      'Cada día tiene un estado: «Planificado» (tiene rutina), «Hecho» (ya entrenaste), «Descanso», «Saltado» (no hiciste lo planeado) y «Libre» (sin nada).',
+      'Cada día tiene un estado: «Planificado» (tiene rutina), «Hecho» (ya entrenaste), «Descanso», «Saltado» (no hiciste lo planeado) y «Libre» (sin nada). En semana y mes, toca el día para abrir el detalle compartido.',
+      '«Descanso» y «Saltar» conservan el plan anterior; usa «Restaurar plan» para recuperarlo. «Limpiar» elimina el plan, el tipo, el título y el estado, pero conserva las sesiones.',
+      '«Editar ejercicios del día» abre un borrador propio de esa fecha. Solo «Guardar plan del día» escribe en el calendario; cancelar descarta los cambios.',
       'Si un día tiene sesiones registradas se pone «Hecho» aunque no estuviera planeado: manda lo que entrenaste de verdad.',
     ],
     see: ['tab.calendario', 'cal.kpis'],
@@ -591,7 +594,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'KPIs de Progreso',
     paras: [
       'En «Ver estadísticas», «Volumen total» es todo el peso que has movido (peso × repeticiones). «Esta semana» es lo mismo solo de estos días. «Tiempo total» son las horas de entreno y «Racha», los días seguidos sin faltar.',
-      'Estos números incluyen las sesiones de ejemplo hasta que las quites (llevan el sello «demo»).',
+      'La demostración de Progreso usa una vista temporal; sus sesiones no se mezclan con tus estadísticas reales.',
     ],
     see: ['glossary.volume', 'opt.demo'],
   },
@@ -832,8 +835,8 @@ export const HELP: Record<HelpId, HelpTopic> = {
     section: 'ajustes',
     title: 'Datos de ejemplo',
     paras: [
-      '«Cargar 8 semanas de ejemplo» rellena Progreso con sesiones inventadas, para que veas los gráficos antes de tener datos tuyos.',
-      'Esas sesiones llevan el sello «demo» y cuentan para los gráficos y récords hasta que pulses «Quitar datos de ejemplo» en Ajustes → Datos.',
+      '«Ver demostración en Progreso» abre una vista separada con sesiones inventadas para explorar los gráficos.',
+      'Los datos son temporales y no cuentan en tu historial, Coach ni sugerencias de peso. Puedes salir desde Progreso o Ajustes → Datos.',
     ],
     see: ['prog.kpis', 'tab.progreso'],
   },

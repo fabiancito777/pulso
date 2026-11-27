@@ -1,13 +1,11 @@
 /**
  * Arranque con `?demo=1` (el modo demo, `app.js:1261-1277`).
  *
- * antes, al abrir con ese query param, marcaba el onboarding como visto,
- * planificaba la semana con el planificador local y apilaba `S.demoData(8)`,
- * avisando con un toast. Aquí se hacen las DOS primeras cosas que aportan —
- * sesiones de ejemplo y no molestar al onboarding — y solo **una vez**:
+ * Antes, al abrir con ese query param, apilaba ocho semanas ficticias dentro del
+ * historial. Ahora crea una muestra temporal y abre Progreso sin tocar el perfil:
  *
- * - si ya hay sesiones (la demo ya se cargó, o son datos reales), no se toca
- *   nada: recargar `?demo=1` no duplica;
+ * - los datos se generan en memoria y se muestran en Progreso, sin modificar
+ *   el historial real;
  * - el aviso va DESPUÉS del `render` de `main.tsx`, porque el host de los
  *   toasts vive en el DOM y en tests (Node) se descarta en silencio.
  *
@@ -16,7 +14,7 @@
  * es quien sabe previsualizar antes de escribir. Meterla en el arranque obligaría
  * a llamar a la lógica de `CalendarView` fuera de la vista.
  */
-import { demoData, sessions, setMeta } from '@/state/store';
+import { demoData, demoMode } from '@/state/store';
 
 /** Semanas de ejemplo que cargaba antes (`S.demoData(8)`). */
 const DEMO_WEEKS = 8;
@@ -29,15 +27,12 @@ export function isDemoQuery(search: string): boolean {
 let ran = false;
 
 /**
- * Carga la demo si toca. Devuelve cuántas sesiones ha añadido (0 = nada que
- * hacer). Se llama una vez al arrancar (`main.tsx`); el guard de módulo y el de
- * «ya hay sesiones» la hacen idempotente aunque alguien la vuelva a llamar.
+ * Crea la demo si toca. Devuelve cuántas sesiones temporales ha creado (0 = nada
+ * que hacer). Se llama una vez al arrancar (`main.tsx`); los guardas la hacen
+ * idempotente aunque alguien la vuelva a llamar.
  */
 export function runDemoBoot(search: string): number {
-  if (ran || !isDemoQuery(search) || sessions.value.length > 0) return 0;
+  if (ran || !isDemoQuery(search) || demoMode.value) return 0;
   ran = true;
-  /* El onboarding no tiene que saltar sobre los datos de ejemplo (antes hacía
-     `S.setMeta({ onboarded: true })` antes de cargarlas). */
-  setMeta({ onboarded: true });
   return demoData(DEMO_WEEKS);
 }

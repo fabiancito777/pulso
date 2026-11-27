@@ -480,36 +480,49 @@ function realSession(id: string): Session {
 }
 
 describe('datos de ejemplo', () => {
-  it('demoData apila sesiones marcadas y la segunda llamada NO deduplica', () => {
+  it('demoData mantiene ejemplos temporales separados y no los persiste', () => {
     const primera = store.demoData(2);
     expect(primera).toBeGreaterThan(0);
-    expect(store.sessions.value).toHaveLength(primera);
-    expect(store.sessions.value.every((s) => s.demo === true)).toBe(true);
+    expect(store.demoMode.value).toBe(true);
+    expect(store.demoSessions.value).toHaveLength(primera);
+    expect(store.demoSessions.value.every((s) => s.demo === true)).toBe(true);
+    expect(store.sessions.value).toHaveLength(0);
 
     const segunda = store.demoData(2);
     expect(segunda).toBe(primera);
-    expect(store.sessions.value).toHaveLength(primera + segunda);
-    expect(persistedSessions()).toHaveLength(primera + segunda);
+    expect(store.demoSessions.value).toHaveLength(segunda);
+    expect(persistedSessions()).toHaveLength(0);
   });
 
   it('las sesiones de ejemplo se guardan con la unidad de los ajustes', () => {
     store.setSettingsPath('units', 'lb');
     expect(store.demoData(1)).toBeGreaterThan(0);
-    expect(store.sessions.value.every((s) => s.unit === 'lb')).toBe(true);
+    expect(store.demoSessions.value.every((s) => s.unit === 'lb')).toBe(true);
     expect(store.readState().settings.units).toBe('lb');
   });
 
-  it('clearDemo se queda solo con las reales y devuelve lo quitado', () => {
+  it('clearDemo cierra la vista temporal y deja intactas las reales', () => {
     store.appendSessions([realSession('s_real')]);
     const n = store.demoData(2);
     expect(n).toBeGreaterThan(0);
-    expect(store.sessions.value).toHaveLength(n + 1);
+    expect(store.sessions.value).toHaveLength(1);
 
     expect(store.clearDemo()).toBe(n);
     expect(store.sessions.value.map((s) => s.id)).toEqual(['s_real']);
     expect(persistedSessions().map((s) => s.id)).toEqual(['s_real']);
     /* sin ejemplo que quitar → 0 */
     expect(store.clearDemo()).toBe(0);
+    expect(store.demoMode.value).toBe(false);
+  });
+
+  it('filtra demos antiguas al leer y al escribir el estado', () => {
+    const demo = { ...realSession('s_demo'), demo: true };
+    const real = realSession('s_real');
+    mem.set(store.STATE_KEY, JSON.stringify({ ...store.defaultState(), sessions: [demo, real] }));
+    store.refresh();
+    expect(store.sessions.value.map((session) => session.id)).toEqual(['s_real']);
+    store.setMeta({ onboarded: true });
+    expect((store.readState().sessions ?? []).map((session) => session.id)).toEqual(['s_real']);
   });
 
   it('appendSessions ordena por startedAt y desempata por id', () => {

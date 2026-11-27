@@ -30,6 +30,7 @@ import {
   planFromJson,
   planOrigin,
   restDayPatch,
+  restoreDayPlanPatch,
   weekCounts,
   weekSubtitle,
 } from './calendar-helpers';
@@ -147,28 +148,38 @@ describe('cuadrícula mensual', () => {
 describe('limpiar un día', () => {
   it('vacía la planificación sin tocar la sesión enlazada', () => {
     const patch = clearDayPatch();
-    expect(Object.keys(patch).sort()).toEqual(['routineId', 'source', 'status', 'title', 'type']);
-    expect(Object.values(patch)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    expect(Object.keys(patch).sort()).toEqual([
+      'focus', 'plan', 'restorePlan', 'routineId', 'source', 'status', 'title', 'type',
+    ]);
+    expect(Object.values(patch)).toEqual(Array(8).fill(undefined));
     expect('sessionId' in patch).toBe(false);
   });
 });
 
 describe('marcar un día como descanso', () => {
-  it('pone estado y tipo sin borrar campos (el merge conserva la rutina)', () => {
-    const patch = restDayPatch();
+  it('pone descanso y conserva el plan para restaurarlo', () => {
+    const original = {
+      status: 'planned', type: 'entreno', title: 'Torso A', routineId: 'rt_1',
+      source: 'ia', focus: 'pecho', plan: [{ exId: 'press' }], sessionId: 'ses_1',
+    };
+    const patch = restDayPatch(original);
     expect(patch.status).toBe('rest');
     expect(patch.type).toBe('descanso');
     expect(patch.title).toBe('Descanso');
     /* el «Saltar» de Hoy y el del Calendario escriben exactamente este patch */
-    expect(patch).toEqual({
-      status: 'rest',
-      type: 'descanso',
-      title: 'Descanso',
-      source: 'manual',
+    expect(patch).toMatchObject({
+      status: 'rest', type: 'descanso', title: 'Descanso', source: 'manual',
+      restorePlan: {
+        status: 'planned', type: 'entreno', title: 'Torso A', routineId: 'rt_1',
+        source: 'ia', focus: 'pecho', plan: [{ exId: 'press' }],
+      },
     });
-    /* nada de claves en undefined: como clearDayPatch borraría la rutina */
     expect(Object.values(patch)).not.toContain(undefined);
-    expect('routineId' in patch).toBe(false);
+    expect(restoreDayPlanPatch({ ...original, ...patch })).toMatchObject({
+      status: 'planned', type: 'entreno', title: 'Torso A', routineId: 'rt_1', source: 'ia',
+      focus: 'pecho', plan: [{ exId: 'press' }], restorePlan: undefined,
+    });
+    expect(restDayPatch({}).restorePlan).toBeUndefined();
   });
 });
 

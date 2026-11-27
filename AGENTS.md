@@ -162,6 +162,10 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
 - **`basis`**: cada entrada lleva de dónde sale el peso («última vez 60 kg × 8 · hace 3 días»,
   «repetición de 21 sep 2026», «sin historial»). Se muestra bajo el nombre del ejercicio: **el dato
   ya está en pantalla**, no lo dupliques en otro sitio.
+- **Repetir exacto**: repetir desde Hoy o Progreso reconstruye series una por una con sus pesos y reps;
+  convierte el peso desde la unidad guardada al perfil actual, copia descanso, superserie y consejo,
+  y deja las series sin marcar, RPE y nota personal vacíos. El snapshot del plan de sesión conserva
+  estos datos aunque después cambie la rutina original.
 - Supersets: ejercicios consecutivos con el mismo `superset`. La insignia «SS A · 1/2» y el descanso corto del
   primero marcan la transición.
 - **Modo súper simple** (`settings.simpleWorkoutMode`, apagado de fábrica): Ajustes → Entreno lo
@@ -232,6 +236,16 @@ planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
 - **Vista previa antes de aplicar**: la propuesta enseña el impacto por fechas y días antes de escribir
   el calendario. Solo «Aplicar al calendario» confirma los cambios; pedir otra propuesta o descartarla
   no altera el plan guardado. Sin key se usa el planificador local; con key se puede pedir al coach.
+- **Hoy y calendario**: la semana del calendario son siete filas compactas que abren el mismo detalle
+  de día que la vista mensual. «Saltar»/«Descanso» guarda una copia del plan previo en `restorePlan`;
+  «Restaurar plan» recupera título, fuente, foco y rutina o ejercicios. «Limpiar» elimina los campos
+  del plan, incluido `focus` y `restorePlan`, pero conserva `sessionId` y sesiones reales.
+- **Editar ejercicios desde Calendario** manda un borrador aislado al editor: no modifica el estado al
+  abrirlo ni al cancelar; «Guardar plan del día» escribe los ejercicios en ese día, sin crear rutina
+  ni cambiar una rutina usada en otras fechas. No se puede abrir mientras el día está en descanso.
+- **Demostración de Progreso** usa señales en memoria para las sesiones de ejemplo. No se añaden al
+  historial persistido ni se sincronizan; salir vuelve a los datos reales. `?demo=1` inicia una muestra
+  temporal, y los datos demo persistidos de versiones anteriores se limpian durante la carga.
 
 ### Sincronización y perfiles
 Código de pareja → se deriva una clave (AES-GCM) y el servidor (Worker + KV, `sync-worker/`) solo ve
@@ -275,3 +289,4 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 | 25-nov-2026 | Hoy permite desplegar los ejercicios del plan, repetir la última sesión desde una tarjeta y retomar una sesión activa desde la barra compacta al cambiar de pestaña. Progreso muestra el resumen semanal y los últimos récords antes de búsqueda, estadísticas plegables e historial. | Accesos más directos a entrenar y revisar el progreso. |
 | 26-nov-2026 | Navegación inferior móvil con cinco accesos fijos y un modal compartido para Coach y Ajustes; se conserva el estado por ruta y el acceso a perfiles. | Los destinos principales caben en pantalla y Coach/Ajustes siguen disponibles sin perder los enlaces directos. |
 | 26-nov-2026 | El cierre de sesión prioriza series, duración y récords con detalle plegable; las guías visuales se reutilizan desde el editor de rutinas. La planificación semanal muestra el impacto por fecha antes de aplicarse. | Confirmar lo guardado de un vistazo y revisar ejercicios y cambios del calendario antes de actuar. |
+| 26-nov-2026 | Hoy y Calendario distinguen descanso con restauración del plan; Calendario usa filas compactas con un detalle compartido y edita ejercicios mediante borrador por fecha. Repetir recupera las series exactas y Progreso puede abrir una demostración temporal. | Evitar que saltar o editar un día borre la planificación, y facilitar la revisión y repetición sin alterar datos reales. |

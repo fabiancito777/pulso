@@ -28,6 +28,16 @@
   letter-spacing: 0.5px;
 }
 
+.hy-plan-title {
+  overflow-wrap: anywhere;
+  line-height: 1.12;
+}
+
+.hy-plan-menu { position: relative; }
+.hy-plan-menu > summary { list-style: none; min-width: 42px; text-align: center; }
+.hy-plan-menu > summary::-webkit-details-marker { display: none; }
+.hy-plan-menu > button { position: absolute; z-index: 3; right: 0; top: calc(100% + 5px); white-space: nowrap; }
+
 .hy-plan-details > summary,
 .hy-tools-summary {
   cursor: pointer;

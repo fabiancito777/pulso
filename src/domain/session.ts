@@ -29,7 +29,7 @@ import { matchExercise, unresolvedName } from './match';
 import type { UnresolvedName } from './match';
 import { avg, clamp, int, num, round, uid } from './num';
 import { partnerAfter, pruneSupersets } from './supersets';
-import { toKg } from './units';
+import { fromKg, toKg } from './units';
 import type {
   ActiveEntry,
   ActiveSession,
@@ -187,6 +187,8 @@ interface PlanExtras {
   reps?: number;
   notes?: string;
   superset?: string | null;
+  repeatSets?: { weight: number | null; reps: number }[];
+  sourceUnit?: Unit;
 }
 
 /** Item del plan ya resuelto contra la biblioteca: `RoutineItem` + sus extras. */
@@ -240,6 +242,10 @@ function resolvePlan(
       ...(extra.basis ? { basis: extra.basis } : {}),
       ...(extra.reps ? { reps: extra.reps } : {}),
       ...(extra.superset ? { superset: extra.superset } : {}),
+      ...(Array.isArray(extra.repeatSets) ? { repeatSets: extra.repeatSets } : {}),
+      ...(extra.sourceUnit === 'kg' || extra.sourceUnit === 'lb'
+        ? { sourceUnit: extra.sourceUnit }
+        : {}),
     });
   }
   return { items, unresolved };
@@ -254,15 +260,56 @@ function resolvePlan(
  *   sugerencia, que es el que ya puso `prefill`);
  * - **`notes`** del item, si las hay.
  */
-function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem): ActiveEntry {
+function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem, unit: Unit): ActiveEntry {
   const reps = int(item.reps, Math.round((entry.repMin + entry.repMax) / 2));
+  const replay = validRepeatSets(item.repeatSets) ? item.repeatSets : null;
+  const sets = replay
+    ? replay.map((set, index) => {
+        const blank = entry.sets[index] ?? entry.sets[entry.sets.length - 1];
+        const weight: ActiveSet['weight'] = set.weight === null
+          ? ''
+          : (item.sourceUnit ?? unit) === unit
+            ? num(set.weight)
+            : round(fromKg(toKg(set.weight, item.sourceUnit ?? 'kg'), unit), 2);
+        return {
+          ...(blank ?? { weight: '', reps: '', done: false, ts: null, rpe: null }),
+          weight,
+          reps: int(set.reps, reps),
+          done: false,
+          ts: null,
+          rpe: null,
+          suggested: false,
+        };
+      })
+    : entry.sets.map((set) => ({ ...set, reps }));
   return {
     ...entry,
-    sets: entry.sets.map((set) => ({ ...set, reps })),
+    sets,
     ...(item.basis ? { basis: item.basis } : {}),
     notes: '',
     ...(item.notes ? { cue: item.notes } : {}),
   };
+}
+
+function validRepeatSets(value: unknown): value is { weight: number | null; reps: number }[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= 12 &&
+    value.every((candidate: unknown) => {
+      if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate)) {
+        return false;
+      }
+      const set = candidate as Record<string, unknown>;
+      return (
+        (set.weight === null ||
+          (typeof set.weight === 'number' && Number.isFinite(set.weight))) &&
+        typeof set.reps === 'number' &&
+        Number.isFinite(set.reps) &&
+        set.reps > 0
+      );
+    })
+  );
 }
 
 /**
@@ -316,10 +363,16 @@ export function startSession(opts: StartOptions): ActiveSession {
     entries = opts.exIds.map((exId) => make({ exId, library: opts.exercises }));
   } else if (opts.plan?.length) {
     const resolved = resolvePlan(opts.plan, opts.exercises);
-    plan = resolved.items;
+    const resolvedItems = resolved.items;
+    plan = resolvedItems.map((item) => {
+      const snapshot = { ...item };
+      delete snapshot.repeatSets;
+      delete snapshot.sourceUnit;
+      return snapshot;
+    });
     if (resolved.unresolved.length) opts.onUnresolved?.(resolved.unresolved);
-    entries = plan.map((item) =>
-      fromPlanItem(
+    entries = resolvedItems.map((item) =>
+        fromPlanItem(
         withWeight(
           make(
             {
@@ -336,6 +389,7 @@ export function startSession(opts: StartOptions): ActiveSession {
           item.weight,
         ),
         item,
+        opts.unit ?? 'kg',
       ),
     );
   }

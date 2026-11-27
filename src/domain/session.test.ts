@@ -339,6 +339,51 @@ describe('startSession', () => {
     expect(session.plan?.[0]).toEqual({ exId: 'press-banca', sets: 2 });
   });
 
+  it('repite cada serie limpia y convierte los pesos a la unidad de la sesión nueva', () => {
+    const session = nuevaSesion({
+      exIds: undefined,
+      unit: 'lb',
+      plan: [
+        {
+          exId: 'press-banca',
+          sets: 3,
+          rest: 75,
+          superset: 'A',
+          notes: 'Controla la bajada',
+          sourceUnit: 'kg',
+          repeatSets: [
+            { weight: 20, reps: 12 },
+            { weight: null, reps: 9 },
+            { weight: 22.5, reps: 6 },
+          ],
+        } as PlanItem & { notes: string },
+      ],
+    });
+    const entry = session.entries[0];
+    expect(entry).toMatchObject({ restSec: 75, superset: 'A', cue: 'Controla la bajada', notes: '' });
+    expect(entry?.sets).toEqual([
+      expect.objectContaining({ weight: 44.09, reps: 12, done: false, rpe: null, ts: null }),
+      expect.objectContaining({ weight: '', reps: 9, done: false, rpe: null, ts: null }),
+      expect.objectContaining({ weight: 49.6, reps: 6, done: false, rpe: null, ts: null }),
+    ]);
+    expect(session.plan?.[0]).not.toHaveProperty('repeatSets');
+    expect(session.plan?.[0]).not.toHaveProperty('sourceUnit');
+  });
+
+  it('preserva con exactitud pesos sin conversión y rechaza series replay mal formadas', () => {
+    const exact = nuevaSesion({
+      exIds: undefined,
+      plan: [{ exId: 'press-banca', sets: 1, sourceUnit: 'kg', repeatSets: [{ weight: 2.5, reps: 8 }] }],
+    });
+    expect(exact.entries[0]?.sets[0]?.weight).toBe(2.5);
+    const malformed = nuevaSesion({
+      exIds: undefined,
+      plan: [{ exId: 'press-banca', sets: 1, repeatSets: [null] } as unknown as PlanItem],
+    });
+    expect(malformed.entries[0]?.sets).toHaveLength(1);
+    expect(malformed.entries[0]?.sets[0]).toMatchObject({ done: false, rpe: null });
+  });
+
   it('la sugerencia se pide con las reps de la prescripción', () => {
     const seen: (number | undefined)[] = [];
     const conReps: PlanLine = { name: 'Press de banca', sets: 2, reps: 6 };

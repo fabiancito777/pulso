@@ -14,7 +14,7 @@ import { AI_MODELS, TEMPLATES } from '@/domain/data';
 import { defaultEquipment, seedExercises, type EquipmentMap } from '@/domain/data';
 import { today } from '@/domain/dates';
 import { DEFAULT_SETTINGS } from '@/domain/defaults';
-import { demoSessions } from '@/domain/demo';
+import { demoSessions as buildDemoSessions } from '@/domain/demo';
 import { idFor } from '@/domain/exercise-draft';
 import { mergeSeed, pruneLegacyStock } from '@/domain/library';
 import { int, num, uid } from '@/domain/num';
@@ -179,7 +179,7 @@ export function readProfileState(profileId: string): AppState {
     const settings = sharedKey
       ? { ...settingsClean, ai: { ...settingsClean.ai, apiKey: sharedKey } }
       : settingsClean;
-    return pruneLegacyStock({
+    const state = pruneLegacyStock({
       ...(parsed as AppState),
       version: Math.max(version, STATE_VERSION),
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
@@ -190,6 +190,9 @@ export function readProfileState(profileId: string): AppState {
       settings: { ...settings, plates: normalizePlates(settings.plates) },
       equipment: isPlainObject(parsed.equipment) ? { ...parsed.equipment } : defaultEquipment(),
     });
+    /* Demos guardadas por versiones anteriores se retiran del historial real. */
+    state.sessions = asSessions(state.sessions).filter((session) => session.demo !== true);
+    return state;
   } catch (err) {
     console.warn('[pulso] estado ilegible, se usan los valores por defecto', err);
     return defaultState();
@@ -271,7 +274,10 @@ export function writeProfileState(
   try {
     const previousRaw = localStorage.getItem(key);
     const previous = previousState(key, previousRaw);
-    const clean = pruneLegacyStock(state);
+    const clean = pruneLegacyStock({
+      ...state,
+      sessions: asSessions(state.sessions).filter((session) => session.demo !== true),
+    });
     const next =
       opts.stamp === false ? clean : stampChanges(previous && pruneLegacyStock(previous), clean);
     const raw = JSON.stringify(forStorage(next));
@@ -1375,6 +1381,8 @@ export function refresh(): void {
   equipment.value = (next.equipment as EquipmentMap | undefined) ?? defaultEquipment();
   exercises.value = mergeSeed(SEED, next.exercises);
   sessions.value = asSessions(next.sessions);
+  demoSessions.value = [];
+  demoMode.value = false;
   routines.value = asRoutines(next.routines);
   meta.value = withDefaults(next.meta, DEFAULT_META);
   schedule.value = isPlainObject(next.schedule)
@@ -1399,6 +1407,10 @@ function asSessions(value: unknown): Session[] {
 }
 
 export const sessions = signal<Session[]>(asSessions(initial.sessions));
+
+/** Datos temporales de demostración: solo visibles en la vista demo de Progreso. */
+export const demoSessions = signal<Session[]>([]);
+export const demoMode = signal(false);
 
 /**
  * La sesión en curso (`pulso.state.active`), reactiva: **una sola fuente de verdad**
@@ -1470,7 +1482,9 @@ function byStartedAtDesc(a: Session, b: Session): number {
  */
 export function commitEntry(session: Session, remaining: ActiveSession | null): boolean {
   const state = readState();
-  const all = [session, ...asSessions(state.sessions)].sort(byStartedAtDesc);
+  const all = [session, ...asSessions(state.sessions)]
+    .filter((item) => item.demo !== true)
+    .sort(byStartedAtDesc);
   state.sessions = all;
   const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
     ? { ...(state.schedule as Record<string, ScheduleDay>) }
@@ -1492,7 +1506,9 @@ export function commitEntry(session: Session, remaining: ActiveSession | null): 
 
 export function commitSession(session: Session): boolean {
   const state = readState();
-  const all = [session, ...asSessions(state.sessions)].sort(byStartedAtDesc);
+  const all = [session, ...asSessions(state.sessions)]
+    .filter((item) => item.demo !== true)
+    .sort(byStartedAtDesc);
   state.sessions = all;
   /* ojo: el nombre local no puede ser `schedule` (sombrería al signal homónimo) */
   const plan: Record<string, ScheduleDay> = isPlainObject(state.schedule)
@@ -1555,14 +1571,15 @@ export function removeSession(id: string): void {
 
 /**
  * Apila sesiones ya terminadas SIN tocar el calendario (a diferencia de
- * `commitSession`, que marca el día como hecho): es la base de `demoData`.
- * Devuelve el array completo, ya ordenado por `startedAt` descendente.
+ * `commitSession`, que marca el día como hecho). Devuelve el array completo,
+ * ya ordenado por `startedAt` descendente.
  */
 export function appendSessions(list: readonly Session[]): Session[] {
   const state = readState();
-  const current = asSessions(state.sessions);
-  if (!list.length) return current;
-  const all = [...list, ...current].sort(byStartedAtDesc);
+  const current = asSessions(state.sessions).filter((session) => session.demo !== true);
+  const additions = list.filter((session) => session.demo !== true);
+  if (!additions.length) return current;
+  const all = [...additions, ...current].sort(byStartedAtDesc);
   state.sessions = all;
   writeState(state);
   sessions.value = all;
@@ -1571,41 +1588,34 @@ export function appendSessions(list: readonly Session[]): Session[] {
 
 /**
  * Crea `weeks` semanas de sesiones de ejemplo (8, como antes) para ver las
- * gráficas con contenido. Van al MISMO array que las reales —la analítica no
- * las filtra, igual que — y no se deduplican: dos clics = doble sesión.
- * Devuelve cuántas se han añadido.
+ * gráficas con contenido. Son efímeras y viven en su propia signal: no escriben
+ * estado, historial, calendario ni sincronización. Devuelve cuántas se generaron.
  */
 export function demoData(weeks = 8): number {
   const state = readState();
-  const list = demoSessions({
+  const list = buildDemoSessions({
     weeks,
     unit: state.settings.units,
-    exercises: exercises.value,
-    equipment: isPlainObject(state.equipment)
-      ? { ...(state.equipment as EquipmentMap) }
-      : defaultEquipment(),
-    sessions: asSessions(state.sessions),
+    exercises: SEED,
+    equipment: defaultEquipment(),
+    sessions: [],
     todayIso: today(),
     templates: TEMPLATES,
   });
   if (!list.length) return 0;
-  appendSessions(list);
+  demoSessions.value = list;
+  demoMode.value = true;
   return list.length;
 }
 
 /**
- * Quita SOLO las sesiones de ejemplo (`demo: true`) y deja intactas las
- * reales. Devuelve cuántas se han quitado.
+ * Cierra la vista temporal y descarta los ejemplos en memoria. Devuelve cuántos
+ * datos de ejemplo había abiertos.
  */
 export function clearDemo(): number {
-  const state = readState();
-  const list = asSessions(state.sessions);
-  const kept = list.filter((s) => !s.demo);
-  const removed = list.length - kept.length;
-  if (!removed) return 0;
-  state.sessions = kept;
-  writeState(state);
-  sessions.value = kept;
+  const removed = demoSessions.value.length;
+  demoSessions.value = [];
+  demoMode.value = false;
   return removed;
 }
 

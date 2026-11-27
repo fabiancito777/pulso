@@ -21,7 +21,7 @@ import {
 } from '@/state/session';
 import { startSyncAuto } from '@/state/sync';
 import { activeProfile, profileInitial } from '@/state/profiles';
-import { meta, routines, sessions, settings, storageAvailable } from '@/state/store';
+import { demoMode, meta, routines, sessions, settings, storageAvailable } from '@/state/store';
 import { CalendarView } from '@/ui/CalendarView';
 import { CoachView } from '@/ui/CoachView';
 import { HoyView } from '@/ui/HoyView';
@@ -252,13 +252,13 @@ export function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const profile = activeProfile.value;
   useEffect(() => {
-    if (meta.value.onboarded === true) return;
+    if (meta.value.onboarded === true || demoMode.value) return;
     const timer = setTimeout(() => {
-      if (meta.value.onboarded === true || active.value || rest.value.running) return;
+      if (meta.value.onboarded === true || demoMode.value || active.value || rest.value.running) return;
       setBoarding(true);
     }, 350);
     return () => clearTimeout(timer);
-  }, []);
+  }, [demoMode.value]);
 
   /* Escucha `hashchange`: cualquier cambio de pestaña actualiza `route` y, con ella,
      la vista (el signal repinta solo). */
@@ -389,7 +389,7 @@ export function App() {
 
       {/* Overlay global de primera visita: se desmonta en cuanto la signal
           `meta.onboarded` pasa a true (los dos botones del modal lo marcan). */}
-      {boarding && meta.value.onboarded !== true ? <Onboarding /> : null}
+      {boarding && meta.value.onboarded !== true && !demoMode.value ? <Onboarding /> : null}
     </div>
   );
 }
