@@ -15,8 +15,8 @@ import {
   active,
   lastFinished,
   rest,
+  repeatSession,
   sessionSeconds,
-  startFromPlan,
   startLoop,
 } from '@/state/session';
 import { startSyncAuto } from '@/state/sync';
@@ -32,11 +32,11 @@ import { Onboarding } from '@/ui/Onboarding';
 import { ProfileSheet } from '@/ui/ProfileSheet';
 import { ProgressView } from '@/ui/ProgressView';
 import { RoutinesView } from '@/ui/RoutinesView';
-import { repeatItems } from '@/ui/hoy-helpers';
 import { RestDock, SessionCard, SessionDock } from '@/ui/SessionCard';
 import { SessionDoneSheet } from '@/ui/SessionDoneSheet';
 import { sessionDoneSummary } from '@/ui/session-done-helpers';
 import { SettingsView } from '@/ui/SettingsView';
+import { toast } from '@/ui/toast';
 
 /**
  * Hoja de fin de sesión. Se monta en el SHELL, no en `SessionCard`, porque esa
@@ -65,11 +65,12 @@ function FinishedSheet() {
         go('calendario');
       }}
       onRepeat={(session) => {
-        startFromPlan(repeatItems(session), {
-          name: session.name || 'Entrenamiento',
-          dayIso: today(),
-        });
+        if (!repeatSession(session)) {
+          toast('Termina la sesión actual primero', { kind: 'warn' });
+          return false;
+        }
         go('hoy');
+        return true;
       }}
     />
   );

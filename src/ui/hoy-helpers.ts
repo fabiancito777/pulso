@@ -1,6 +1,5 @@
 /**
- * Helpers puros de la vista Hoy: el plan del día, la franja semanal,
- * la repetición de una sesión y el saludo.
+ * Helpers puros de la vista Hoy: el plan del día, la franja semanal y el saludo.
  *
  * Están aparte del componente para poder probarlos con Vitest sin DOM, sin
  * `localStorage` y sin reloj: aquí solo entran datos por parámetro y salen
@@ -15,12 +14,11 @@
  *   día y, si no hay, a `empty`.
  * - **La semana se dibuja desde el lunes** con `weekDates` (ISO local), nunca
  *   con `toISOString()`.
- * - **`repeatItems` reparte el peso máximo** de cada ejercicio (el de la serie
- *   con más peso, como antes) y deja el `basis` «repetición de …» para que la
- *   sesión cargada diga de dónde sale el peso.
+ * La transformación de repetición vive en `domain/repeat-session.ts` para que
+ * también pueda usarla el estado sin depender de helpers de UI.
  */
 import { sessionDate, volumeOf } from '@/domain/analytics';
-import { dow, label as dateLabel, weekDates } from '@/domain/dates';
+import { dow, weekDates } from '@/domain/dates';
 import { fmtN } from '@/domain/format';
 import { int, num } from '@/domain/num';
 import { trunc } from '@/domain/text';
@@ -247,59 +245,6 @@ export function weekCells(
       state: dayState(day, list.length),
       volume: list.reduce((total, session) => total + volumeOf(session), 0),
       isToday,
-    };
-  });
-}
-
-/* ---------- repetir una sesión ---------- */
-
-/**
- * Items para repetir una sesión, conservando el peso y las reps de cada serie
- * registrada y la unidad de origen. El flujo de inicio las convierte a la unidad
- * preferida y crea series nuevas sin marcas ni RPE.
- *
- * Una entrada sin series (JSON a mano) sigue devolviendo 1 serie: no se puede
- * repetir un ejercicio con 0 series.
- */
-export function repeatItems(session: Session): PlanLine[] {
-  const basis = `repetición de ${dateLabel(sessionDate(session), 'medium')}`;
-  return session.entries.map((entry) => {
-    const sets = Array.isArray(entry.sets) ? entry.sets : [];
-    const top = sets.length
-      ? sets.reduce((best, set) => (num(set.weight) > num(best.weight) ? set : best))
-      : { weight: 0, reps: 10, done: true };
-    const reps = int(top.reps, 0) || 10;
-    const recorded = sets.length
-      ? sets.map((set) => ({
-          weight: set.weight === null || set.weight === undefined ? null : num(set.weight),
-          reps: int(set.reps, reps) || reps,
-        }))
-      : [{ weight: num(top.weight), reps }];
-    const repsList = recorded.map((set) => set.reps);
-    const matchingPlan = Array.isArray(session.plan)
-      ? session.plan.filter((item) => item?.exId === entry.exId)
-      : [];
-    /* La nota personal del historial nunca se convierte en consejo al repetir.
-       `cue` existe en sesiones nuevas; el snapshot cubre sesiones antiguas. */
-    const cue =
-      typeof entry.cue === 'string'
-        ? entry.cue
-        : matchingPlan.length === 1 && typeof matchingPlan[0]?.notes === 'string'
-          ? matchingPlan[0].notes
-          : '';
-    return {
-      exId: entry.exId,
-      sets: recorded.length,
-      repMin: Math.min(...repsList),
-      repMax: Math.max(...repsList),
-      rest: int(entry.restSec, 90),
-      weight: top.weight === null ? null : num(top.weight),
-      reps,
-      basis,
-      repeatSets: recorded,
-      sourceUnit: session.unit,
-      ...(entry.superset ? { superset: entry.superset } : {}),
-      ...(cue ? { notes: cue } : {}),
     };
   });
 }

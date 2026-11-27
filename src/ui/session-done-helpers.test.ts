@@ -17,10 +17,8 @@ import type { Session, SessionEntry, SetLog, Unit } from '@/domain/types';
 import { ICONS } from './icons';
 import { sessionDoneSummary } from './session-done-helpers';
 
-/** Iconos que pinta `SessionDoneSheet`; si uno no existe, sale un hueco mudo. */
-const SHEET_ICONS = ['check', 'fire'];
-
 const HOY = '2026-09-24';
+const SHEET_ICONS = ['check', 'fire'] as const;
 
 const serie = (weight: number | null, reps: number, done = true): SetLog => ({
   weight,
@@ -49,7 +47,7 @@ function sesion(
 }
 
 describe('iconos de la hoja', () => {
-  it('todos los iconos que usa SessionDoneSheet existen en el catálogo', () => {
+  it('los iconos de estado y racha que usa el resumen existen', () => {
     for (const name of SHEET_ICONS) expect(ICONS[name], name).toBeDefined();
   });
 });
@@ -80,24 +78,15 @@ describe('sessionDoneSummary', () => {
     expect(out.previousDate).toBe('2026-09-22');
   });
 
-  it('sin sesión anterior no inventa comparación', () => {
+  it('ignora sesiones posteriores y no inventa comparación cuando no hay una anterior', () => {
     const current = sesion('s1', HOY, [entrada('press', [serie(80, 6)])]);
-
-    const out = sessionDoneSummary(current, [current], HOY);
-
-    expect(out.delta).toBeNull();
-    expect(out.previousName).toBeNull();
-    expect(out.previousDate).toBeNull();
-  });
-
-  it('no se compara consigo misma ni con sesiones posteriores', () => {
-    const current = sesion('s2', HOY, [entrada('press', [serie(80, 6)])]);
-    const futura = sesion('s3', '2026-09-30', [entrada('press', [serie(90, 6)])]);
+    const futura = sesion('s2', '2026-09-30', [entrada('press', [serie(90, 6)])]);
 
     const out = sessionDoneSummary(current, [current, futura], HOY);
 
     expect(out.previousName).toBeNull();
     expect(out.delta).toBeNull();
+    expect(out.previousDate).toBeNull();
   });
 
   it('a igual fecha, la anterior es la que terminó más tarde', () => {

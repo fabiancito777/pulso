@@ -127,7 +127,7 @@ section{margin:0 0 20px}
   font-size:12.5px;font-weight:600;white-space:nowrap;
 }
 .chip .ico{width:15px;height:15px}
-.chip.accent,.chip-accent{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));color:var(--accent-text)}
+.chip.accent{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));color:var(--accent-text)}
 .chip.ok{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:color-mix(in srgb,var(--ok) 40%,var(--border));color:var(--ok-text)}
 .chip.warn{background:color-mix(in srgb,var(--warn) 14%,transparent);border-color:color-mix(in srgb,var(--warn) 40%,var(--border));color:var(--warn-text)}
 .chip.off{opacity:.6}
@@ -429,11 +429,9 @@ textarea.input{min-height:96px;resize:vertical;line-height:1.5}
 .session-rest .sr-ring{position:relative;width:96px;height:96px;flex:none}
 .session-rest .sr-ring .rest-ring{width:96px;height:96px}
 .session-rest .sr-ring .rest-ring circle{stroke-width:6.5}
-.session-rest .sr-time{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:25px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
 .session-rest .sr-main{flex:1;min-width:0}
 .session-rest .sr-main .h3{margin:1px 0 2px}
 .session-rest .sr-actions{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
-.session-rest.done .sr-time{color:var(--ok-text)}
 .session-rest.done .sr-ring .rest-ring .fg{stroke:var(--ok)}
 
 /* ---------- descanso: recuadro pegajoso + vista de resumen ----------

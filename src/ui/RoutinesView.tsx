@@ -76,7 +76,6 @@ import {
   routineSets,
   scheduleRoutinePatch,
   sourceBadge,
-  takeRoutineEditRequest,
   templateSummary,
   takeRoutineEditDraft,
   toSuggestion,
@@ -901,18 +900,10 @@ export function RoutinesView() {
   const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [scheduleIso, setScheduleIso] = useState('');
 
-  /* Otra pestaña puede pedir que abramos una rutina en el editor (p. ej. desde
-     el chat del coach). Se consume al montar: una sola petición, no una cola. */
+  /* El calendario entrega un borrador aislado para editar ese día. */
   useEffect(() => {
     const draft = takeRoutineEditDraft();
-    if (draft) {
-      setEditDraft(draft);
-      return;
-    }
-    const id = takeRoutineEditRequest();
-    if (id && routines.value.some((routine) => routine.id === id)) {
-      setEditId(id);
-    }
+    if (draft) setEditDraft(draft);
   }, []);
 
   const byId = new Map(library.map((ex) => [ex.id, ex] as const));
@@ -1002,6 +993,7 @@ export function RoutinesView() {
 
   function applyProposal(): void {
     if (!proposal) return;
+    /* `proposal` is a whitelist of preview fields and cannot carry an update action. */
     const { routine: created, unresolved } = applySuggestionAsRoutine(proposal);
     if (!created) {
       setNotice({

@@ -43,6 +43,12 @@
  * - El costo se mide con `deps.now` (inyectable), no con `Date.now()` suelto.
  */
 import { weeklySeries } from '@/domain/analytics';
+import {
+  firstString,
+  isPlainRecord,
+  normalizeCoachRoutineItem,
+  readCoachRoutineProposal,
+} from '@/domain/coach-routine';
 import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import {
   addDays,
@@ -57,7 +63,7 @@ import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { clamp, int, num, uid } from '@/domain/num';
-import { sanitizePrescription, WEIGHT_MAX } from '@/domain/prescription';
+import { WEIGHT_MAX } from '@/domain/prescription';
 import { freshSupersetIds } from '@/domain/supersets';
 import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem, Session, SessionEntry, SetLog, Settings } from '@/domain/types';
@@ -266,26 +272,6 @@ const FALLBACK_KINDS: readonly GeminiError['kind'][] = ['auth', 'network', 'quot
 
 /* ---------- helpers ---------- */
 
-function isPlain(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Primer campo de `keys` que sea string no vacío (alias que el modelo puede usar). */
-function firstString(obj: Record<string, unknown>, keys: readonly string[]): string {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return '';
-}
-
-/** Peso de un item propuesto: `''`/ausente = sin peso (`null`), no `0`. */
-function toWeight(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') return null;
-  const parsed = num(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 /** Fecha de un día del plan: solo string (nada de `[object Object]` en el calendario). */
 function dayIsoOf(value: unknown): string {
   return typeof value === 'string' ? value.slice(0, 10) : '';
@@ -310,14 +296,16 @@ function resolveItems(list: unknown): {
   const items: RoutineItem[] = [];
   const unresolved: UnresolvedName[] = [];
   for (const raw of list) {
-    if (!isPlain(raw)) continue;
+    if (!isPlainRecord(raw)) continue;
     const exId = firstString(raw, ['exId']);
     const name = firstString(raw, ['name', 'exercise', 'ejercicio']);
     const found = exId ? findExercise(exId) : null;
     let ex: Exercise | null = found;
     let failure: UnresolvedName | null = null;
     if (!ex) {
-      if (name) {
+      if (raw.idOnly === true && exId) {
+        failure = { name: exId, reason: 'ya no está en tu biblioteca' };
+      } else if (name) {
         const match = matchExercise(name, exercises.value);
         ex = match.ex ?? null;
         if (!ex) failure = unresolvedName(name, match);
@@ -334,27 +322,24 @@ function resolveItems(list: unknown): {
     /* El modelo es libre de devolver `sets: 40` o `rest: 50000`: sin este
        saneado, un JSON raro acababa guardado tal cual en una rutina. Los rangos
        son los del editor manual (`domain/exercise-draft.ts`). */
-    const clean = sanitizePrescription(
-      {
-        sets: raw.sets === undefined ? undefined : int(raw.sets, ex.sets),
-        repMin: raw.repMin === undefined ? undefined : int(raw.repMin, ex.repMin),
-        repMax: raw.repMax === undefined ? undefined : int(raw.repMax, ex.repMax),
-        rest: raw.rest === undefined ? undefined : int(raw.rest, ex.rest),
-        weight: toWeight(raw.weight),
-      },
-      { sets: ex.sets, repMin: ex.repMin, repMax: ex.repMax, rest: ex.rest, weight: null },
-    );
+    const normalized = normalizeCoachRoutineItem(raw, ex.name, {
+      sets: ex.sets,
+      repMin: ex.repMin,
+      repMax: ex.repMax,
+      rest: ex.rest,
+      weight: null,
+    });
     items.push({
       exId: ex.id,
-      sets: clean.sets,
-      repMin: clean.repMin,
-      repMax: clean.repMax,
-      rest: clean.rest,
-      weight: clean.weight,
-      notes: typeof raw.notes === 'string' ? raw.notes : '',
+      sets: normalized.prescription.sets,
+      repMin: normalized.prescription.repMin,
+      repMax: normalized.prescription.repMax,
+      rest: normalized.prescription.rest,
+      weight: normalized.prescription.weight,
+      notes: normalized.notes,
       /* el coach marca el par con una letra compartida en dos ejercicios seguidos */
-      ...(typeof raw.superset === 'string' && raw.superset.trim()
-        ? { superset: raw.superset.trim().slice(0, 8) }
+      ...(normalized.superset
+        ? { superset: normalized.superset }
         : {}),
     });
   }
@@ -382,17 +367,6 @@ function joinNotes(notes: string, rationale: string): string {
   return [notes.trim(), rationale.trim()].filter(Boolean).join(' | ');
 }
 
-/** El `rationale` del modelo: array de frases o una frase suelta. */
-function rationaleText(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value
-      .filter((line): line is string => typeof line === 'string' && line.trim() !== '')
-      .join(' ')
-      .trim();
-  }
-  return typeof value === 'string' ? value.trim() : '';
-}
-
 /**
  * Origen que se guarda en la RUTINA: `'ia'` manda y lo que traía
  * `localSuggest`/`localWeek` (`'local'`) se guarda como `'generador'`, que es
@@ -418,7 +392,7 @@ function parseQuery(block: string): HistoryQuery | null {
   } catch {
     return null;
   }
-  if (!isPlain(raw)) return null;
+  if (!isPlainRecord(raw)) return null;
 
   const mapped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
@@ -575,7 +549,7 @@ function extractPayload(task: CoachTask, text: string): unknown {
   } catch {
     return undefined;
   }
-  if (!isPlain(raw)) return undefined;
+  if (!isPlainRecord(raw)) return undefined;
   const list = raw.exercises ?? raw.items ?? raw.days;
   return Array.isArray(list) ? raw : undefined;
 }
@@ -866,24 +840,18 @@ export interface SuggestionOutcome {
  * más, y ahora la vista puede decir exactamente qué se cayó y por qué.
  */
 export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
-  if (!isPlain(sug)) return { routine: null, unresolved: [] };
-  const list = Array.isArray(sug.exercises)
-    ? sug.exercises
-    : Array.isArray(sug.items)
-      ? sug.items
-      : null;
-  if (!list) return { routine: null, unresolved: [] };
-  const { items, unresolved } = resolveItems(list);
+  const proposal = readCoachRoutineProposal(sug);
+  if (!proposal) return { routine: null, unresolved: [] };
+  const { items, unresolved } = resolveItems(proposal.entries);
   if (!items.length) return { routine: null, unresolved };
 
-  const source = routineSource(firstString(sug, ['source']));
-  const focus = firstString(sug, ['focus']);
-  const rationale = rationaleText(sug.rationale);
-  const notes = joinNotes(firstString(sug, ['notes']), rationale);
+  const source = routineSource(proposal.source);
+  const focus = proposal.focus;
+  const notes = joinNotes(proposal.notes, proposal.rationale.join(' '));
 
   /* Un bloque ```rutina``` con "action":"update" debe editar la rutina que ya
      existe (por id o por nombre normalizado), no crear un duplicado. */
-  if (firstString(sug, ['action']) === 'update') {
+  if (isPlainRecord(sug) && firstString(sug, ['action']) === 'update') {
     const routineId = firstString(sug, ['routineId']);
     const target = firstString(sug, ['target', 'title']);
     const existing = routines.value.find(
@@ -903,7 +871,7 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
   }
 
   const routine = addRoutine({
-    name: firstString(sug, ['title']) || 'Rutina del coach',
+    name: proposal.title,
     focus,
     source,
     notes,
@@ -950,11 +918,11 @@ export function applyWeek(
     unresolved: [],
     skipped: 0,
   };
-  if (!isPlain(plan) || !Array.isArray(plan.days)) return out;
+  if (!isPlainRecord(plan) || !Array.isArray(plan.days)) return out;
 
   const source = firstString(plan, ['source']) || 'ia';
   for (const raw of plan.days) {
-    if (!isPlain(raw)) continue;
+    if (!isPlainRecord(raw)) continue;
     const dayIso = dayIsoOf(raw.date) || dayIsoOf(raw.iso);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
     if (dayIso < todayIso) {
@@ -1020,7 +988,7 @@ export function applyImportedSessions(
   warnings: UnresolvedName[];
 } {
   const empty = { sessions: [], unresolved: [], creatable: [], warnings: [] };
-  if (!isPlain(payload) || !Array.isArray(payload.sessions)) return empty;
+  if (!isPlainRecord(payload) || !Array.isArray(payload.sessions)) return empty;
 
   const skipped = new Set((opts.skipNames ?? []).map((name) => norm(name)));
   const allUnresolved: UnresolvedName[] = [];
@@ -1033,7 +1001,7 @@ export function applyImportedSessions(
   };
 
   for (const rawSession of payload.sessions) {
-    if (!isPlain(rawSession)) continue;
+    if (!isPlainRecord(rawSession)) continue;
     const rawDate = firstString(rawSession, ['date']);
     const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today();
     const unit =
@@ -1044,7 +1012,7 @@ export function applyImportedSessions(
 
     if (Array.isArray(rawItems)) {
       for (const item of rawItems) {
-        if (!isPlain(item)) continue;
+        if (!isPlainRecord(item)) continue;
         const itemName = firstString(item, ['name', 'exercise', 'ejercicio']);
         if (!itemName) continue;
         const match = matchExercise(itemName, exercises.value);
@@ -1057,7 +1025,7 @@ export function applyImportedSessions(
         const sets: SetLog[] = [];
         if (Array.isArray(item.sets)) {
           for (const set of item.sets) {
-            if (!isPlain(set)) continue;
+            if (!isPlainRecord(set)) continue;
             sets.push({
               weight: toWeight(set.weight),
               reps: clamp(int(set.reps, 8), 1, 99),

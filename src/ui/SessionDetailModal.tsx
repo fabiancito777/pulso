@@ -11,21 +11,20 @@
  *   esta (`prsBefore` + margen 0,01), no contra el histórico completo: borrar la
  *   sesión de antes puede convertir un récord en no-récord, y eso es correcto;
  * - «Repetir» se niega con un aviso si ya hay una sesión en curso (antes
- *   `views-train.js:375`), porque `startFromPlan` en ese caso devolvería la
+ *   `views-train.js:375`), porque el inicio en ese caso devolvería la
  *   sesión que ya estaba y parecería que no hacía nada.
  */
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
 import { resolveExercise } from '@/domain/data';
-import { label as dateLabel, relative, today } from '@/domain/dates';
+import { label as dateLabel, relative } from '@/domain/dates';
 import { fmtDur, fmtN, fmtRpe, fmtTime, fmtVol } from '@/domain/format';
 import type { Session } from '@/domain/types';
-import { startFromPlan } from '@/state/session';
-import { active, exercises, removeSession, sessions } from '@/state/store';
+import { repeatSession } from '@/state/session';
+import { exercises, removeSession, sessions } from '@/state/store';
 
 import { HelpBtn } from './HelpModal';
 import { Icon } from './Icon';
-import { repeatItems } from './hoy-helpers';
 import { Kpi } from './kit';
 import { Modal } from './Modal';
 import { newPrs, prsBefore } from './progress-helpers';
@@ -64,14 +63,10 @@ export function SessionDetailModal({ id, onClose }: { id: string; onClose: () =>
   }
 
   function repeat(): void {
-    if (active.value) {
+    if (!repeatSession(session)) {
       toast('Termina la sesión actual primero', { kind: 'warn' });
       return;
     }
-    startFromPlan(repeatItems(session), {
-      name: session.name || 'Entrenamiento',
-      dayIso: today(),
-    });
     onClose();
     toast('Sesión cargada con los pesos anteriores', { kind: 'ok' });
     go('hoy');

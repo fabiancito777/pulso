@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { today } from '@/domain/dates';
 import type { UnresolvedName } from '@/domain/match';
-import type { PlanItem } from '@/domain/types';
+import type { PlanItem, Session } from '@/domain/types';
 
 const mem = new Map<string, string>();
 
@@ -123,6 +123,41 @@ describe('startFromPlan', () => {
   it('el día por defecto es hoy ', () => {
     const creada = session.startFromPlan([{ exId: firstId() }]);
     expect(creada.dayIso).toBe(today());
+  });
+});
+
+describe('repeatSession', () => {
+  const savedSession: Session = {
+    id: 'saved',
+    name: 'Empuje anterior',
+    date: '2026-09-24',
+    startedAt: '2026-09-24T18:00:00.000Z',
+    unit: 'kg',
+    entries: [
+      {
+        exId: firstId(),
+        sets: [
+          { weight: 40, reps: 8, done: true },
+          { weight: 42.5, reps: 6, done: true },
+        ],
+      },
+    ],
+  };
+
+  it('inicia desde la sesión guardada y conserva cargas y reps serie a serie', () => {
+    const started = session.repeatSession(savedSession, '2026-09-28');
+    expect(started).toMatchObject({ name: 'Empuje anterior', dayIso: '2026-09-28' });
+    expect(started?.entries[0]?.sets.map(({ weight, reps, done }) => ({ weight, reps, done }))).toEqual([
+      { weight: 40, reps: 8, done: false },
+      { weight: 42.5, reps: 6, done: false },
+    ]);
+  });
+
+  it('devuelve null y conserva la sesión activa en vez de fingir una repetición', () => {
+    const current = session.startFromPlan([{ exId: firstId() }], { name: 'En curso' });
+    expect(session.repeatSession(savedSession)).toBeNull();
+    expect(session.active.value?.id).toBe(current.id);
+    expect(session.active.value?.name).toBe('En curso');
   });
 });
 

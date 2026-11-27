@@ -46,7 +46,7 @@ export interface SessionDoneSheetProps {
   /** «Ver el día» en el calendario */
   onCalendar: () => void;
   /** «Repetir esta sesión» (opcional: solo si la vista puede) */
-  onRepeat?: (session: Session) => void;
+  onRepeat?: (session: Session) => boolean;
 }
 
 export function SessionDoneSheet({
@@ -187,8 +187,8 @@ export function SessionDoneSheet({
             type="button"
             class="btn sm ghost"
             onClick={() => {
+              if (!onRepeat(session)) return;
               onClose();
-              onRepeat(session);
             }}
           >
             Repetir

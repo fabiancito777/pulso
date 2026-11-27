@@ -36,6 +36,7 @@ import { today } from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
 import type { UnresolvedName } from '@/domain/match';
 import { num, round } from '@/domain/num';
+import { repeatItems } from '@/domain/repeat-session';
 import {
   addRest,
   fromPersisted,
@@ -223,7 +224,7 @@ export function startFromRoutine(routineId: string): ActiveSession | null {
  * mano; aquí hace falta menos porque `startSession` ya soporta `opts.plan`.
  *
  * Los items pueden traer `basis`, `reps` concretas y `notes` (los llevan
- * `repeatItems` y `todayPlan` de `hoy-helpers`): `resolvePlan` los copia al
+ * `repeatItems` del dominio y `todayPlan` de `hoy-helpers`): `resolvePlan` los copia al
  * snapshot y a la entrada, así la tarjeta de cada ejercicio dice de dónde sale el
  * peso propuesto. `dayIso` por defecto es hoy, igual que.
  *
@@ -258,6 +259,18 @@ export function startFromPlan(
   setActive(created);
   startSessionEffects();
   return created;
+}
+
+/**
+ * Punto único para repetir una sesión guardada. Devuelve `null` si ya hay una
+ * sesión activa; la UI usa ese resultado para evitar avisar un éxito falso.
+ */
+export function repeatSession(session: Session, dayIso = today()): ActiveSession | null {
+  if (active.value) return null;
+  return startFromPlan(repeatItems(session), {
+    name: session.name || 'Entrenamiento',
+    dayIso,
+  });
 }
 
 /**

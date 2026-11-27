@@ -252,6 +252,33 @@ describe('toSuggestion', () => {
     expect(sug?.rationale).toEqual(['Un día corto.']);
   });
 
+  it('preserva metadata, aliases de notas, cero y resolución preferente por exId', () => {
+    const id = LIBRARY[0]?.id ?? 'missing';
+    const sug = toSuggestion(
+      {
+        name: 'Rutina desde id',
+        note: 'Nota de rutina',
+        source: 'local',
+        items: [
+          { exId: id, name: 'nombre que no debe ganar', weight: 0, note: 'Nota del ejercicio' },
+          { exId: 'id-que-ya-no-existe' },
+        ],
+      },
+      LIBRARY,
+    );
+
+    expect(sug?.title).toBe('Rutina desde id');
+    expect(sug?.notes).toBe('Nota de rutina');
+    expect(sug?.source).toBe('local');
+    expect(sug?.exercises[0]).toMatchObject({
+      name: LIBRARY[0]?.name,
+      matched: true,
+      weight: 0,
+      notes: 'Nota del ejercicio',
+    });
+    expect(sug?.exercises[1]).toMatchObject({ name: 'id-que-ya-no-existe', matched: false });
+  });
+
   it('devuelve null si no se parece a una sugerencia o no queda ningún ejercicio', () => {
     expect(toSuggestion(null, LIBRARY)).toBeNull();
     expect(toSuggestion('texto suelto', LIBRARY)).toBeNull();

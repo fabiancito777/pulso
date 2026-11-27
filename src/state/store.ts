@@ -8,7 +8,7 @@
  * escribir (`normalizePlates`), así que ninguna ruta puede dejar el inventario a
  * medias.
  */
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 
 import { AI_MODELS, TEMPLATES } from '@/domain/data';
 import { defaultEquipment, seedExercises, type EquipmentMap } from '@/domain/data';
@@ -1382,7 +1382,6 @@ export function refresh(): void {
   exercises.value = mergeSeed(SEED, next.exercises);
   sessions.value = asSessions(next.sessions);
   demoSessions.value = [];
-  demoMode.value = false;
   routines.value = asRoutines(next.routines);
   meta.value = withDefaults(next.meta, DEFAULT_META);
   schedule.value = isPlainObject(next.schedule)
@@ -1410,7 +1409,7 @@ export const sessions = signal<Session[]>(asSessions(initial.sessions));
 
 /** Datos temporales de demostración: solo visibles en la vista demo de Progreso. */
 export const demoSessions = signal<Session[]>([]);
-export const demoMode = signal(false);
+export const demoMode = computed(() => demoSessions.value.length > 0);
 
 /**
  * La sesión en curso (`pulso.state.active`), reactiva: **una sola fuente de verdad**
@@ -1604,7 +1603,6 @@ export function demoData(weeks = 8): number {
   });
   if (!list.length) return 0;
   demoSessions.value = list;
-  demoMode.value = true;
   return list.length;
 }
 
@@ -1615,7 +1613,6 @@ export function demoData(weeks = 8): number {
 export function clearDemo(): number {
   const removed = demoSessions.value.length;
   demoSessions.value = [];
-  demoMode.value = false;
   return removed;
 }
 

@@ -17,12 +17,16 @@
 import { signal } from '@preact/signals';
 
 import { addDays } from '@/domain/dates';
+import {
+  firstString,
+  normalizeCoachRoutineItem,
+  readCoachRoutineProposal,
+} from '@/domain/coach-routine';
 import { findExercise, GOAL_REPS, GOAL_REST, GOAL_SETS, groupLabel } from '@/domain/data';
 import { matchExercise } from '@/domain/match';
 import { clamp, int, num } from '@/domain/num';
 import { richItems, routineFromTemplate } from '@/domain/plan';
 import type { PlanInput } from '@/domain/plan';
-import { sanitizePrescription } from '@/domain/prescription';
 import { norm, similarity } from '@/domain/text';
 import type { Exercise, RoutineItem, RoutineTemplate, Session } from '@/domain/types';
 import type { ScheduleDay } from '@/state/store';
@@ -32,27 +36,7 @@ import { dayState } from './calendar-helpers';
 /** Cuántos ejercicios devuelve la búsqueda por defecto. */
 export const SEARCH_LIMIT = 8;
 
-/* ---------- petición de edición de rutina (calendario → rutinas) ---------- */
-
-/**
- * Canal para abrir el editor de una rutina desde otra pestaña (p. ej. el botón
- * «Editar ejercicios del día» del calendario). La vista Rutinas lo consume con
- * `takeRoutineEditRequest()` al montar; se consume UNA vez para que un cambio
- * de pestaña posterior no reabra el editor.
- */
-export const routineEditRequest = signal<string | null>(null);
-
-/** Pide editar una rutina (id) desde otra pestaña. */
-export function requestEditRoutine(id: string): void {
-  routineEditRequest.value = id;
-}
-
-/** Lee y limpia la petición pendiente (null si no hay ninguna). */
-export function takeRoutineEditRequest(): string | null {
-  const id = routineEditRequest.value;
-  if (id) routineEditRequest.value = null;
-  return id;
-}
+/* ---------- borrador para editar un día del calendario ---------- */
 
 /** Borrador aislado para editar los ejercicios de un día del calendario. */
 export interface RoutineEditDraft {
@@ -171,6 +155,10 @@ function sessionKey(session: Session): string {
 
 /** Un ejercicio propuesto, ya en números y con el nombre resuelto. */
 export interface SuggestionExercise {
+  /** ID canónico cuando se resolvió; conserva un `exId` inválido si venía en la propuesta. */
+  exId?: string;
+  /** Evita volver a interpretar como nombre un ID desconocido mostrado en preview. */
+  idOnly?: boolean;
   /** Nombre tal y como se va a guardar (el de la biblioteca si se pudo resolver) */
   name: string;
   /** ¿Está en la biblioteca? Si no, `applySuggestionAsRoutine` lo omitirá */
@@ -189,38 +177,10 @@ export interface SuggestionExercise {
 export interface RoutineSuggestion {
   title: string;
   focus: string;
+  notes: string;
+  source: string;
   rationale: string[];
   exercises: SuggestionExercise[];
-}
-
-function isPlain(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Primer campo de `keys` que sea string no vacío (alias que el modelo puede usar). */
-function firstString(obj: Record<string, unknown>, keys: readonly string[]): string {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return '';
-}
-
-/** `weight` propuesto: `''`/ausente = sin peso (`null`), no `0`. */
-function toWeight(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') return null;
-  const parsed = num(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/** El `rationale` del modelo: array de frases o una frase suelta. */
-function toRationale(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .filter((line): line is string => typeof line === 'string' && line.trim() !== '')
-      .map((line) => line.trim());
-  }
-  return typeof value === 'string' && value.trim() ? [value.trim()] : [];
 }
 
 /**
@@ -238,9 +198,9 @@ function toRationale(value: unknown): string[] {
 function resolveName(
   name: string,
   library: readonly Exercise[],
-): { name: string; matched: boolean } {
+): { id?: string; name: string; matched: boolean } {
   const match = matchExercise(name, library);
-  if (match.ex) return { name: match.ex.name, matched: true };
+  if (match.ex) return { id: match.ex.id, name: match.ex.name, matched: true };
   return { name, matched: false };
 }
 
@@ -250,50 +210,49 @@ function resolveName(
  * ejercicio con nombre (el mismo criterio que `applySuggestionAsRoutine`).
  */
 export function toSuggestion(raw: unknown, library: readonly Exercise[]): RoutineSuggestion | null {
-  if (!isPlain(raw)) return null;
-  const list = Array.isArray(raw.exercises)
-    ? raw.exercises
-    : Array.isArray(raw.items)
-      ? raw.items
-      : null;
-  if (!list) return null;
+  const proposal = readCoachRoutineProposal(raw);
+  if (!proposal) return null;
 
   const exercises: SuggestionExercise[] = [];
-  for (const entry of list) {
-    if (!isPlain(entry)) continue;
+  for (const entry of proposal.entries) {
     const name = firstString(entry, ['name', 'exercise', 'ejercicio']);
-    if (!name) continue;
-    const resolved = resolveName(name, library);
-    const clean = sanitizePrescription(
-      {
-        sets: entry.sets === undefined ? undefined : int(entry.sets, 3),
-        repMin: entry.repMin === undefined ? undefined : int(entry.repMin, 8),
-        repMax: entry.repMax === undefined ? undefined : int(entry.repMax, 12),
-        rest: entry.rest === undefined ? undefined : int(entry.rest, 90),
-        weight: toWeight(entry.weight),
-      },
+    const exId = firstString(entry, ['exId']);
+    const byId = exId ? library.find((exercise) => exercise.id === exId) : undefined;
+    if (!name && !exId) continue;
+    const resolved = byId
+      ? { id: byId.id, name: byId.name, matched: true }
+      : name
+        ? resolveName(name, library)
+        : { id: exId, name: exId, matched: false };
+    const normalized = normalizeCoachRoutineItem(
+      entry,
+      resolved.name,
       { sets: 3, repMin: 8, repMax: 12, rest: 90, weight: null },
     );
     exercises.push({
-      name: resolved.name,
+      ...(resolved.id || exId ? { exId: resolved.id || exId } : {}),
+      ...(!name && exId && !byId ? { idOnly: true } : {}),
+      name: normalized.name,
       matched: resolved.matched,
-      sets: clean.sets,
-      repMin: clean.repMin,
-      repMax: clean.repMax,
-      rest: clean.rest,
-      weight: clean.weight,
-      notes: firstString(entry, ['notes', 'note']),
+      sets: normalized.prescription.sets,
+      repMin: normalized.prescription.repMin,
+      repMax: normalized.prescription.repMax,
+      rest: normalized.prescription.rest,
+      weight: normalized.prescription.weight,
+      notes: normalized.notes,
       /* el par viaja hasta la tarjeta y hasta «Aplicar»: sin esto se guardaba a
          ciegas una rutina con superseries que el usuario nunca vio */
-      superset: firstString(entry, ['superset']).slice(0, 8) || null,
+      superset: normalized.superset,
     });
   }
   if (!exercises.length) return null;
 
   return {
-    title: firstString(raw, ['title', 'name']) || 'Rutina del coach',
-    focus: firstString(raw, ['focus', 'grupos']),
-    rationale: toRationale(raw.rationale),
+    title: proposal.title,
+    focus: proposal.focus,
+    notes: proposal.notes,
+    source: proposal.source,
+    rationale: proposal.rationale,
     exercises,
   };
 }

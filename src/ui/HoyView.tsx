@@ -33,6 +33,7 @@ import type { Session } from '@/domain/types';
 import {
   active,
   rest,
+  repeatSession,
   startFreeSession,
   startFromPlan,
   startFromRoutine,
@@ -43,7 +44,7 @@ import { exercises, routines, schedule, sessions, setDay, settings } from '@/sta
 import { restoreDayPlanPatch, restDayPatch } from './calendar-helpers';
 import { ExercisePickerModal } from './ExercisePickerModal';
 import { HelpBtn } from './HelpModal';
-import { greeting, lastSessions, planRows, repeatItems, todayPlan, weekCells } from './hoy-helpers';
+import { greeting, lastSessions, planRows, todayPlan, weekCells } from './hoy-helpers';
 import type { TodayPlan } from './hoy-helpers';
 import { Icon } from './Icon';
 import { Kpi, SectionHead } from './kit';
@@ -563,10 +564,10 @@ export function HoyView() {
   }
 
   function repeat(session: Session): void {
-    startFromPlan(repeatItems(session), {
-      name: session.name || 'Entrenamiento',
-      dayIso: now,
-    });
+    if (!repeatSession(session, now)) {
+      toast('Termina la sesión actual primero', { kind: 'warn' });
+      return;
+    }
     toast('Sesión cargada con los pesos anteriores', { kind: 'ok' });
   }
 

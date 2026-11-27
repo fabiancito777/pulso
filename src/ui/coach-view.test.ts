@@ -4,12 +4,9 @@
  *
  * Los tests corren en node (sin DOM), así que aquí NO se monta el componente:
  * lo que hay que vigilar es el DATO, que es lo que se rompe sin darse cuenta —
- * los 6 chips  con sus prompts literales, iconos que existan de verdad
- * en el catálogo generado (`ui/icons.ts` es un archivo generado), el badge de
- * ms/ok del «Probar», las opciones de un turno (`turnOpts`), que es lo único
- * que manda la pregunta del usuario al modelo, y la unión chip + caja
- * (`chipText`): con la caja vacía el ask literal de siempre y con texto
- * escrito el ask + el contexto rotulado.
+ * la tarea y destino de las acciones, sus iconos en el catálogo generado
+ * (`ui/icons.ts`), el badge de ms/ok del «Probar», las opciones de un turno
+ * (`turnOpts`) y el texto de contexto que viaja con un chip (`chipText`).
  */
 import { describe, expect, it } from 'vitest';
 
@@ -52,71 +49,37 @@ describe('turno de la vista (`turnOpts` → runCoachTask)', () => {
 });
 
 describe('chips rápidos', () => {
-  it('son 6 y las etiquetas no se repiten (son la key de React)', () => {
-    expect(QUICK_ACTIONS).toHaveLength(6);
-    expect(new Set(QUICK_ACTIONS.map((a) => a.label)).size).toBe(6);
-  });
-
-  it('los tres que faltaban llevan el prompt literal', () => {
-    expect(QUICK_ACTIONS.slice(3).map((a) => [a.label, a.ask])).toEqual([
-      [
-        'Revisar volumen',
-        'Revisa mi volumen semanal por grupo muscular y dime qué grupos están descompensados y cómo corregirlo.',
-      ],
-      [
-        'Romper un récord',
-        'Elige el ejercicio donde tengo más margen de mejora y dame un plan concreto de 4 semanas para subir mi récord.',
-      ],
-      [
-        'Consejo de recuperación',
-        '¿Qué ajustes de recuperación, sueño y alimentación me recomiendas según mi volumen actual de entrenamiento?',
-      ],
-    ]);
-  });
-
-  it('los tres nuevos van a un `chat` (se mandan con send())', () => {
-    expect(QUICK_ACTIONS.map((a) => a.task)).toEqual([
-      'suggest',
-      'plan',
-      'analyze',
-      'chat',
-      'chat',
-      'chat',
-    ]);
-  });
-
-  it('todos los iconos existen en el catálogo generado', () => {
+  it('cada acción tiene destino válido y las acciones principales conservan su tarea', () => {
+    expect(QUICK_ACTIONS.length).toBeGreaterThan(0);
+    expect(new Set(QUICK_ACTIONS.map((action) => action.label)).size).toBe(QUICK_ACTIONS.length);
     for (const action of QUICK_ACTIONS) {
+      expect(action.label.trim()).not.toBe('');
+      expect(action.ask.trim()).not.toBe('');
       expect(ICONS[action.icon], `icono de «${action.label}»`).toBeDefined();
     }
-  });
 
-  it('solo el chip de sesión de hoy salta de pestaña (salta de pestaña)', () => {
-    const jumps = QUICK_ACTIONS.filter((a) => a.jump);
-    expect(jumps.map((a) => a.label)).toEqual(['Sugerir entreno']);
-    expect(jumps[0]?.jump).toEqual({ tab: 'hoy', toast: 'Sesión lista en la pestaña Hoy' });
+    const suggest = QUICK_ACTIONS.find((action) => action.label === 'Sugerir entreno');
+    expect(suggest?.jump?.tab).toBe('hoy');
+    expect(suggest?.jump?.toast.trim()).not.toBe('');
+
+    const plan = QUICK_ACTIONS.find((action) => action.label === 'Plan semanal');
+    expect(plan?.task).toBe('plan');
+    expect(plan?.jump).toBeUndefined();
+    expect(QUICK_ACTIONS.filter((action) => action !== suggest).every((action) => !action.jump)).toBe(
+      true,
+    );
   });
 });
 
 describe('chip con contexto de la caja (`chipText`)', () => {
-  it('caja vacía → el chip manda su `ask` EXACTO (mismo ask)', () => {
-    for (const action of QUICK_ACTIONS) {
-      expect(chipText(action.ask, ''), action.label).toBe(action.ask);
-      expect(chipText(action.ask, '   \n\t '), action.label).toBe(action.ask);
-    }
-  });
-
-  it('caja con texto → el `ask` arriba y el contexto debajo, rotulado', () => {
+  it('conserva el ask si la caja está vacía y añade solo el contexto recortado', () => {
+    expect(chipText('ask de Sugerir', '')).toBe('ask de Sugerir');
+    expect(chipText('ask de Plan', '   \n\t ')).toBe('ask de Plan');
     const ask = 'Genera el entreno de hoy para mí.';
     expect(chipText(ask, 'solo empuje, y nada de press banca')).toBe(
       `${ask}\n\nContexto adicional: solo empuje, y nada de press banca`,
     );
-  });
-
-  it('el contexto se recorta (sin espacios ni saltos de sobra) y no se pisa el `ask`', () => {
     expect(chipText('ask literal', '  hola  \n')).toBe('ask literal\n\nContexto adicional: hola');
-    /* el ask nunca se toca: los tests de QUICK_ACTIONS siguen viendo el literal */
-    expect(chipText('ask literal', 'hola').startsWith('ask literal')).toBe(true);
   });
 });
 

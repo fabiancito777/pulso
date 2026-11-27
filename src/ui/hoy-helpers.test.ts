@@ -14,11 +14,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { streak, totals } from '@/domain/analytics';
+import { repeatItems } from '@/domain/repeat-session';
 import type { Exercise, Session, SessionEntry, SetLog } from '@/domain/types';
 import type { Routine, ScheduleDay } from '@/state/store';
 
 import { restDayPatch } from './calendar-helpers';
-import { greeting, lastSessions, planRows, repeatItems, todayPlan, weekCells } from './hoy-helpers';
+import { greeting, lastSessions, planRows, todayPlan, weekCells } from './hoy-helpers';
 
 /* ---------- datos de prueba ---------- */
 

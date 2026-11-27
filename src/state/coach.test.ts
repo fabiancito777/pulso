@@ -48,6 +48,7 @@ vi.stubGlobal('localStorage', {
 const store = await import('./store');
 const coach = await import('./coach');
 const create = await import('./exercise-create');
+const routinesHelpers = await import('@/ui/routines-helpers');
 
 const NOMBRE = 'Press de Piso con Mancuernas';
 const FECHA_SESION = '2026-09-20';
@@ -810,6 +811,59 @@ describe('applySuggestionAsRoutine', () => {
     expect(unresolved).toEqual([]);
     expect(routine?.items).toHaveLength(1);
     expect(routine?.items[0]?.exId).toBe(pressId());
+  });
+
+  it('admite exId directo, mantiene peso cero y reporta ids fuera de biblioteca', () => {
+    const { routine, unresolved } = coach.applySuggestionAsRoutine({
+      title: 'Por id',
+      items: [{ exId: pressId(), weight: 0 }, { exId: 'ejercicio-borrado' }],
+    });
+    expect(routine?.items[0]).toMatchObject({ exId: pressId(), weight: 0 });
+    expect(unresolved).toEqual([{ name: 'ejercicio-borrado', reason: 'ya no está en tu biblioteca' }]);
+  });
+
+  it('la preview conserva el exId si hay nombres duplicados y guarda ese item', () => {
+    const source = store.exercises.value.find((exercise) => exercise.id === pressId());
+    if (!source) throw new Error('falta el ejercicio base del fixture');
+    const duplicate = { ...source, id: 'duplicate-press-id' };
+    const state = store.readState();
+    store.writeState({ ...state, exercises: [...store.exercises.value, duplicate] });
+    store.refresh();
+
+    const preview = routinesHelpers.toSuggestion(
+      { title: 'Por id', items: [{ exId: duplicate.id, name: source.name }] },
+      store.exercises.value,
+    );
+    expect(preview?.exercises[0]?.exId).toBe(duplicate.id);
+
+    const { routine } = coach.applySuggestionAsRoutine(preview);
+    expect(routine?.items[0]?.exId).toBe(duplicate.id);
+
+    /* Un ID viejo puede parecer un nombre válido; preview debe marcarlo como
+       id-only para que el guardado no lo convierta en un match por nombre. */
+    const staleIdPreview = routinesHelpers.toSuggestion(
+      { title: 'ID antiguo', items: [{ exId: source.name }] },
+      store.exercises.value,
+    );
+    expect(staleIdPreview?.exercises[0]?.idOnly).toBe(true);
+    const stale = coach.applySuggestionAsRoutine(staleIdPreview);
+    expect(stale.routine).toBeNull();
+    expect(stale.unresolved).toEqual([{ name: source.name, reason: 'ya no está en tu biblioteca' }]);
+  });
+
+  it('un update sin título conserva el nombre existente', () => {
+    const initial = coach.applySuggestionAsRoutine({
+      title: 'Nombre original',
+      exercises: [{ name: NOMBRE }],
+    }).routine;
+    expect(initial).not.toBeNull();
+    const out = coach.applySuggestionAsRoutine({
+      action: 'update',
+      routineId: initial?.id,
+      exercises: [{ name: NOMBRE, sets: 4 }],
+    });
+    expect(out.updated).toBe(true);
+    expect(out.routine?.name).toBe('Nombre original');
   });
 });
 

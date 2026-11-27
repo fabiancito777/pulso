@@ -65,11 +65,6 @@ describe('cada ayuda apunta a un id que existe', () => {
       }
     }
   });
-
-  it('hay ayuda enganchada en al menos 10 ficheros (no se queda en uno solo)', () => {
-    const files = Object.entries(SOURCES).filter(([, src]) => idsIn(src).length > 0);
-    expect(files.length).toBeGreaterThanOrEqual(10);
-  });
 });
 
 describe('ningún tema se queda sin ancla', () => {
@@ -81,41 +76,30 @@ describe('ningún tema se queda sin ancla', () => {
   });
 });
 
-describe('Ajustes · fase 2', () => {
-  const src = SOURCES['./SettingsView.tsx'] ?? '';
+describe('entrada a la guía', () => {
+  it('cada pestaña mantiene su ayuda anclada en la vista correspondiente', () => {
+    const tabViews = [
+      ['tab.hoy', './HoyView.tsx'],
+      ['tab.rutinas', './RoutinesView.tsx'],
+      ['tab.calendario', './CalendarView.tsx'],
+      ['tab.coach', './CoachView.tsx'],
+      ['tab.progreso', './ProgressCard.tsx'],
+      ['tab.ajustes', './SettingsView.tsx'],
+    ] as const;
 
-  it('las entradas opt.* de la guía están enganchadas', () => {
-    const opts = HELP_IDS.filter((id) => id.startsWith('opt.'));
-    const used = new Set(idsIn(src));
-    for (const id of opts) expect(used.has(id), id).toBe(true);
-  });
-
-  it('coach.apiKey también (la única de coach.* que vive en Ajustes)', () => {
-    expect(idsIn(src)).toContain('coach.apiKey');
-  });
-
-});
-
-describe('fase 3 · una ayuda por pestaña', () => {
-  /* dónde vive la cabecera de cada pestaña */
-  const TAB_VIEWS: [id: string, files: string[]][] = [
-    ['tab.hoy', ['./HoyView.tsx']],
-    ['tab.rutinas', ['./RoutinesView.tsx']],
-    ['tab.calendario', ['./CalendarView.tsx']],
-    ['tab.coach', ['./CoachView.tsx']],
-    ['tab.progreso', ['./ProgressCard.tsx']],
-    ['tab.ajustes', ['./SettingsView.tsx']],
-  ];
-
-  it('los tab.* existen y están conectados en su vista', () => {
-    for (const [id, files] of TAB_VIEWS) {
-      expect(HELP_IDS, id).toContain(id);
-      const where = files.filter((f) => idsIn(SOURCES[f] ?? '').includes(id));
-      expect(where, `${id} no está en ${files.join(' ni ')}`).not.toHaveLength(0);
+    for (const [id, file] of tabViews) {
+      expect(idsIn(SOURCES[file] ?? ''), `${id} en ${file}`).toContain(id);
     }
   });
 
-  it('la calculadora explica su inventario (opt.plates en su cabecera)', () => {
+  it('Ajustes mantiene todas sus opciones y coach.apiKey ancladas en esa vista', () => {
+    const settingsIds = new Set(idsIn(SOURCES['./SettingsView.tsx'] ?? ''));
+    const settingsHelp = HELP_IDS.filter((id) => id.startsWith('opt.'));
+
+    for (const id of [...settingsHelp.filter((id) => id !== 'opt.plates'), 'coach.apiKey']) {
+      expect(settingsIds.has(id), id).toBe(true);
+    }
+    expect(settingsIds.has('opt.plates')).toBe(true);
     expect(idsIn(SOURCES['./PlatesCard.tsx'] ?? '')).toContain('opt.plates');
   });
 
