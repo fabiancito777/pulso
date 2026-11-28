@@ -175,6 +175,8 @@ export interface ContextOptions {
   maxSessions?: number;
   /** bloque extra al final (p. ej. `DÍA DE HOY: …`) */
   extra?: string;
+  /** lunes de la semana solicitada para la tarea `plan` */
+  weekFrom?: string;
 }
 
 export interface BuildContextParams {

@@ -62,6 +62,8 @@ describe('asChatLines', () => {
         text: 'aviso',
         thoughts: 'pienso',
         notes: '1,2 s',
+        task: 'suggest',
+        unit: 'lb',
         action: { label: 'Configurar', tab: 'ajustes', sub: 'coach' },
         consulted: ['Press de banca', 3],
       },
@@ -71,6 +73,8 @@ describe('asChatLines', () => {
     expect(lines[0]).toEqual({ role: 'user', text: 'hola', ts: '2026-09-28T10:00:00.000Z' });
     expect(lines[1].thoughts).toBe('pienso');
     expect(lines[1].notes).toBe('1,2 s');
+    expect(lines[1].task).toBe('suggest');
+    expect(lines[1].unit).toBe('lb');
     expect(lines[1].action).toEqual({ label: 'Configurar', tab: 'ajustes', sub: 'coach' });
     expect(lines[1].consulted).toEqual(['Press de banca']);
   });
@@ -157,6 +161,14 @@ describe('persistencia', () => {
     chat.markApplied(0);
     expect(chat.chat.value[0].payload).toBe('no');
   });
+
+  it('marca inicio y guardado de una sugerencia por separado', () => {
+    chat.addChat({ role: 'model', text: 'Rutina', payload: { title: 'A' } });
+    chat.markStarted(0);
+    chat.markSaved(0);
+    expect(chat.chat.value[0]?.payload).toMatchObject({ started: true, saved: true });
+    expect(storedChat()[0]).toMatchObject({ payload: { started: true, saved: true } });
+  });
 });
 
 /* ---------- propuestas de ejercicios nuevos ---------- */
@@ -237,6 +249,65 @@ describe('promptHistory', () => {
       { role: 'user', text: 'a' },
       { role: 'model', text: 'b' },
     ]);
+  });
+
+  it('resume la tarjeta real de entreno con orden y prescripción para el siguiente turno', () => {
+    const history = chat.promptHistory([
+      {
+        role: 'model',
+        text: 'Propuesta lista.',
+        unit: 'kg',
+        payload: {
+          title: 'Empuje',
+          exercises: [
+            { name: 'Press', sets: 3, repMin: 8, repMax: 10, weight: 50, rest: 120 },
+            { name: 'Aperturas', sets: 2, repMin: 12, repMax: 12, rest: 60 },
+          ],
+        },
+      },
+    ]);
+    expect(history[0]?.text).toContain('Press 3x8-10@50kg/d120s; Aperturas 2x12/d60s');
+    expect(history[0]?.text).toContain('Propuesta lista.');
+  });
+
+  it('resume ejercicios de planes y limita el turno final a 600 caracteres', () => {
+    const history = chat.promptHistory([
+      {
+        role: 'model',
+        text: 'x'.repeat(900),
+        unit: 'kg',
+        payload: {
+          days: [
+            {
+              date: '2026-11-27',
+              title: 'Empuje',
+              exercises: [{ name: 'Press', sets: 4, reps: 8, weight: 60, rest: 150 }],
+            },
+          ],
+        },
+      },
+    ]);
+    expect(history[0]?.text).toContain('2026-11-27 Empuje(Press 4x8@60kg/d150s)');
+    expect(history[0]?.text.length).toBeLessThanOrEqual(600);
+  });
+
+  it('mantiene compatibilidad con tarjetas antiguas que no tienen payload', () => {
+    expect(chat.promptHistory([{ role: 'model', text: 'Respuesta anterior' }])).toEqual([
+      { role: 'model', text: 'Respuesta anterior' },
+    ]);
+  });
+
+  it('no inventa kg o lb en el resumen de una tarjeta antigua sin unidad guardada', () => {
+    const [model] = chat.promptHistory([
+      {
+        role: 'model',
+        text: 'Sesión propuesta.',
+        payload: { exercises: [{ name: 'Press', sets: 3, reps: 8, weight: 50, rest: 120 }] },
+      },
+    ]);
+    expect(model?.text).toContain('Press 3x8@50/d120s');
+    expect(model?.text).not.toContain('50kg');
+    expect(model?.text).not.toContain('50lb');
   });
 });
 

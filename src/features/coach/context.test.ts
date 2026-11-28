@@ -149,6 +149,15 @@ describe('secciones del contexto', () => {
     }
   });
 
+  it('el contexto de plan semanal puede apuntar a otra semana del calendario', () => {
+    const text = context({ opts: { todayIso: HOY, weekFrom: '2026-10-05' } });
+
+    expect(text).toContain('=== PLAN SEMANAL (2026-10-05 → 2026-10-11, día a día) ===');
+    expect(text).toContain('5 oct 2026 (lun)');
+    expect(text).toContain('11 oct 2026 (dom)');
+    expect(text).not.toContain('12 oct 2026 (lun)');
+  });
+
   it('describe el perfil con la fecha inyectada', () => {
     expect(text).toContain('Fecha de hoy: 2026-09-24 (jueves)');
     expect(text).toContain('Nombre: Ana');
@@ -173,7 +182,7 @@ describe('secciones del contexto', () => {
   });
 
   it('el HISTORIAL trae la plantilla entre corchetes', () => {
-    expect(text).toContain('Press de banca: 75x6, 75x6, 75x6, 75x6');
+    expect(text).toContain('Press de banca: 75 kg×6, 75 kg×6, 75 kg×6, 75 kg×6');
     expect(text).toContain('[objetivo plantilla: 4x8-12 · descanso 90s · cumple 0/4]');
   });
 
@@ -206,6 +215,23 @@ describe('secciones nuevas del coach', () => {
     expect(text).toContain(
       '- 2026-09-22 · Press de banca: 75 kg × 6 · objetivo 85 kg × 8-12 (por debajo)',
     );
+  });
+
+  it('convierte el historial al sistema de unidades del perfil y lo etiqueta', () => {
+    const pounds: Session = {
+      ...SESION,
+      unit: 'lb',
+      entries: [
+        {
+          exId: 'ex-press',
+          name: 'Press de banca',
+          sets: [{ weight: 100, reps: 8, done: true }],
+        },
+      ],
+    };
+    const text = context({ sessions: [pounds] });
+    expect(text).toContain('Press de banca: 45,4 kg×8');
+    expect(text).not.toContain('Press de banca: 100×8');
   });
 
   it('mete la memoria del coach tal cual', () => {
@@ -436,7 +462,7 @@ describe('detalle extra que ve el coach', () => {
     };
     const text = context({ sessions: [sesionRpe] });
     expect(text).toContain('RPE 8');
-    expect(text).toContain('Press de banca: 75x6@7');
+    expect(text).toContain('Press de banca: 75 kg×6@7');
   });
 
   it('marca la sesión parcial y muestra la sesión en curso con sus pendientes', () => {
@@ -479,7 +505,7 @@ describe('detalle extra que ve el coach', () => {
       text.indexOf('=== RUTINAS GUARDADAS'),
       text.indexOf('=== VOLUMEN POR SEMANA'),
     );
-    expect(historial).toContain('Press de banca con barra: 60x8');
+    expect(historial).toContain('Press de banca con barra: 60 kg×8');
     expect(historial).not.toContain(exId);
     expect(rutinas).toContain('Press de banca con barra');
     expect(rutinas).not.toContain(exId);
@@ -501,9 +527,7 @@ describe('plan frente a realidad en el contexto', () => {
       ],
     };
     const text = context({ sessions: [incompleta] });
-    expect(text).toContain(
-      '[objetivo plantilla: 4x8-12 · descanso 90s · cumple 1/1] (series 1/4)',
-    );
+    expect(text).toContain('[objetivo plantilla: 4x8-12 · descanso 90s · cumple 1/1] (series 1/4)');
   });
 
   it('lista los ejercicios del plan que no se llegaron a hacer', () => {
@@ -543,7 +567,9 @@ describe('plan frente a realidad en el contexto', () => {
       sessions: [],
       schedule: { '2026-09-21': { status: 'planned', plan: [{ exId: 'ex-press' }] } },
     });
-    expect(text).toContain('- 21 sep 2026 (lun): libre · plan: Press de banca [SALTADO / SIN HACER]');
+    expect(text).toContain(
+      '- 21 sep 2026 (lun): libre · plan: Press de banca [SALTADO / SIN HACER]',
+    );
   });
 
   it('avisa cuando se entrenó con otra rutina distinta a la asignada al día', () => {

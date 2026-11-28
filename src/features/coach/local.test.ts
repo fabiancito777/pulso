@@ -280,7 +280,8 @@ describe('localSuggest', () => {
     expect(out.focus).toBe('Cuádriceps · Pecho · Espalda · Core');
     expect(out.notes).toContain('8-12');
     for (const item of out.exercises) {
-      expect(item.weight).toBe(0); /* sin historial: la app lo pinta vacío */
+      expect(item.weight).toBeNull(); /* sin historial: iniciar con carga vacía */
+      expect(item.basis).toContain('sin historial');
       expect(item.sets).toBeGreaterThan(0);
       expect(item.repMin).toBeLessThanOrEqual(item.repMax);
     }
@@ -316,19 +317,55 @@ describe('localSuggest', () => {
     const out = localSuggest(params({ sessions, equipment: {} }));
 
     /* flexiones en vez de press banca: es lo único de pecho que se puede cargar */
-    expect(out.exercises.map((item) => item.name)).toEqual(['Flexiones', 'Plancha']);
+    expect(out.exercises.map((item) => item.name)).toEqual([
+      'Flexiones',
+      'Zancadas',
+      'Puente de glúteo',
+      'Plancha',
+    ]);
     for (const item of out.exercises) {
       expect(library().find((e) => e.id === item.exId)?.equip).toBe('');
     }
 
     /* espalda/hombros/bíceps no tienen alternativa sin material → ni salen */
-    expect(out.rationale).toHaveLength(1);
+    expect(out.rationale.length).toBeGreaterThan(1);
     expect(out.rationale[0]).toContain('Pecho');
-    expect(out.focus).toBe('Pecho · Core');
+    expect(out.focus).toBe('Pecho · Cuádriceps · Glúteos · Core');
     for (const ausente of ['Espalda', 'Hombros', 'Bíceps']) {
       expect(out.focus).not.toContain(ausente);
       expect(out.rationale.join(' ')).not.toContain(ausente);
     }
+  });
+
+  it('no puntúa grupos vetados y rellena huecos con grupos disponibles', () => {
+    const sessions = [session('2026-09-12', [{ exId: 'press' }])];
+    const exercises = library().map((item) =>
+      item.group === 'espalda' || item.group === 'hombros' ? { ...item, allowed: false } : item,
+    );
+    const out = localSuggest(params({ sessions, exercises }));
+
+    expect(out.exercises.length).toBeGreaterThan(0);
+    expect(out.exercises.length).toBeLessThanOrEqual(7); /* seis huecos + core */
+    expect(
+      out.exercises.every((item) => !['espalda', 'hombros'].includes(groupOf(item.exId))),
+    ).toBe(true);
+    expect(out.rationale.join(' ')).not.toContain('Espalda');
+    expect(out.rationale.join(' ')).not.toContain('Hombros');
+  });
+
+  it('el primer día usa grupos disponibles si la receta genérica no tiene opciones', () => {
+    const exercises = library().map((item) =>
+      ['cuadriceps', 'pecho', 'espalda'].includes(item.group) ? { ...item, allowed: false } : item,
+    );
+    const out = localSuggest(params({ exercises }));
+
+    expect(out.exercises.length).toBeGreaterThan(0);
+    expect(
+      out.exercises.every(
+        (item) => !['cuadriceps', 'pecho', 'espalda'].includes(groupOf(item.exId)),
+      ),
+    ).toBe(true);
+    expect(out.rationale.join(' ')).not.toContain('genérica');
   });
 
   it('el peso sale de `suggest` (analytics) en la unidad del usuario', () => {
@@ -342,10 +379,33 @@ describe('localSuggest', () => {
       plan.days.flatMap((day) => day.exercises).find((item) => item.exId === 'sentadilla')
         ?.weight ?? 0;
 
-    /* 100 kg × 8 → 95 kg estimados para 10 reps; en libras, lo mismo */
-    expect(pesoDe(kg)).toBeCloseTo(95, 1);
+    /* 8 reps no alcanzan el objetivo de 10: mantiene 100 kg; en libras, lo mismo */
+    expect(pesoDe(kg)).toBe(100);
     expect(pesoDe(lb)).toBeCloseTo(pesoDe(kg) * 2.20462, 1);
     expect(pesoDe(lb)).toBeGreaterThan(200);
+  });
+
+  it('una propuesta local conserva motivo y carga con historial 10/7/6/5', () => {
+    const history: Session = {
+      id: 's-peso-local',
+      date: '2026-09-27',
+      startedAt: '2026-09-27T10:00:00.000Z',
+      endedAt: '2026-09-27T11:00:00.000Z',
+      unit: 'kg',
+      entries: [
+        {
+          exId: 'press',
+          sets: [10, 7, 6, 5].map((reps) => ({ weight: 25, reps, done: true })),
+        },
+      ],
+    };
+    const out = localSuggest(
+      params({ sessions: [history], exercises: library().filter((item) => ['pecho', 'core'].includes(item.group)) }),
+    );
+    const press = out.exercises.find((item) => item.exId === 'press');
+
+    expect(press?.weight).toBe(25);
+    expect(press?.basis).toContain('Repite 25 kg');
   });
 
   it('una `suggest` inyectada manda sobre analytics', () => {

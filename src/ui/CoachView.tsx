@@ -44,10 +44,13 @@ import { proposalToDraft } from '@/domain/ai-exercise';
 import type { AIExerciseProposal, ProposalDraftResult } from '@/domain/ai-exercise';
 import { label as dateLabel, nowTs } from '@/domain/dates';
 import { equipLabel, groupLabel } from '@/domain/data';
+import { fmtN } from '@/domain/format';
 import { unresolvedNames } from '@/domain/match';
-import { int } from '@/domain/num';
+import { int, round } from '@/domain/num';
 import { supersetGroups } from '@/domain/supersets';
 import { norm } from '@/domain/text';
+import type { PlanItem } from '@/domain/types';
+import { fromKg, toKg } from '@/domain/units';
 import { GeminiError, testConnection } from '@/features/coach/client';
 import type { ChatMsg } from '@/features/coach/client';
 import { useCoachWait, WaitMeta } from './coach-wait';
@@ -60,6 +63,7 @@ import {
   applyWeek,
   hasApiKey,
   partitionUnresolved,
+  resolveCoachItems,
   runCoachTask,
 } from '@/state/coach';
 import type { CoachOutcome, CoachTaskOpts } from '@/state/coach';
@@ -70,13 +74,16 @@ import {
   clearChat,
   markApplied,
   markCreation,
+  markSaved,
+  markStarted,
   parseMd,
   promptHistory,
   reloadChat,
 } from '@/state/chat';
 import type { ChatLine, CreationState, MdSpan } from '@/state/chat';
 import { createExerciseFromAI, requestEdit } from '@/state/exercise-create';
-import { equipment, exercises, patchSettings, settings } from '@/state/store';
+import { active, equipment, exercises, patchSettings, settings } from '@/state/store';
+import { startFromPlan } from '@/state/session';
 import { HelpBtn } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
 import { toast } from '@/ui/toast';
@@ -139,6 +146,57 @@ function payloadOf(text: string): Record<string, unknown> | null {
   return Array.isArray(list) ? raw : null;
 }
 
+function suggestionEntries(value: unknown): unknown[] {
+  if (!isPlain(value)) return [];
+  const list = Array.isArray(value.exercises) ? value.exercises : value.items;
+  return Array.isArray(list) ? list : [];
+}
+
+function isSuggestionCard(payload: Record<string, unknown>, task?: CoachTask): boolean {
+  const hasPlan = Array.isArray(payload.days) || Array.isArray(payload.sessions);
+  const update = payload.action === 'update';
+  return (
+    !hasPlan &&
+    !update &&
+    (task === 'suggest' ||
+      (!payload.action && (payload.focus !== undefined || payload.rationale !== undefined)))
+  );
+}
+
+function decimalNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = Number(value.trim().replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Convierte pesos fijados en la propuesta a la unidad actual antes de iniciar/guardar. */
+export function payloadInCurrentUnit(
+  value: unknown,
+  sourceUnit: 'kg' | 'lb' | undefined,
+  targetUnit: 'kg' | 'lb' = settings.value.units,
+): unknown {
+  if (!isPlain(value) || !sourceUnit || sourceUnit === targetUnit) return value;
+  const convert = (list: unknown): unknown => {
+    if (!Array.isArray(list)) return list;
+    const entries: unknown[] = list;
+    return entries.map((entry) => {
+      if (!isPlain(entry)) return entry;
+      const weight = decimalNumber(entry.weight);
+      if (weight === null) return entry;
+      return {
+        ...entry,
+        weight: round(fromKg(toKg(weight, sourceUnit), targetUnit), 2),
+      };
+    });
+  };
+  return {
+    ...value,
+    ...(Array.isArray(value.exercises) ? { exercises: convert(value.exercises) } : {}),
+    ...(Array.isArray(value.items) ? { items: convert(value.items) } : {}),
+  };
+}
+
 /** `rationale` de una propuesta: string o lista de frases (los dos formatos del modelo). */
 function rationaleOf(payload: Record<string, unknown>): string {
   const raw = payload.rationale;
@@ -163,15 +221,23 @@ function rationaleOf(payload: Record<string, unknown>): string {
  * de la API) el pie cambia y el texto lleva un aviso encima: la propuesta
  * sigue siendo aplicable igual, pero ya no se vende como respuesta de la IA.
  */
-export function resultLine(task: CoachTask, out: CoachOutcome, model: string): ChatLine {
+export function resultLine(
+  task: CoachTask,
+  out: CoachOutcome,
+  model: string,
+  unit?: 'kg' | 'lb',
+  timestamp = nowTs(),
+): ChatLine {
   const local = out.origin === 'local';
   const notes = local ? localFooter(out, task) : footerOf(out, model);
   const line: ChatLine = {
     role: 'model',
     text: out.text || '(respuesta vacía)',
-    ts: nowTs(),
+    ts: timestamp,
     notes,
+    task,
   };
+  if (unit) line.unit = unit;
   if (out.thoughts) line.thoughts = out.thoughts;
   if (out.consulted.length) line.consulted = out.consulted;
   if (out.creations.length) line.creations = out.creations.map((item) => ({ ...item }));
@@ -254,6 +320,10 @@ export function creationSummary(proposal: AIExerciseProposal, draft: ProposalDra
 /** Nombres entrecomillados, con el mismo formato que `unresolvedNames`. */
 function quoted(list: readonly { name: string }[]): string {
   return list.map((item) => `«${item.name}»`).join(', ');
+}
+
+function unresolvedDetails(list: readonly { name: string; reason: string }[]): string {
+  return list.map((item) => `«${item.name}»: ${item.reason}`).join('; ');
 }
 
 /**
@@ -451,10 +521,10 @@ function renderMd(text: string): ComponentChildren[] {
 /* ---------- tarjeta de la propuesta ---------- */
 
 /** Qué botón lleva la tarjeta y qué se le pasa a `apply…`. */
-type ApplyKind = 'routine' | 'plan' | 'sessions';
+type ApplyKind = 'start' | 'routine' | 'plan' | 'sessions';
 
 /** Una línea de la tarjeta: día del plan (título · tipo) o ejercicio (nombre · prescripción). */
-function cardLine(item: unknown, isPlan: boolean): ComponentChildren {
+function cardLine(item: unknown, isPlan: boolean, unit?: 'kg' | 'lb'): ComponentChildren {
   if (!isPlain(item)) return null;
   const title = asText(item.title) || asText(item.name) || asText(item.exercise);
   if (isPlan) {
@@ -474,10 +544,10 @@ function cardLine(item: unknown, isPlan: boolean): ComponentChildren {
   const sets = int(item.sets, 0);
   const repMin = int(item.repMin, 0);
   const repMax = int(item.repMax, 0);
-  const weight = item.weight === null || item.weight === undefined ? 0 : int(item.weight, 0);
+  const weight = decimalNumber(item.weight);
   const bits = [
     sets && repMin ? `${sets}×${repMin}-${repMax || repMin}` : '',
-    weight ? `${weight}` : '',
+    weight === null ? '' : `${fmtN(weight)}${unit ? ` ${unit}` : ''}`,
   ].filter(Boolean);
   return (
     <>
@@ -490,10 +560,14 @@ function cardLine(item: unknown, isPlan: boolean): ComponentChildren {
 /** Resumen del JSON de `suggest`/`plan` con su botón de «Aplicar». */
 function PayloadCard({
   payload,
+  task,
+  unit,
   index,
   onApply,
 }: {
   payload: unknown;
+  task?: CoachTask;
+  unit?: 'kg' | 'lb';
   index: number;
   onApply: (index: number, kind: ApplyKind) => void;
 }) {
@@ -510,12 +584,15 @@ function PayloadCard({
   const isPlan = days.length > 0;
   const isSessions = sessionsList.length > 0;
   const isUpdate = asText(payload.action) === 'update';
+  const isSuggestion = isSuggestionCard(payload, task);
   const title =
     asText(payload.title) ||
     (isPlan ? 'Plan semanal' : isSessions ? 'Entrenos anteriores' : 'Propuesta de entreno');
   const target = asText(payload.target) || title;
   const focus = asText(payload.focus);
   const done = payload.done === true;
+  const saved = payload.saved === true || (isSuggestion && done);
+  const started = payload.started === true;
   const list = isPlan ? days : isSessions ? sessionsList : exercises;
   /* los pares que propuso el coach se ven ANTES de aplicar: si no, la rutina se
      guardaba con superseries que el usuario nunca tuvo delante */
@@ -571,7 +648,7 @@ function PayloadCard({
                   SS {pair.letter} · {pair.position}/{pair.size}
                 </span>
               ) : null}
-              {isSessions ? sessionLine(item) : cardLine(item, isPlan)}
+              {isSessions ? sessionLine(item) : cardLine(item, isPlan, unit)}
             </li>
           );
         })}
@@ -579,14 +656,36 @@ function PayloadCard({
       {!isPlan && !isSessions && exercises.length > 8 ? (
         <div class="tiny muted">+{exercises.length - 8} ejercicios más</div>
       ) : null}
-      <button
-        type="button"
-        class="btn sm primary mt-s"
-        disabled={done}
-        onClick={() => onApply(index, isPlan ? 'plan' : isSessions ? 'sessions' : 'routine')}
-      >
-        <Icon name={isPlan ? 'calendar' : isSessions ? 'check' : 'plus'} />
-        {isSessions
+      {isSuggestion ? (
+        <div class="row mt-s" style="gap:8px;flex-wrap:wrap">
+          <button
+            type="button"
+            class="btn sm primary"
+            disabled={started}
+            onClick={() => onApply(index, 'start')}
+          >
+            <Icon name="dumbbell" />
+            {started ? 'Entreno iniciado' : 'Empezar este entreno'}
+          </button>
+          <button
+            type="button"
+            class="btn sm ghost"
+            disabled={saved}
+            onClick={() => onApply(index, 'routine')}
+          >
+            <Icon name="plus" />
+            {saved ? 'Rutina guardada' : 'Guardar como rutina'}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          class="btn sm primary mt-s"
+          disabled={done}
+          onClick={() => onApply(index, isPlan ? 'plan' : isSessions ? 'sessions' : 'routine')}
+        >
+          <Icon name={isPlan ? 'calendar' : 'check'} />
+          {isSessions
           ? done
             ? 'Importadas'
             : 'Importar al historial'
@@ -597,7 +696,8 @@ function PayloadCard({
               : isUpdate
                 ? `Actualizar «${target}»`
                 : 'Aplicar como rutina'}
-      </button>
+        </button>
+      )}
     </div>
   );
 }
@@ -656,7 +756,7 @@ function Bubble({
         </details>
       ) : null}
       <div class="msg ai">{renderMd(line.text)}</div>
-      <PayloadCard payload={line.payload} index={index} onApply={onApply} />
+      <PayloadCard payload={line.payload} task={line.task} unit={line.unit} index={index} onApply={onApply} />
       <CreationCard line={line} index={index} onAction={onCreate} />
       {line.consulted && line.consulted.length ? (
         <div class="coach-meta tiny muted">consultó: {line.consulted.join(' · ')}</div>
@@ -903,7 +1003,6 @@ export const QUICK_ACTIONS: readonly QuickAction[] = [
     label: 'Sugerir entreno',
     icon: 'dumbbell',
     ask: 'Genera el entreno de hoy para mí.',
-    jump: { tab: 'hoy', toast: 'Sesión lista en la pestaña Hoy' },
   },
   {
     task: 'plan',
@@ -1036,8 +1135,11 @@ export function CoachView() {
        las cuatro tareas como `contents` de Gemini: si no, «los récords que te
        pasé antes» se perdía al pedir un entreno con el chip (P1). */
     const history = promptHistory();
+    const requestModel = String(settings.value.ai.model ?? '');
+    const requestUnit = settings.value.units;
+    const requestTimestamp = nowTs();
     const signal = wait.start();
-    addChat({ role: 'user', text, ts: nowTs() });
+    addChat({ role: 'user', text, ts: requestTimestamp });
     let ok = false;
     try {
       const out = await runCoachTask(task, {
@@ -1045,7 +1147,7 @@ export function CoachView() {
         signal,
         onSlow: wait.markSlow,
       });
-      addChat(resultLine(task, out, String(settings.value.ai.model ?? '')));
+      addChat(resultLine(task, out, requestModel, requestUnit, requestTimestamp));
       ok = true;
     } catch (err) {
       /* Cancelar no es un fallo de la API: se dice tal cual, sin mandar a
@@ -1123,36 +1225,118 @@ export function CoachView() {
     const line = chat.value[index];
     if (!line) return;
 
+    const payload = isPlain(line.payload) ? line.payload : null;
+
+    if (kind === 'start' && payload) {
+      const sessionPayload = payloadInCurrentUnit(line.payload, line.unit, settings.value.units);
+      const entries = suggestionEntries(sessionPayload);
+      const discarded = new Set(
+        (line.creations ?? [])
+          .filter((creation) => creation.status === 'discarded')
+          .map((creation) => norm(creation.name)),
+      );
+      const kept = entries.filter((entry) => {
+        if (!isPlain(entry)) return true;
+        const name = asText(entry.name ?? entry.exercise ?? entry.exId);
+        return !discarded.has(norm(name));
+      });
+      const { items, unresolved } = resolveCoachItems(kept);
+      const keptPayload = {
+        ...(isPlain(sessionPayload) ? sessionPayload : payload),
+        ...(Array.isArray(payload.exercises) ? { exercises: kept } : {}),
+        ...(Array.isArray(payload.items) ? { items: kept } : {}),
+      };
+      const { creatable, warnings } = partitionUnresolved(unresolved, keptPayload);
+      if (creatable.length) {
+        appendCreations(index, creatable);
+        addChat({
+          role: 'sys',
+          text: `Antes de empezar, confirma o descarta los ejercicios nuevos de arriba y vuelve a pulsar «Empezar este entreno».`,
+          ts: nowTs(),
+        });
+        toast(`Ejercicios por resolver: ${quoted(creatable)}`, { kind: 'warn' });
+        return;
+      }
+      if (!items.length) {
+        addChat({
+          role: 'sys',
+          text: warnings.length
+            ? `No se inició el entreno porque ningún ejercicio está disponible: ${unresolvedDetails(warnings)}.`
+            : 'No hay ejercicios disponibles para iniciar esta propuesta.',
+          ts: nowTs(),
+        });
+        return;
+      }
+      if (active.value) {
+        toast('Ya hay una sesión activa; la propuesta no la reemplazó.', { kind: 'warn' });
+        go('hoy');
+        return;
+      }
+      const planItems: PlanItem[] = items;
+      const name = asText(payload.title) || 'Entreno sugerido por el coach';
+      startFromPlan(planItems, {
+        name,
+        onUnresolved: (lost) => {
+          if (lost.length) toast(`Sin incluir: ${unresolvedNames(lost)}`, { kind: 'warn' });
+        },
+      });
+      markStarted(index);
+      if (warnings.length) toast(`Sin incluir: ${unresolvedNames(warnings)}`, { kind: 'warn' });
+      toast(`Entreno iniciado: ${name}`, { kind: 'ok' });
+      go('hoy');
+      return;
+    }
+
     if (kind === 'routine') {
-      const { routine, unresolved, updated } = applySuggestionAsRoutine(line.payload);
-      const { creatable, warnings } = partitionUnresolved(unresolved, line.payload);
+      const currentUnitPayload = payloadInCurrentUnit(line.payload, line.unit, settings.value.units);
+      const discarded = new Set(
+        (line.creations ?? [])
+          .filter((creation) => creation.status === 'discarded')
+          .map((creation) => norm(creation.name)),
+      );
+      const kept = suggestionEntries(currentUnitPayload).filter((entry) => {
+        if (!isPlain(entry)) return true;
+        return !discarded.has(norm(asText(entry.name ?? entry.exercise ?? entry.exId)));
+      });
+      const routinePayload = isPlain(currentUnitPayload)
+        ? {
+            ...currentUnitPayload,
+            ...(Array.isArray(currentUnitPayload.exercises) ? { exercises: kept } : {}),
+            ...(Array.isArray(currentUnitPayload.items) ? { items: kept } : {}),
+          }
+        : currentUnitPayload;
+      const { routine, unresolved, updated } = applySuggestionAsRoutine(routinePayload);
+      const { creatable, warnings } = partitionUnresolved(unresolved, routinePayload);
       if (creatable.length) appendCreations(index, creatable);
       if (!routine) {
-        const detail = warnings.length
-          ? `${unresolvedNames(warnings)} ${warnings.length === 1 ? 'no está' : 'no están'} en tu biblioteca`
-          : creatable.length
-            ? 'todos sus ejercicios son propuestas nuevas'
+        const detail = creatable.length
+          ? `hay ejercicios nuevos pendientes: ${quoted(creatable)}`
+          : warnings.length
+            ? unresolvedDetails(warnings)
             : '';
         addChat({
           role: 'sys',
           text: detail
-            ? `No pude convertir la propuesta en rutina: ${detail}.${
+            ? `No guardé la rutina: ${detail}.${
                 creatable.length
-                  ? ' Crea los nuevos desde la tarjeta y vuelve a pulsar «Aplicar».'
-                  : ''
+                  ? ' Créelos o descártelos desde sus tarjetas y vuelve a guardar.'
+                  : ' Revisa estos ejercicios y vuelve a intentarlo.'
               }`
-            : 'No pude convertir la propuesta en rutina: no traía ejercicios reconocidos.',
+            : 'No pude guardar la propuesta como rutina: no traía ejercicios reconocidos.',
           ts: nowTs(),
         });
         return;
       }
       /* Mientras queden creables pendientes NO se marca «Aplicada», para que se
          pueda volver a pulsar tras crear los ejercicios nuevos. */
-      if (!creatable.length) markApplied(index);
+      if (!creatable.length) {
+        if (isSuggestionCard(payload ?? {}, line.task)) markSaved(index);
+        else markApplied(index);
+      }
       const bits: string[] = [];
       if (creatable.length)
         bits.push(`nuevos por crear (${creatable.length}): ${quoted(creatable)}`);
-      if (warnings.length) bits.push(`sin usar (${warnings.length}): ${unresolvedNames(warnings)}`);
+      if (warnings.length) bits.push(`sin usar (${warnings.length}): ${unresolvedDetails(warnings)}`);
       addChat({
         role: 'sys',
         text: `${updated ? 'Rutina actualizada' : 'Rutina creada'}: ${routine.name}${bits.length ? ` · ${bits.join(' · ')}` : ''}`,

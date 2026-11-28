@@ -161,6 +161,27 @@ describe('victorias', () => {
     expect(result.wins[0].reason).toBe('pr');
     expect(result.wins[0].text).not.toContain('+2');
   });
+
+  it('compara récords con todo el historial aunque las tendencias tengan ventana corta', () => {
+    const result = insights({
+      maxSessions: 2,
+      sessions: [
+        press('2026-08-01', [serie(100, 10)]),
+        press('2026-09-10', [serie(80, 8)]),
+        press('2026-09-24', [serie(90, 8)]),
+      ],
+    });
+    expect(result.wins).toHaveLength(1);
+    expect(result.wins[0].reason).toBe('progress');
+    expect(result.wins[0].text).not.toContain('nuevo PR');
+  });
+
+  it('no cuenta una marca igual como récord nuevo', () => {
+    const result = insights({
+      sessions: [press('2026-09-10', [serie(80, 8)]), press('2026-09-24', [serie(80, 8)])],
+    });
+    expect(result.wins).toEqual([]);
+  });
 });
 
 /* ---------- avisos ---------- */

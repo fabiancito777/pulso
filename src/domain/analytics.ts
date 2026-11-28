@@ -22,6 +22,7 @@ import {
   startOfWeek,
   today,
 } from './dates';
+import { fmtN } from './format';
 import { num, round, sum } from './num';
 import { fromKg, toKg, unitLabel } from './units';
 import type { Exercise, Session, SessionEntry, SetLog, Unit } from './types';
@@ -73,6 +74,8 @@ export interface Totals {
 export interface Suggestion {
   /** peso sugerido en la unidad pedida (0 si no hay historial) */
   weight: number;
+  /** si existe una carga positiva registrada/sugerida; `weight`=0 puede ser centinela */
+  weightAvailable?: boolean;
   reps: number;
   kg: number;
   basis: string;
@@ -393,6 +396,8 @@ export function exerciseSummary(sessions: readonly Session[]): Map<string, Exerc
 export interface SuggestOptions {
   /** Repeticiones objetivo (si no, el `repMax` del ejercicio o 10). */
   targetReps?: number;
+  /** Series prescritas. Si falta, se evalúan las series hechas en la última sesión. */
+  targetSets?: number;
   /** Unidad en la que se devuelve el peso sugerido. */
   unit?: Unit;
   /** Salto mínimo respecto a la última vez (por defecto, el de la unidad). */
@@ -402,17 +407,10 @@ export interface SuggestOptions {
 }
 
 /**
- * Peso para la próxima vez: 1RM estimado de la mejor serie del último día,
- * recalculado a las repeticiones objetivo.
- *
- * Detalle  que se conserva a propósito (y que parece un bug hasta que se ve
- * el caso): si el cálculo sale **igual o por encima** del peso de la última vez, se
- * propone `anterior + increment` en vez del cálculo. Con las mismas repeticiones
- * Epley devuelve exactamente el peso anterior, así que repetir el entreno sugiere
- * subir: es la progresión en dos pasos (primero reps, después peso). Y no deja
- * pegar un salto mayor de un incremento aunque el objetivo sea de 3 repeticiones.
- * Cuando pides **más** repeticiones, el cálculo sí baja el peso: es la fórmula, no
- * un tope. Sin historial devuelve 0, que la app pinta vacío (no como '0 kg').
+ * Peso para la próxima vez: toma en cuenta todas las series de la última sesión,
+ * las reps pedidas y el RPE registrado. Solo propone subir cuando se completan
+ * las series prescritas con las reps objetivo y esfuerzo razonable. La progresión
+ * se limita a un incremento por vez; sin historial devuelve 0 (se pinta vacío).
  */
 export function suggestWeight(
   sessions: readonly Session[],
@@ -429,30 +427,61 @@ export function suggestWeight(
     return n > 0 ? n : fallback;
   };
   if (!last) {
-    return { weight: 0, reps: repsFor(ex ? ex.repMin : 8), kg: 0, basis: 'sin historial' };
+    return {
+      weight: 0,
+      weightAvailable: false,
+      reps: repsFor(ex ? ex.repMin : 8),
+      kg: 0,
+      basis: 'sin historial',
+    };
   }
   const reps = repsFor(ex ? ex.repMax : 10);
   const done = last.entry.sets.filter((s) => s.done && s.reps);
   if (!done.length) {
-    return { weight: 0, reps, kg: 0, basis: 'sin series registradas' };
+    return { weight: 0, weightAvailable: false, reps, kg: 0, basis: 'sin series registradas' };
   }
-  const top = done.reduce((a, b) =>
-    e1rm(setKg(b, last.session.unit), b.reps) > e1rm(setKg(a, last.session.unit), a.reps) ? b : a,
-  );
-  const kg = setKg(top, last.session.unit);
-  const estimated = e1rm(kg, top.reps) / (1 + reps / 30);
+  const weighed = done
+    .filter((set) => set.weight !== null)
+    .map((set) => setKg(set, last.session.unit));
+  const sorted = [...weighed].sort((a, b) => a - b);
+  /* Ancla observada: no interpolar una mediana que nunca se levantó. */
+  const kg = weighed.at(-1) ?? 0;
   const previous = round(fromKg(kg, displayUnit), 2);
-  let suggested = round(fromKg(estimated, displayUnit), 2);
-  /* Sin peso previo (peso corporal o sin dato) no hay progresión que sumar:
-     proponer 2,5 kg a un ejercicio que se hace a 0 sería inventar carga. */
-  if (previous > 0 && suggested >= previous) suggested = round(previous + inc, 2);
+  const targetSets = Math.max(1, Math.trunc(num(opts.targetSets, done.length)));
+  const evaluated = done.slice(0, targetSets);
+  const qualifying = evaluated.filter((set) => num(set.reps) >= reps);
+  const rpes = evaluated
+    .map((set) => set.rpe)
+    .filter((rpe): rpe is number => rpe != null && Number.isFinite(rpe));
+  const highRpeSet = evaluated.find((set) => set.rpe != null && set.rpe >= 9);
+  const averageRpe = rpes.length
+    ? round(rpes.reduce((total, value) => total + value, 0) / rpes.length, 1)
+    : null;
+  const highEffort = highRpeSet !== undefined || (averageRpe !== null && averageRpe >= 8.5);
+  const variableLoad =
+    sorted.length > 1 && (sorted.at(-1) ?? 0) - (sorted[0] ?? 0) > toKg(inc, displayUnit) * 0.75;
+  const completedTarget = evaluated.length >= targetSets && qualifying.length >= targetSets;
+  const canIncrease = previous > 0 && completedTarget && !highEffort && !variableLoad;
+  const suggested = canIncrease ? round(previous + inc, 2) : previous;
+  const targetLabel = `${qualifying.length} de ${targetSets} series previstas`;
+  const effortLabel = highRpeSet
+    ? ` · RPE ${fmtN(highRpeSet.rpe, 1)} en una serie`
+    : averageRpe !== null
+      ? ` · RPE medio ${fmtN(averageRpe, 1)}`
+      : '';
+  const reason = canIncrease
+    ? `Sube a ${fmtN(suggested)} ${unitLabel(displayUnit)}: alcanzaste al menos ${reps} reps en ${targetLabel}${effortLabel}.`
+    : previous > 0
+      ? `Repite ${fmtN(previous)} ${unitLabel(displayUnit)}. Alcanzaste al menos ${reps} reps en ${targetLabel}${highEffort ? `${effortLabel} (esfuerzo alto)` : ''}${variableLoad ? ` · peso variable; última carga registrada: ${fmtN(fromKg(kg, displayUnit))} ${unitLabel(displayUnit)}` : ''}.`
+      : `No hay carga registrada. La última vez hiciste ${fmtN(Math.max(...done.map((set) => num(set.reps))))} reps; no se puede inferir un peso para la próxima vez.`;
   return {
     weight: Math.max(0, suggested),
+    weightAvailable: weighed.length > 0 && kg > 0,
     reps,
     kg: toKg(suggested, displayUnit),
-    basis: `última vez ${previous} ${unitLabel(displayUnit)} × ${num(top.reps)} · ${relative(sessionDate(last.session))}`,
+    basis: `${reason} (${relative(sessionDate(last.session))})`,
     prev: previous,
-    prevReps: num(top.reps),
+    prevReps: Math.max(...done.map((set) => num(set.reps))),
   };
 }
 

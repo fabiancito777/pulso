@@ -35,12 +35,12 @@ npm run build      # dist/ (sin sourcemaps a propósito: GitHub Pages sirve dist
 npm run verify     # typecheck + lint + test + build
 ```
 
-| Extra | Qué hace |
-|---|---|
-| `npm run test:net` | Incluye `smoke`/`edge`/`quality`, que llaman a Gemini con la key de `.env.local`. |
-| `npm run test:quality` | Solo el test de calidad del coach (API real). |
-| `npm run format` | Prettier. |
-| `node tools/sync-dev.mjs` | Servidor de sincronización local, sin cuenta de Cloudflare. |
+| Extra                     | Qué hace                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `npm run test:net`        | Incluye `smoke`/`edge`/`quality`, que llaman a Gemini con la key de `.env.local`. |
+| `npm run test:quality`    | Solo el test de calidad del coach (API real).                                     |
+| `npm run format`          | Prettier.                                                                         |
+| `node tools/sync-dev.mjs` | Servidor de sincronización local, sin cuenta de Cloudflare.                       |
 
 **Qué verificar según lo que toques**
 
@@ -151,16 +151,21 @@ router (`src/app/router.ts`) guarda `{tab, sub}` en un signal y escucha `hashcha
 ## 5. Cómo funciona lo importante
 
 ### Sesión activa
+
 `sessions` guarda lo terminado; `active` la sesión en curso (entradas con `sets` → `weight/reps/done`,
 más `basis`, `cue`, `notes`, `restSec` y supersets). Al empezar se prellena con `suggestWeight()`
-(Epley + incremento); **sin historial el peso queda vacío**, no 0. Al terminar se guardan solo las
+(progresión por conjunto de series: solo sube si se completan las series prescritas con las reps
+objetivo y sin RPE alto; si no, mantiene la carga. Considera pesos variables y usa una carga observada;
+la explicación `basis` cuenta series/reps/esfuerzo y respeta los pesos fijados por la rutina).
+**Sin historial el peso queda vacío**, no 0. Al terminar se guardan solo las
 series marcadas, se calcula el RPE medio y el día queda `done` en el calendario.
 
 - **Editar una serie se propaga hacia abajo** (`propagateSet`): el peso/reps de la serie N se copia a
   las siguientes sin marcar del mismo ejercicio, nunca a las de arriba ni a las ya hechas. El RPE no
   se arrastra.
-- **`basis`**: cada entrada lleva de dónde sale el peso («última vez 60 kg × 8 · hace 3 días»,
-  «repetición de 21 sep 2026», «sin historial»). Se muestra bajo el nombre del ejercicio: **el dato
+- **`basis`**: cada entrada explica la sugerencia a partir de sus series («Repite 25 kg. Alcanzaste al menos
+  10 reps en 1 de 4 series previstas»), una repetición anterior, o la falta de historial. Se muestra bajo
+  el nombre del ejercicio: **el dato
   ya está en pantalla**, no lo dupliques en otro sitio.
 - **Repetir exacto**: repetir desde Hoy o Progreso reconstruye series una por una con sus pesos y reps;
   convierte el peso desde la unidad guardada al perfil actual, copia descanso, superserie y consejo,
@@ -196,8 +201,10 @@ series marcadas, se calcula el RPE medio y el día queda `done` en el calendario
   principal; Progreso, Calendario y Repetir siguen disponibles como accesos secundarios.
 
 ### Timer de descanso
+
 `src/domain/rest.ts` calcula **por timestamp** (`endsAt - now`), no acumulando: sigue siendo correcto
 con la pestaña en segundo plano o el móvil bloqueado. Se espeja en `pulso.rest`.
+
 - Arranca al marcar una serie **si queda algo por hacer**: series pendientes del ejercicio, o el
   siguiente ejercicio si acabas de cerrar el actual (ahí el aviso lo nombra).
 - Desmarcar una serie lo cancela; `+15 s` con el descanso terminado abre una cuenta nueva.
@@ -209,11 +216,13 @@ con la pestaña en segundo plano o el móvil bloqueado. Se espeja en `pulso.rest
   (`schedule-rest` / `cancel-rest`) para cuando la pestaña está congelada. No quites ninguna.
 
 ### Calculadora de discos
+
 Modos de carga: `bar` (2 huecos), `db1` (1 mancuerna), `db2` (2 mancuernas, 4 huecos) y `none`
 (máquina). Reparto **simétrico** y búsqueda del peso **más cercano** por enumeración de sumas
 (`src/domain/plates.ts`), no greedy. El modo se sugiere por ejercicio y se recuerda por id.
 
 ### Coach (Gemini)
+
 `src/features/coach/`: `context.ts` construye el contexto (perfil, material e inventario, biblioteca
 permitida, historial serie a serie, días desde el último estímulo, récords, rutinas y volumen
 semanal), `prompts.ts` arma la petición, `parse.ts` tolera JSON envuelto, `local.ts` es el
@@ -232,10 +241,27 @@ planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
 - **Fallback local**: `suggest`/`plan` sin key, o con fallo de red/auth/cuota o JSON ilegible, resuelven
   con `local.ts` y marcan `origin: 'local'` + `fallback` (motivo conservado para la vista). La base
   local viaja además DENTRO del prompt como borrador a mejorar (`localHead` en `prompts.ts`).
+- **Sugerir entreno**: la propuesta queda en su tarjeta de Coach. «Empezar este entreno» la convierte
+  en plan de sesión en el orden y prescripción propuestos; no crea rutinas. El acceso «Guardar como
+  rutina» es independiente. Los ejercicios inexistentes se ofrecen para crear o descartar, y hay que
+  reintentar antes de iniciar/guardar; una sesión activa no se reemplaza. La unidad y el modelo se
+  capturan al pedir la propuesta. Si cambia la unidad, el peso se convierte una sola vez al iniciar o
+  guardar. Tarjetas antiguas sin unidad conservan su cifra, sin inferir una equivalencia.
+- **Historial del chat**: `promptHistory()` resume las tarjetas de sugerencia y plan con el orden y
+  una muestra compacta de series, reps, carga y descanso. El texto que recibe el modelo sigue limitado
+  a 600 caracteres por respuesta; las propuestas históricas sin payload conservan su texto.
+- **Guardar rutina desde Coach**: las tarjetas dejan crear y descartar ejercicios nuevos antes de
+  guardar y permiten reintentar sin duplicar. `applySuggestionAsRoutine` no persiste una rutina con
+  ejercicios pendientes y una actualización no pisa parcialmente la rutina existente si faltan items.
+- **Restricciones de las propuestas**: sugerencias locales puntúan grupos con ejercicios permitidos y
+  material disponible; al aplicar propuestas de IA/local se vuelven a comprobar esos dos requisitos.
+  Los omitidos explican si están vetados, falta material, chocan atributos o no existen. Solo los
+  nombres inexistentes se pueden ofrecer para crear; vetados y no disponibles nunca se duplican.
 - **`applyWeek` descarta los días anteriores a hoy** (`skipped`); las fechas se comparan como ISO local.
 - **Vista previa antes de aplicar**: la propuesta enseña el impacto por fechas y días antes de escribir
   el calendario. Solo «Aplicar al calendario» confirma los cambios; pedir otra propuesta o descartarla
-  no altera el plan guardado. Sin key se usa el planificador local; con key se puede pedir al coach.
+  no altera el plan guardado. Local e IA usan la semana del cursor y se omiten fechas de respuesta que
+  queden fuera de esa semana. Sin key se usa el planificador local; con key se puede pedir al coach.
 - **Hoy y calendario**: la semana del calendario son siete filas compactas que abren el mismo detalle
   de día que la vista mensual. «Saltar»/«Descanso» guarda una copia del plan previo en `restorePlan`;
   «Restaurar plan» recupera título, fuente, foco y rutina o ejercicios. «Limpiar» elimina los campos
@@ -248,12 +274,14 @@ planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
   temporal, y los datos demo persistidos de versiones anteriores se limpian durante la carga.
 
 ### Sincronización y perfiles
+
 Código de pareja → se deriva una clave (AES-GCM) y el servidor (Worker + KV, `sync-worker/`) solo ve
 un hash y el texto cifrado. Sesiones y rutinas **se suman**; ajustes por «último cambio gana» usando
 las marcas de `src/domain/sync.ts`; si ambos cambiaron lo mismo, la app pregunta. Los tombstones
 evitan que un borrado resucite. `applySyncedState` **no re-sella** el estado a propósito.
 
 ### PWA
+
 `public/sw.js`: precarga del shell y **network-first con respaldo en caché** (sin hashes de archivo,
 cache-first congelaría versiones). Mismo SW para las notificaciones de descanso. Solo se registra en
 `http/https`. El build va sin sourcemaps porque Pages publica `dist/` entero.
@@ -262,7 +290,7 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 
 ## 6. Trampas conocidas
 
-- `?demo=1` carga 8 semanas de ejemplo (se quitan en *Ajustes → Datos*); no dependas de ello en tests.
+- `?demo=1` carga 8 semanas de ejemplo (se quitan en _Ajustes → Datos_); no dependas de ello en tests.
 - Los tests de red (`smoke`/`edge`/`quality`) gastan cuota real: no los metas en `npm test`.
 - `src/ui/icons.ts` y `src/domain/catalog.ts` son ficheros base sensibles: el catálogo lo vigila
   `src/domain/data.test.ts` (nombres, grupos, material). Tócalos a mano y con cuidado.
@@ -275,18 +303,18 @@ cache-first congelaría versiones). Mismo SW para las notificaciones de descanso
 
 ## 7. Registro de cambios
 
-| Fecha | Cambio | Por qué |
-|---|---|---|
-| 15-sep-2026 | Primera versión de este documento (app vanilla). | Dejar contexto entre sesiones. |
-| 3-nov-2026 | `AGENTS.md` reescrito para la v2 (Vite + Preact); documentados router, signals, perfiles, sync, coach y PWA reales. | El documento describía `js/*.js`, `?selftest=1` y utilidades que ya no existen. |
-| 3-nov-2026 | `main.tsx`: se filtran los avisos benignos de `ResizeObserver` y los errores se muestran en lenguaje humano. | La app se acusaba a sí misma con un mensaje interno en inglés al abrir Ajustes y Coach. |
-| 3-nov-2026 | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso. | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`. |
-| 7-nov-2026 | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso. |
-| 24-nov-2026 | Modo súper simple por perfil y separación entre consejo y nota personal. Se documenta la entrega con commit y push. | Reduce los controles durante la sesión y preserva las notas personales al guardar. |
-| 25-nov-2026 | Guías visuales para los 24 ejercicios predeterminados y limpieza del catálogo stock ampliado en perfiles antiguos. | Las guías cubren la biblioteca inicial; la migración retira stock sin cambios y sin uso, conservando ejercicios propios, editados o referenciados y las etiquetas del historial. |
-| 25-nov-2026 | Guías visuales accesibles también desde las tarjetas expandidas de la sesión habitual. | Reutilizar las mismas miniaturas, visor y fases en ambos modos de entrenamiento. |
-| 25-nov-2026 | Rutinas prioriza las guardadas y concentra creación en «Nueva rutina» → Desde cero / Usar plantilla / Pedir al coach. Coach AI deja key, estado y prueba de conexión a la vista; opciones de modelo y prompt pasan a Avanzado. El diagnóstico del aviso con móvil bloqueado está en Ajustes → Entreno → Avanzado. | Menos acciones competidoras y acceso directo a las opciones de configuración comunes. |
-| 25-nov-2026 | Hoy permite desplegar los ejercicios del plan, repetir la última sesión desde una tarjeta y retomar una sesión activa desde la barra compacta al cambiar de pestaña. Progreso muestra el resumen semanal y los últimos récords antes de búsqueda, estadísticas plegables e historial. | Accesos más directos a entrenar y revisar el progreso. |
-| 26-nov-2026 | Navegación inferior móvil con cinco accesos fijos y un modal compartido para Coach y Ajustes; se conserva el estado por ruta y el acceso a perfiles. | Los destinos principales caben en pantalla y Coach/Ajustes siguen disponibles sin perder los enlaces directos. |
-| 26-nov-2026 | El cierre de sesión prioriza series, duración y récords con detalle plegable; las guías visuales se reutilizan desde el editor de rutinas. La planificación semanal muestra el impacto por fecha antes de aplicarse. | Confirmar lo guardado de un vistazo y revisar ejercicios y cambios del calendario antes de actuar. |
-| 26-nov-2026 | Hoy y Calendario distinguen descanso con restauración del plan; Calendario usa filas compactas con un detalle compartido y edita ejercicios mediante borrador por fecha. Repetir recupera las series exactas y Progreso puede abrir una demostración temporal. | Evitar que saltar o editar un día borre la planificación, y facilitar la revisión y repetición sin alterar datos reales. |
+| Fecha       | Cambio                                                                                                                                                                                                                                                                                                                                                               | Por qué                                                                                                                                                                          |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15-sep-2026 | Primera versión de este documento (app vanilla).                                                                                                                                                                                                                                                                                                                     | Dejar contexto entre sesiones.                                                                                                                                                   |
+| 3-nov-2026  | `AGENTS.md` reescrito para la v2 (Vite + Preact); documentados router, signals, perfiles, sync, coach y PWA reales.                                                                                                                                                                                                                                                  | El documento describía `js/*.js`, `?selftest=1` y utilidades que ya no existen.                                                                                                  |
+| 3-nov-2026  | `main.tsx`: se filtran los avisos benignos de `ResizeObserver` y los errores se muestran en lenguaje humano.                                                                                                                                                                                                                                                         | La app se acusaba a sí misma con un mensaje interno en inglés al abrir Ajustes y Coach.                                                                                          |
+| 3-nov-2026  | Limpieza de código muerto: 32 reglas CSS de la v1 (nav, appbar, restbar, chart-wrap, skeleton…), 10 exports y 9 iconos sin uso.                                                                                                                                                                                                                                      | Restos de la UI anterior; nada de eso se usaba desde ningún `.tsx`. Verificado con `typecheck`, `lint`, 1436 tests y `build`.                                                    |
+| 7-nov-2026  | Coach: validación de la salida del modelo (`domain/prescription.ts`), la propuesta local viaja en el prompt como borrador, `applyWeek` descarta días pasados, tope de tokens más alto en tareas JSON, política de reintentos unificada, catálogo reducido a `gemini-3.8-flash` y `gemini-3.5-flash-lite`, y `temperature`/`thinkingBudget` retirados (migración v4). | El modelo devolvía números imposibles, fechas antiguas y cambios de ajustes sin efecto; mitad del código del cliente era andamiaje sin uso.                                      |
+| 24-nov-2026 | Modo súper simple por perfil y separación entre consejo y nota personal. Se documenta la entrega con commit y push.                                                                                                                                                                                                                                                  | Reduce los controles durante la sesión y preserva las notas personales al guardar.                                                                                               |
+| 25-nov-2026 | Guías visuales para los 24 ejercicios predeterminados y limpieza del catálogo stock ampliado en perfiles antiguos.                                                                                                                                                                                                                                                   | Las guías cubren la biblioteca inicial; la migración retira stock sin cambios y sin uso, conservando ejercicios propios, editados o referenciados y las etiquetas del historial. |
+| 25-nov-2026 | Guías visuales accesibles también desde las tarjetas expandidas de la sesión habitual.                                                                                                                                                                                                                                                                               | Reutilizar las mismas miniaturas, visor y fases en ambos modos de entrenamiento.                                                                                                 |
+| 25-nov-2026 | Rutinas prioriza las guardadas y concentra creación en «Nueva rutina» → Desde cero / Usar plantilla / Pedir al coach. Coach AI deja key, estado y prueba de conexión a la vista; opciones de modelo y prompt pasan a Avanzado. El diagnóstico del aviso con móvil bloqueado está en Ajustes → Entreno → Avanzado.                                                    | Menos acciones competidoras y acceso directo a las opciones de configuración comunes.                                                                                            |
+| 25-nov-2026 | Hoy permite desplegar los ejercicios del plan, repetir la última sesión desde una tarjeta y retomar una sesión activa desde la barra compacta al cambiar de pestaña. Progreso muestra el resumen semanal y los últimos récords antes de búsqueda, estadísticas plegables e historial.                                                                                | Accesos más directos a entrenar y revisar el progreso.                                                                                                                           |
+| 26-nov-2026 | Navegación inferior móvil con cinco accesos fijos y un modal compartido para Coach y Ajustes; se conserva el estado por ruta y el acceso a perfiles.                                                                                                                                                                                                                 | Los destinos principales caben en pantalla y Coach/Ajustes siguen disponibles sin perder los enlaces directos.                                                                   |
+| 26-nov-2026 | El cierre de sesión prioriza series, duración y récords con detalle plegable; las guías visuales se reutilizan desde el editor de rutinas. La planificación semanal muestra el impacto por fecha antes de aplicarse.                                                                                                                                                 | Confirmar lo guardado de un vistazo y revisar ejercicios y cambios del calendario antes de actuar.                                                                               |
+| 26-nov-2026 | Hoy y Calendario distinguen descanso con restauración del plan; Calendario usa filas compactas con un detalle compartido y edita ejercicios mediante borrador por fecha. Repetir recupera las series exactas y Progreso puede abrir una demostración temporal.                                                                                                       | Evitar que saltar o editar un día borre la planificación, y facilitar la revisión y repetición sin alterar datos reales.                                                         |

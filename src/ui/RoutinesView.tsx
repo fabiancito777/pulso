@@ -32,11 +32,11 @@ import {
 } from '@/domain/data';
 import { label as dateLabel, relative, today } from '@/domain/dates';
 import { fmtN, inputNum } from '@/domain/format';
-import { matchExercise, unresolvedName, unresolvedNames } from '@/domain/match';
+import { matchExercise, unresolvedName } from '@/domain/match';
 import { clamp, int } from '@/domain/num';
 import { findTemplate } from '@/domain/plan';
 import { linkAt, newSupersetId, pruneSupersets, supersetPosition, unlinkAt } from '@/domain/supersets';
-import { trunc } from '@/domain/text';
+import { norm, trunc } from '@/domain/text';
 import type { Exercise, RoutineItem } from '@/domain/types';
 import { parseJSON } from '@/features/coach/parse';
 import { promptHistory } from '@/state/chat';
@@ -118,36 +118,55 @@ function ProposalCard({
   generatedLocally,
   unit,
   library,
+  discarded,
   onApply,
   onDiscard,
   onCreate,
+  onDiscardExercise,
 }: {
   proposal: RoutineSuggestion;
   proposalRaw: unknown;
   generatedLocally: boolean;
   unit: string;
   library: readonly Exercise[];
+  discarded: readonly string[];
   onApply: () => void;
   onDiscard: () => void;
   onCreate: (proposal: AIExerciseProposal) => void;
+  onDiscardExercise: (name: string) => void;
 }) {
-  const unmatched = proposal.exercises.filter((ex) => !ex.matched).length;
+  const isDiscarded = (name: string): boolean => discarded.includes(norm(name));
   /* Los nombres que el matcher no resolvió se parten con `partitionUnresolved`:
      los que SOLO faltan en la biblioteca se pueden crear con un clic; los que
      chocan con un ejercicio existente siguen siendo un aviso, como siempre. */
   const unresolved = proposal.exercises
-    .filter((ex) => !ex.matched)
+    .filter((ex) => !ex.matched && !isDiscarded(ex.name))
     .map((ex) => unresolvedName(ex.name, matchExercise(ex.name, library)));
   const { creatable } = partitionUnresolved(unresolved, proposalRaw);
   /* El motivo se recalcula aquí con el MISMO matcher que usará «Aplicar»
      (`domain/match`): si el veto de atributos rechazó el nombre, el badge no
      puede decir «no está en tu biblioteca» si ahí está. */
-  const reasonFor = (name: string): { label: string; reason: string } => {
+  const reasonFor = (
+    name: string,
+    exId?: string,
+  ): { label: string; reason: string } | null => {
+    const found = library.find((exercise) => exercise.id === exId || norm(exercise.name) === norm(name));
+    if (found && !found.allowed) {
+      return { label: 'vetado en Ajustes', reason: 'Ejercicio vetado en Ajustes' };
+    }
+    if (found && !isAvailable(found, equipment.value)) {
+      return { label: 'falta material', reason: 'No disponible: falta material actual' };
+    }
     const match = matchExercise(name, library);
     return match.conflict
       ? { label: 'no encaja en tu biblioteca', reason: match.conflict }
-      : { label: 'no está en tu biblioteca', reason: 'no está en tu biblioteca' };
+      : match.ex
+        ? null
+        : { label: 'no está en tu biblioteca', reason: 'no está en tu biblioteca' };
   };
+  const unmatched = proposal.exercises.filter(
+    (ex) => !isDiscarded(ex.name) && reasonFor(ex.name, ex.exId) !== null,
+  ).length;
   return (
     <section class="card rt-proposal">
       <div class="between">
@@ -174,7 +193,8 @@ function ProposalCard({
           <span>Peso</span>
         </div>
         {proposal.exercises.map((ex, i) => {
-          const reason = ex.matched ? null : reasonFor(ex.name);
+          const discardedExercise = isDiscarded(ex.name);
+          const reason = discardedExercise ? null : reasonFor(ex.name, ex.exId);
           const pair = supersetPosition(proposal.exercises, i);
           return (
             <div class="rt-trow" key={`${ex.name}-${i}`}>
@@ -190,6 +210,7 @@ function ProposalCard({
                     {reason.label}
                   </span>
                 ) : null}
+                {discardedExercise ? <span class="badge">Descartado</span> : null}
               </span>
               <span class="num">
                 {ex.sets} × {ex.repMin}-{ex.repMax}
@@ -203,8 +224,8 @@ function ProposalCard({
 
       {unmatched ? (
         <div class="tiny warn mt-s">
-          {unmatched} {unmatched === 1 ? 'ejercicio no' : 'ejercicios no'} se aplicarán: no están en
-          tu biblioteca o no encajan con ella. Se avisará al aplicar.
+          {unmatched} {unmatched === 1 ? 'ejercicio no' : 'ejercicios no'} se aplicarán con la
+          propuesta actual. Revisa el motivo o descártalos antes de guardar.
         </div>
       ) : null}
 
@@ -215,10 +236,20 @@ function ProposalCard({
           </div>
           <div class="row wrap mt-s" style="gap:6px">
             {creatable.map((p) => (
-              <button type="button" key={p.name} class="btn sm ghost" onClick={() => onCreate(p)}>
-                <Icon name="plus" />
-                Crear «{p.name}»
-              </button>
+              <span class="row" key={p.name} style="gap:6px">
+                <button type="button" class="btn sm ghost" onClick={() => onCreate(p)}>
+                  <Icon name="plus" />
+                  Crear «{p.name}»
+                </button>
+                <button
+                  type="button"
+                  class="btn sm ghost"
+                  aria-label={`Descartar ${p.name}`}
+                  onClick={() => onDiscardExercise(p.name)}
+                >
+                  Descartar
+                </button>
+              </span>
             ))}
           </div>
         </div>
@@ -892,6 +923,7 @@ export function RoutinesView() {
   /* JSON crudo de la propuesta: con él se reevalúan los nombres al crear un
      ejercicio nuevo (para que pase a verde sin volver a pedir la propuesta). */
   const [proposalRaw, setProposalRaw] = useState<unknown>(null);
+  const [proposalDiscarded, setProposalDiscarded] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   /* generación local (sin API key): modal de plantillas + propuesta sin guardar */
   const [genOpen, setGenOpen] = useState(false);
@@ -930,6 +962,7 @@ export function RoutinesView() {
     setProposal(null);
     setProposalLocal(false);
     setProposalRaw(null);
+    setProposalDiscarded([]);
     try {
       /* transcript del chat como `contents`: la propuesta se apoya en lo que el
          usuario pidió y pegó antes (P1), igual que en Hoy y en el coach */
@@ -994,14 +1027,19 @@ export function RoutinesView() {
   function applyProposal(): void {
     if (!proposal) return;
     /* `proposal` is a whitelist of preview fields and cannot carry an update action. */
-    const { routine: created, unresolved } = applySuggestionAsRoutine(proposal);
+    const filtered = {
+      ...proposal,
+      exercises: proposal.exercises.filter((exercise) => !proposalDiscarded.includes(norm(exercise.name))),
+    };
+    const { routine: created, unresolved } = applySuggestionAsRoutine(filtered);
     if (!created) {
+      const { creatable, warnings } = partitionUnresolved(unresolved, proposalRaw);
       setNotice({
         kind: 'err',
-        text: unresolved.length
-          ? `No se pudo aplicar: ${unresolvedNames(unresolved)} no ${
-              unresolved.length === 1 ? 'está' : 'están'
-            } en tu biblioteca.`
+        text: creatable.length
+          ? `La rutina aún no se guardó. Crea o descarta ${creatable.map((item) => `«${item.name}»`).join(', ')} y vuelve a pulsar Aplicar.`
+          : warnings.length
+            ? `No se guardó: ${warnings.map((item) => `«${item.name}»: ${item.reason}`).join('; ')}.`
           : 'No se pudo aplicar la propuesta: ningún ejercicio de la lista está en tu biblioteca.',
       });
       return;
@@ -1010,7 +1048,7 @@ export function RoutinesView() {
     setNotice({
       kind: unresolved.length ? 'warn' : 'ok',
       text: unresolved.length
-        ? `Rutina creada: ${created.name} · sin usar (${unresolved.length}): ${unresolvedNames(unresolved)}`
+        ? `Rutina creada: ${created.name} · sin usar: ${unresolved.map((item) => `«${item.name}»: ${item.reason}`).join('; ')}`
         : `Rutina creada: ${created.name}`,
       action: { label: 'Ver rutina', run: () => setEditId(created.id) },
     });
@@ -1274,9 +1312,19 @@ export function RoutinesView() {
             generatedLocally={proposalLocal}
             unit={unit}
             library={library}
+            discarded={proposalDiscarded}
             onApply={applyProposal}
-            onDiscard={() => { setProposal(null); setProposalLocal(false); }}
+            onDiscard={() => {
+              setProposal(null);
+              setProposalLocal(false);
+              setProposalDiscarded([]);
+            }}
             onCreate={createNewExercise}
+            onDiscardExercise={(name) =>
+              setProposalDiscarded((current) =>
+                current.includes(norm(name)) ? current : [...current, norm(name)],
+              )
+            }
           />
         </div>
       ) : null}

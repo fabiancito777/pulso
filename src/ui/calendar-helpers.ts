@@ -6,7 +6,7 @@
  * Están aparte del componente para poder probarlos con Vitest sin DOM ni
  * `localStorage`: aquí solo entran datos por parámetro y salen datos.
  */
-import { label } from '@/domain/dates';
+import { addDays, label, startOfWeek } from '@/domain/dates';
 import { parseJSON } from '@/features/coach/parse';
 import type { ScheduleDay } from '@/state/store';
 
@@ -262,6 +262,10 @@ export interface PlanResult {
   /** JSON crudo, que es lo que entiende `applyWeek(plan)` */
   raw: unknown;
   preview: PlanPreview;
+  /** fechas fuera de la semana solicitada, omitidas antes de mostrar/aplicar */
+  ignoredOutsideWeek?: number;
+  /** semana a la que pertenece la propuesta (si el llamador la indicó) */
+  weekFrom?: string;
 }
 
 /** Cambio visible que `applyWeek` hará en una fecha de la propuesta. */
@@ -341,14 +345,14 @@ export function normalizePlan(raw: unknown): PlanPreview | null {
  * a veces lo envía en una cercilla o con prosa alrededor, así que se reutiliza
  * el `parseJSON` tolerante del coach en vez de un `JSON.parse` a pelo.
  */
-export function parsePlan(text: string): PlanResult | null {
+export function parsePlan(text: string, weekFrom?: string): PlanResult | null {
   let raw: unknown;
   try {
     raw = parseJSON<unknown>(text);
   } catch {
     return null;
   }
-  return planFromJson(raw);
+  return planFromJson(raw, weekFrom);
 }
 
 /**
@@ -360,9 +364,40 @@ export function parsePlan(text: string): PlanResult | null {
  * Es el camino que usa «Auto-planificar»: el plan local NUNCA pasa por la red
  * ni por un JSON en texto, así que aquí no hay nada que parsear de verdad.
  */
-export function planFromJson(raw: unknown): PlanResult | null {
-  const preview = normalizePlan(raw);
-  return preview ? { raw, preview } : null;
+export function planFromJson(raw: unknown, weekFrom?: string): PlanResult | null {
+  if (!isPlain(raw) || !Array.isArray(raw.days)) return null;
+  let acceptedRaw = raw;
+  let ignoredOutsideWeek = 0;
+  if (weekFrom) {
+    const from = startOfWeek(weekFrom);
+    const to = addDays(from, 6);
+    const accepted = raw.days.filter((item) => {
+      if (!isPlain(item)) return false;
+      const isoDay = (str(item.date) || str(item.iso)).slice(0, 10);
+      const valid = /^\d{4}-\d{2}-\d{2}$/.test(isoDay);
+      if (valid && isoDay >= from && isoDay <= to) return true;
+      if (valid) ignoredOutsideWeek++;
+      return false;
+    });
+    acceptedRaw = { ...raw, from, days: accepted };
+  }
+  const preview =
+    normalizePlan(acceptedRaw) ??
+    (weekFrom && ignoredOutsideWeek > 0
+      ? {
+          source: str(raw.source) || 'ia',
+          rationale: rationaleText(raw.rationale),
+          days: [],
+        }
+      : null);
+  return preview
+    ? {
+        raw: acceptedRaw,
+        preview,
+        ...(weekFrom ? { weekFrom: startOfWeek(weekFrom) } : {}),
+        ...(ignoredOutsideWeek ? { ignoredOutsideWeek } : {}),
+      }
+    : null;
 }
 
 /* ---------- local vs IA (el `data-ai` ) ---------- */

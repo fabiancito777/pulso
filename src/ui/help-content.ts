@@ -259,7 +259,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Abre Coach desde Más. Es el chat con IA y el planificador semanal.',
       'El chat con el coach, 6 acciones rápidas y la «Memoria del coach», que puedes editar.',
-      'Puede montarte la sesión de hoy, sugerir una rutina, revisar tu volumen o tu reparto por músculo, atacar un récord y generar ejercicios nuevos. Ve tu historial, tu plan y tu material, así que sus propuestas encajan con lo que entrenas.',
+      'Puede sugerirte un entreno, revisar tu volumen o tu reparto por músculo, atacar un récord y generar ejercicios nuevos. La tarjeta de «Sugerir entreno» conserva su propuesta: puedes empezar esa sesión exacta o guardarla como rutina. Ve tu historial, tu plan y tu material, así que sus propuestas encajan con lo que entrenas.',
       'Necesita una clave de Google AI Studio. Sin ella, la app sigue funcionando con el planificador local.',
     ],
     see: ['coach.what', 'coach.sees', 'coach.apiKey'],
@@ -398,6 +398,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     paras: [
       'Desde «Nueva rutina» puedes empezar desde cero, usar una plantilla que se calcula en tu dispositivo y sin conexión, o pedir una propuesta al coach, que tiene en cuenta tu historial.',
       'Pedir al coach necesita tu clave de Google AI Studio. Si no la has puesto, la app te lleva a Ajustes → Coach AI. Si la petición falla después de iniciar, se conserva el planificador local como alternativa.',
+      'Los ejercicios que no están en tu biblioteca se pueden crear o descartar desde la propuesta. Si queda alguno por decidir, la rutina no se guarda hasta que lo resuelvas y vuelvas a pulsar «Aplicar».',
     ],
     see: ['rutinas.generate', 'coach.apiKey'],
   },
@@ -502,7 +503,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Qué puede hacer el coach',
     paras: [
       'Es un entrenador con IA que vive en la pestaña Coach. Le hablas en lenguaje normal y puede: montarte la sesión de hoy, sugerir una rutina, revisar tu volumen y tu reparto por músculo, decirte cómo atacar un récord, ajustar el plan de la semana y proponerte ejercicios nuevos para tu biblioteca. Para usarlo necesitas una API key de Google AI Studio.',
-      'No solo contesta: lo que propone se puede llevar a la acción. «Sugerir entreno» deja la sesión en Hoy, el plan de la semana se aplica al Calendario y los ejercicios nuevos se añaden desde Ajustes → Ejercicios.',
+      'No solo contesta: lo que propone se puede llevar a la acción. «Sugerir entreno» deja una tarjeta en el chat para empezar ese entreno o guardarlo como rutina; el plan de la semana se aplica al Calendario y los ejercicios nuevos se confirman desde su tarjeta.',
     ],
     see: ['coach.sees', 'coach.quick', 'coach.generator', 'coach.apiKey'],
   },
@@ -542,7 +543,7 @@ export const HELP: Record<HelpId, HelpTopic> = {
     title: 'Acciones rápidas',
     paras: [
       'Son preguntas de un clic. El coach ya conoce tu historial, tu plan y tu volumen, así que solo eliges qué quieres que haga.',
-      '«Sugerir entreno» deja la propuesta en la pestaña Hoy, «Romper un récord» te dice cómo atacar tu mejor marca y «Revisar volumen» mira si entrenas demasiado o muy poco.',
+      '«Sugerir entreno» conserva la propuesta en el chat para empezar esa sesión exacta o guardarla como rutina; «Romper un récord» te dice cómo atacar tu mejor marca y «Revisar volumen» mira si entrenas demasiado o muy poco.',
       'Si has escrito algo en la caja de la conversación antes de pulsar, ese texto viaja con la acción como contexto (para concretar más) y la caja se queda vacía. Con la caja vacía el chip manda su pregunta de siempre.',
     ],
     see: ['coach.what', 'coach.sees', 'tab.coach'],

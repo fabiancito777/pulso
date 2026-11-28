@@ -91,6 +91,8 @@ export interface PlanExercise {
   repMax: number;
   /** en `settings.units` (0 sin historial, que la app pinta vacío) */
   weight: number;
+  /** false cuando el 0 es solo el centinela de analytics para carga desconocida */
+  weightAvailable: boolean;
   unit: Unit;
   rest: number;
   /** de dónde sale el peso: «última vez 60 kg × 8 · hace 3 días» */
@@ -103,7 +105,11 @@ export interface PlanExercise {
  * `domain/session.ts`: por defecto es `analytics.suggestWeight` con la unidad y
  * el incremento de los ajustes, pero los tests la clavan a mano.
  */
-export type SuggestFn = (exId: string, reps: number) => Pick<Suggestion, 'weight' | 'basis'>;
+export type SuggestFn = (
+  exId: string,
+  reps: number,
+  sets?: number,
+) => Pick<Suggestion, 'weight' | 'basis' | 'weightAvailable'>;
 
 export interface RichOptions {
   /** motivo que se da cuando el peso NO viene de la sugerencia */
@@ -276,15 +282,16 @@ export function routineFromTemplate(
 function defaultSuggest(input: PlanInput): SuggestFn {
   const unit = input.settings.units;
   const inc = num(input.settings.increment, 0);
-  return (exId, reps) => {
+  return (exId, reps, sets) => {
     const opts: SuggestOptions = {
       targetReps: reps,
+      ...(sets ? { targetSets: sets } : {}),
       unit,
       exercise: findExercise(input.exercises, exId),
     };
     if (inc > 0) opts.increment = inc;
     const out = suggestWeight(input.sessions, exId, opts);
-    return { weight: out.weight, basis: out.basis };
+    return { weight: out.weight, basis: out.basis, weightAvailable: out.weightAvailable };
   };
 }
 
@@ -312,8 +319,9 @@ export function richItems(
     const fixed = typeof item.weight === 'number' ? item.weight : null;
     const sug =
       fixed !== null
-        ? { weight: fixed, basis: opts.basis ?? 'peso objetivo indicado' }
-        : suggest(ex.id, reps);
+        ? { weight: fixed, weightAvailable: true, basis: opts.basis ?? 'peso objetivo indicado' }
+        : suggest(ex.id, reps, int(item.sets, ex.sets));
+    const weightAvailable = sug.weightAvailable ?? sug.weight > 0;
 
     out.push({
       exId: ex.id,
@@ -325,6 +333,7 @@ export function richItems(
       repMin,
       repMax,
       weight: sug.weight,
+      weightAvailable,
       unit: input.settings.units,
       rest: int(item.rest, ex.rest),
       basis: sug.basis,

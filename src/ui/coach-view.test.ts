@@ -19,6 +19,7 @@ import {
   chipText,
   creationButtons,
   creationSummary,
+  payloadInCurrentUnit,
   resultLine,
   testBadge,
   turnOpts,
@@ -59,8 +60,7 @@ describe('chips rápidos', () => {
     }
 
     const suggest = QUICK_ACTIONS.find((action) => action.label === 'Sugerir entreno');
-    expect(suggest?.jump?.tab).toBe('hoy');
-    expect(suggest?.jump?.toast.trim()).not.toBe('');
+    expect(suggest?.jump).toBeUndefined();
 
     const plan = QUICK_ACTIONS.find((action) => action.label === 'Plan semanal');
     expect(plan?.task).toBe('plan');
@@ -68,6 +68,27 @@ describe('chips rápidos', () => {
     expect(QUICK_ACTIONS.filter((action) => action !== suggest).every((action) => !action.jump)).toBe(
       true,
     );
+  });
+});
+
+describe('peso de una tarjeta al iniciar o guardar', () => {
+  it('convierte desde la unidad capturada al perfil actual y conserva el peso físico', () => {
+    const payload = {
+      exercises: [
+        { name: 'Press', sets: 3, weight: 20 },
+        { name: 'Accesorio', sets: 2, weight: '2,5' },
+      ],
+      title: 'Empuje',
+    };
+    const converted = payloadInCurrentUnit(payload, 'lb', 'kg') as typeof payload;
+    expect(converted.exercises[0]?.weight).toBe(9.07);
+    expect(converted.exercises[1]?.weight).toBe(1.13);
+    expect(payload.exercises[0]?.weight).toBe(20);
+  });
+
+  it('las tarjetas antiguas sin unidad se conservan sin inventar una equivalencia', () => {
+    const payload = { exercises: [{ name: 'Press', weight: 20 }] };
+    expect(payloadInCurrentUnit(payload, undefined, 'kg')).toBe(payload);
   });
 });
 
@@ -171,6 +192,17 @@ describe('resultLine (propuestas de ejercicio nuevo)', () => {
       { name: 'Remo Kroc a una mano', group: 'espalda', equip: 'mancuernas_fijas' },
     ]);
     expect(line.text).toBe('Día de tracción.');
+  });
+
+  it('conserva unidad y tarea de generación en la tarjeta guardada', () => {
+    const line = resultLine(
+      'suggest',
+      out({ text: JSON.stringify({ title: 'Empuje', exercises: [{ name: 'Press', weight: 80 }] }) }),
+      'g',
+      'lb',
+      '2026-11-27T10:00:00.000Z',
+    );
+    expect(line).toMatchObject({ task: 'suggest', unit: 'lb', ts: '2026-11-27T10:00:00.000Z' });
   });
 
   it('un nombre que no está en la lista pero SIN isNew no abre tarjeta (es veto)', () => {

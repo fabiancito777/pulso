@@ -114,8 +114,7 @@ function setActive(next: ActiveSession | null, stamp = true): void {
      de dónde salen el orden de los ejercicios y las notas (ver
      `mergeActiveSessions`). `stamp: false` es para una sesión que llega YA
      fusionada: no debe parecer recién editada aquí. */
-  const stamped =
-    next && stamp ? { ...next, updatedAt: new Date(NOW()).toISOString() } : next;
+  const stamped = next && stamp ? { ...next, updatedAt: new Date(NOW()).toISOString() } : next;
   /* al empezar (o editar) una sesión, el resumen de la anterior deja de aplicar:
      si no se limpiara, el aviso de «sesión guardada» podría reaparecer encima de
      un entreno nuevo */
@@ -161,10 +160,12 @@ function startSessionEffects(): void {
  * es como pedía el peso antes (`T.prefill`, `trainer.js:30`). Sin `reps` se
  * comporta como antes: `suggestWeight` elige él.
  */
-const suggestForStart = (exId: string, reps?: number): Suggestion =>
+const suggestForStart = (exId: string, reps?: number, sets?: number): Suggestion =>
   suggestWeight(sessions.value, exId, {
     unit: settings.value.units,
+    ...(settings.value.increment > 0 ? { increment: settings.value.increment } : {}),
     ...(reps ? { targetReps: reps } : {}),
+    ...(sets ? { targetSets: sets } : {}),
   });
 
 /**
@@ -298,8 +299,13 @@ export function clearJustAdded(): void {
 }
 
 /** Sugerencia de progresión con las reps que prescribe la rutina o el catálogo. */
-const suggestFor = (exId: string, reps: number): Suggestion =>
-  suggestWeight(sessions.value, exId, { unit: settings.value.units, targetReps: reps });
+const suggestFor = (exId: string, reps: number, sets?: number): Suggestion =>
+  suggestWeight(sessions.value, exId, {
+    unit: settings.value.units,
+    ...(settings.value.increment > 0 ? { increment: settings.value.increment } : {}),
+    targetReps: reps,
+    ...(sets ? { targetSets: sets } : {}),
+  });
 
 /**
  * Añade ejercicios al FINAL de la sesión (nunca toca los que ya están) y devuelve
@@ -347,7 +353,6 @@ export function addRoutineToSession(routineId: string): number | null {
   if (!routine || !active.value) return null;
   return addEntries(entriesFromRoutine(routine, suggestFor, exercises.value));
 }
-
 
 /**
  * "Usar X kg" del modal de discos: escribe la serie que eligió `plateTarget`
@@ -509,9 +514,7 @@ export function finishEntryAt(index: number): FinishEntryResult {
   /* el `exId` cerrado viaja en `active.finished`: al sincronizar, el otro
      dispositivo lo descarta en vez de devolverlo a la sesión en curso. */
   const finished = [...new Set([...(current.finished ?? []), entry.exId])].sort();
-  const remaining = result.remaining
-    ? { ...result.remaining, finished, updatedAt: now }
-    : null;
+  const remaining = result.remaining ? { ...result.remaining, finished, updatedAt: now } : null;
 
   /* UNA escritura: el registro y la sesión que queda se guardan juntos o nada */
   if (!commitEntry(result.session, remaining)) return { ok: false, reason: 'save' };

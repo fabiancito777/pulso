@@ -86,7 +86,7 @@ export interface StartOptions {
    * ellas se pide el peso, igual que hacía `T.prefill`
    * (`trainer.js:30`), que nunca preguntaba por un peso «a secas».
    */
-  suggest: (exId: string, reps?: number) => Suggestion;
+  suggest: (exId: string, reps?: number, sets?: number) => Suggestion;
   routine?: { id: string; name?: string; items: readonly RoutineItem[] } | null;
   exIds?: readonly string[];
   plan?: readonly PlanItem[];
@@ -266,11 +266,12 @@ function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem, unit: Unit): A
   const sets = replay
     ? replay.map((set, index) => {
         const blank = entry.sets[index] ?? entry.sets[entry.sets.length - 1];
-        const weight: ActiveSet['weight'] = set.weight === null
-          ? ''
-          : (item.sourceUnit ?? unit) === unit
-            ? num(set.weight)
-            : round(fromKg(toKg(set.weight, item.sourceUnit ?? 'kg'), unit), 2);
+        const weight: ActiveSet['weight'] =
+          set.weight === null
+            ? ''
+            : (item.sourceUnit ?? unit) === unit
+              ? num(set.weight)
+              : round(fromKg(toKg(set.weight, item.sourceUnit ?? 'kg'), unit), 2);
         return {
           ...(blank ?? { weight: '', reps: '', done: false, ts: null, rpe: null }),
           weight,
@@ -285,7 +286,11 @@ function fromPlanItem(entry: ActiveEntry, item: ResolvedPlanItem, unit: Unit): A
   return {
     ...entry,
     sets,
-    ...(item.basis ? { basis: item.basis } : {}),
+    ...(item.basis
+      ? { basis: item.basis }
+      : item.weight !== null && item.weight !== undefined
+        ? { basis: 'peso prescrito en el plan' }
+        : {}),
     notes: '',
     ...(item.notes ? { cue: item.notes } : {}),
   };
@@ -302,8 +307,7 @@ function validRepeatSets(value: unknown): value is { weight: number | null; reps
       }
       const set = candidate as Record<string, unknown>;
       return (
-        (set.weight === null ||
-          (typeof set.weight === 'number' && Number.isFinite(set.weight))) &&
+        (set.weight === null || (typeof set.weight === 'number' && Number.isFinite(set.weight))) &&
         typeof set.reps === 'number' &&
         Number.isFinite(set.reps) &&
         set.reps > 0
@@ -326,13 +330,14 @@ export function startSession(opts: StartOptions): ActiveSession {
   const make = (o: NewEntryOptions, reps?: number): ActiveEntry => {
     const entry = newEntry(o);
     const target = int(reps, Math.round((entry.repMin + entry.repMax) / 2));
-    return prefill(entry, opts.suggest(o.exId, target));
+    return prefill(entry, opts.suggest(o.exId, target, entry.sets.length));
   };
   const withWeight = (entry: ActiveEntry, weight?: number | null): ActiveEntry =>
-    weight
+    weight !== undefined && weight !== null
       ? {
           ...entry,
           sets: entry.sets.map((s) => ({ ...s, weight: num(weight), suggested: false })),
+          basis: 'peso prescrito en la rutina',
         }
       : entry;
   let entries: ActiveEntry[] = [];
@@ -372,7 +377,7 @@ export function startSession(opts: StartOptions): ActiveSession {
     });
     if (resolved.unresolved.length) opts.onUnresolved?.(resolved.unresolved);
     entries = resolvedItems.map((item) =>
-        fromPlanItem(
+      fromPlanItem(
         withWeight(
           make(
             {
@@ -752,7 +757,7 @@ export function setEntryNotes(
  */
 export function entriesFromRoutine(
   routine: { items: readonly RoutineItem[] },
-  suggest: (exId: string, reps: number) => Suggestion,
+  suggest: (exId: string, reps: number, sets?: number) => Suggestion,
   library: readonly Exercise[],
 ): ActiveEntry[] {
   const out: ActiveEntry[] = [];
@@ -762,10 +767,11 @@ export function entriesFromRoutine(
     const repMin = int(item.repMin, ex.repMin);
     const repMax = int(item.repMax, ex.repMax);
     const reps = Math.round((repMin + repMax) / 2);
-    const weight = item.weight ? num(item.weight) : 0;
-    const suggestion: Suggestion = weight
-      ? { weight, reps, kg: weight, basis: '' }
-      : suggest(ex.id, reps);
+    const fixedWeight = item.weight !== null && item.weight !== undefined;
+    const weight = fixedWeight ? num(item.weight) : 0;
+    const suggestion: Suggestion = fixedWeight
+      ? { weight, reps, kg: weight, basis: 'peso prescrito en la rutina' }
+      : suggest(ex.id, reps, item.sets);
     const entry = prefill(
       newEntry({
         exId: ex.id,
@@ -783,7 +789,7 @@ export function entriesFromRoutine(
       sets: entry.sets.map((set) => ({
         ...set,
         reps,
-        ...(weight ? { weight, suggested: false } : {}),
+        ...(fixedWeight ? { weight, suggested: false } : {}),
       })),
       notes: '',
       cue: item.notes ?? '',

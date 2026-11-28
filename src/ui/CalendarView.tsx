@@ -35,7 +35,7 @@
  * - Los componentes leen los signals (`schedule`, `sessions`, `routines`) ellos
  *   mismos: así el repintado es fino y no hay que pasarles el estado entero.
  */
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 
 import { go } from '@/app/router';
 import { durationOf, sessionDate, setsOf, volumeOf } from '@/domain/analytics';
@@ -747,6 +747,7 @@ function PlanCard({
 }
 
 export function CalendarView() {
+  const planRequestVersion = useRef(0);
   const [cursor, setCursor] = useState(today());
   const [mode, setMode] = useState<ViewMode>('week');
   const [selected, setSelected] = useState<string | null>(null);
@@ -778,7 +779,10 @@ export function CalendarView() {
   );
 
   function move(delta: number): void {
+    planRequestVersion.current++;
     setSelected(null);
+    setPlan(null);
+    setApplied(null);
     setCursor(mode === 'week' ? addDays(cursor, delta * 7) : addMonths(cursor, delta));
   }
 
@@ -803,19 +807,17 @@ export function CalendarView() {
   }
 
   /**
-   * Plan del dispositivo sobre la semana que se está MIRANDO, igual que
-   * `V.autoPlan`  (`startOfWeek(cursor)`): sin red, sin key y sin
-   * promesa. La IA no puede elegir semana (`runCoachTask('plan')` trabaja
-   * siempre sobre la de hoy), por eso el salto de cursor es suyo y este no.
+   * Plan del dispositivo sobre la semana que se está mirando. La IA recibe
+   * el mismo lunes de semana para que preview, fallback y aplicación coincidan.
    */
-  function localPlanJson(): unknown {
+  function localPlanJson(from: string): unknown {
     return localWeek({
       settings: settings.value,
       exercises: exercises.value,
       equipment: equipment.value,
       sessions: sessions.value,
       todayIso: today(),
-      from: startOfWeek(cursor),
+      from,
     });
   }
 
@@ -837,6 +839,8 @@ export function CalendarView() {
    */
   async function requestPlan(engine: PlanEngine): Promise<void> {
     if (loading) return;
+    const requestedFrom = startOfWeek(cursor);
+    const requestVersion = ++planRequestVersion.current;
     setLoading(engine);
     setNotice(null);
     /* el plan local es síncrono: solo la IA necesita espera (y cancelación) */
@@ -846,13 +850,15 @@ export function CalendarView() {
       if (engine === 'ia') {
         /* transcript del chat como `contents`: «Con IA» parte de lo pedido antes */
         const outcome = await runCoachTask('plan', {
+          from: requestedFrom,
           history: promptHistory(),
           signal,
           ...(signal ? { onSlow: wait.markSlow } : {}),
         });
+        if (requestVersion !== planRequestVersion.current) return;
         /* `payload` es el camino directo (en local ya viene del planificador);
            el texto es la red de seguridad por si el JSON viene en una cercilla */
-        parsed = planFromJson(outcome.payload) ?? parsePlan(outcome.text);
+        parsed = planFromJson(outcome.payload, requestedFrom) ?? parsePlan(outcome.text, requestedFrom);
         if (parsed && planEngine(parsed.preview.source) === 'local') {
           setNotice({
             kind: 'warn',
@@ -862,8 +868,9 @@ export function CalendarView() {
           });
         }
       } else {
-        parsed = planFromJson(localPlanJson());
+        parsed = planFromJson(localPlanJson(requestedFrom), requestedFrom);
       }
+      if (requestVersion !== planRequestVersion.current) return;
       if (!parsed) {
         setNotice({
           kind: 'err',
@@ -871,18 +878,24 @@ export function CalendarView() {
         });
         return;
       }
+      if (!parsed.preview.days.length) {
+        setNotice({
+          kind: 'warn',
+          text: `${parsed.ignoredOutsideWeek ?? 0} fechas de la respuesta quedaron fuera de la semana elegida; no se aplicó ninguna.`,
+        });
+        return;
+      }
       setPlan(parsed);
       setApplied(null);
       setShowPlannerChoices(false);
-      if (engine === 'ia') {
-        const first = parsed.preview.days[0]?.iso;
-        /* la IA planifica la semana de hoy: la vista salta ahí para verlo */
-        if (first) {
-          setSelected(null);
-          setCursor(first);
-        }
+      if (parsed.ignoredOutsideWeek) {
+        setNotice({
+          kind: 'warn',
+          text: `${parsed.ignoredOutsideWeek} fechas fuera de la semana elegida se omitieron.`,
+        });
       }
     } catch (err) {
+      if (requestVersion !== planRequestVersion.current) return;
       setNotice(
         wait.cancelled()
           ? { kind: 'warn', text: 'Cancelado: dejé de esperar el plan de la IA.' }
@@ -900,16 +913,21 @@ export function CalendarView() {
   /** `cal:apply-plan`: el ÚNICO sitio donde se escribe el calendario. */
   function applyPlan(): void {
     if (!plan) return;
-    const result = applyWeek(plan.raw);
+    const result = applyWeek(plan.raw, today(), plan.weekFrom ?? weekStart);
     setApplied(result.days);
-    /* `skipped` son los días que ya pasaron: se dicen para que no parezca que
-       el plan se perdió por el camino. */
-    const skipped = result.skipped ? ` · ${result.skipped} días pasados ignorados` : '';
+    /* Los días pasados/fuera de rango y las fechas sin ejercicios viables se
+       explican para que no parezca que se perdió el plan. */
+    const skipped = result.skipped ? ` · ${result.skipped} días pasados o fuera de semana ignorados` : '';
+    const omitted = result.omittedDates?.length
+      ? ` · sin cambios en ${result.omittedDates.map((iso) => dateLabel(iso, 'short')).join(', ')}: ningún ejercicio de esa propuesta se puede usar`
+      : '';
     /* Los ejercicios del plan se guardan en `day.plan`, no como rutinas: con
        cero rutinas nuevas no tiene sentido decir «0 rutinas». */
-    const base = result.routines
+    const base = result.days === 0 && result.omittedDates?.length
+      ? `No se aplicaron días${skipped}${omitted}`
+      : result.routines
       ? `Plan aplicado: ${result.days} días, ${result.routines} rutinas${skipped}`
-      : `Plan aplicado: ${result.days} días${skipped}`;
+      : `Plan aplicado: ${result.days} días${skipped}${omitted}`;
     setNotice({
       kind: result.unresolved.length ? 'warn' : 'ok',
       text: result.unresolved.length

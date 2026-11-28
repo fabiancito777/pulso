@@ -16,7 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { findExerciseByName, isAvailable } from '@/domain/data';
-import { addDays, today } from '@/domain/dates';
+import { addDays, startOfWeek, today } from '@/domain/dates';
 import type { UnresolvedName } from '@/domain/match';
 import type { Exercise, Session } from '@/domain/types';
 import { GeminiError } from '@/features/coach/client';
@@ -541,6 +541,29 @@ describe('runCoachTask', () => {
     expect(store.meta.value.lastPlanAt).toEqual(expect.any(String));
   });
 
+  it('el fallback local de plan usa la semana pedida aunque no sea la actual', async () => {
+    store.patchSettings({ ai: { ...store.settings.value.ai, apiKey: '' } });
+    const from = startOfWeek(addDays(today(), 14));
+    const out = await coach.runCoachTask('plan', { from });
+    const payload = out.payload as { from: string; days: { date: string }[] };
+
+    expect(payload.from).toBe(from);
+    expect(payload.days.map((day) => day.date)).toEqual(
+      Array.from({ length: 7 }, (_, index) => addDays(from, index)),
+    );
+  });
+
+  it('la IA recibe en contexto y prompt la semana elegida', async () => {
+    const from = startOfWeek(addDays(today(), 14));
+    const to = addDays(from, 6);
+    const gen = makeGen([res(JSON.stringify({ days: [{ date: from, type: 'descanso', exercises: [] }] }))]);
+    await coach.runCoachTask('plan', { from }, { generateFn: gen });
+    const args = gen.mock.calls[0]?.[0];
+
+    expect(args?.prompt).toContain(`Planifica la semana de entrenamiento del ${from} al ${to}`);
+    expect(args?.system).toContain(`PLAN SEMANAL (${from} → ${to}, día a día)`);
+  });
+
   it('con apiKey → suggest sigue yendo a la IA y el payload sale de su respuesta', async () => {
     const gen = makeGen([
       res(
@@ -707,6 +730,16 @@ describe('runCoachTask', () => {
 });
 
 describe('applySuggestionAsRoutine', () => {
+  it('resolveCoachItems conserva el origen de peso de la propuesta local', () => {
+    const basis = 'Repite 25 kg: cumpliste la serie prevista';
+    const resolved = coach.resolveCoachItems([
+      { name: NOMBRE, sets: 3, weight: 25, basis },
+    ]);
+
+    expect(resolved.items[0]).toMatchObject({ exId: pressId(), weight: 25, basis });
+    expect(resolved.unresolved).toEqual([]);
+  });
+
   it('conserva el par de superserie que propone el coach', () => {
     const { routine } = coach.applySuggestionAsRoutine({
       title: 'Par',
@@ -724,7 +757,7 @@ describe('applySuggestionAsRoutine', () => {
   });
 
   it('crea la rutina con source ia, reporta lo que no resuelve y persiste', () => {
-    const { routine: creada, unresolved } = coach.applySuggestionAsRoutine({
+    const out = coach.applySuggestionAsRoutine({
       title: 'Empuje del coach',
       focus: 'Pecho y tríceps',
       source: 'ia',
@@ -745,9 +778,33 @@ describe('applySuggestionAsRoutine', () => {
     });
 
     /* LO QUE ANTES DESAPARECÍA SIN DECIR NADA: ahora vuelve con nombre y razón */
-    expect(unresolved).toHaveLength(1);
-    expect(unresolved[0]?.name).toBe('Ejercicio inventado por el modelo');
-    expect(unresolved[0]?.reason).toBe('no está en tu biblioteca');
+    expect(out.unresolved).toHaveLength(1);
+    expect(out.unresolved[0]?.name).toBe('Ejercicio inventado por el modelo');
+    expect(out.unresolved[0]?.reason).toBe('no está en tu biblioteca');
+    expect(out.deferred).toBe(true);
+    expect(out.routine).toBeNull();
+    expect(store.routines.value).toHaveLength(0);
+
+    /* Tras descartar el no disponible, el reintento crea solo lo restante. */
+    const { routine: creada, unresolved } = coach.applySuggestionAsRoutine({
+      title: 'Empuje del coach',
+      focus: 'Pecho y tríceps',
+      source: 'ia',
+      notes: 'Sesión de hoy',
+      rationale: ['Basado en tu historial', 'Días suficientes de descanso'],
+      exercises: [
+        {
+          name: NOMBRE,
+          sets: 4,
+          repMin: 6,
+          repMax: 8,
+          weight: 80,
+          rest: 180,
+          notes: 'Baja controlado',
+        },
+      ],
+    });
+    expect(unresolved).toEqual([]);
 
     expect(creada).not.toBeNull();
     expect(creada?.name).toBe('Empuje del coach');
@@ -865,6 +922,25 @@ describe('applySuggestionAsRoutine', () => {
     expect(out.updated).toBe(true);
     expect(out.routine?.name).toBe('Nombre original');
   });
+
+  it('un update con un item no resuelto se difiere sin cambiar la rutina', () => {
+    const initial = coach.applySuggestionAsRoutine({
+      title: 'Nombre original',
+      exercises: [{ name: NOMBRE, sets: 3 }],
+    }).routine;
+    if (!initial) throw new Error('rutina base no creada');
+    const before = structuredClone(store.routines.value.find((item) => item.id === initial.id));
+    const out = coach.applySuggestionAsRoutine({
+      action: 'update',
+      routineId: initial.id,
+      exercises: [{ name: NOMBRE, sets: 4 }, { name: 'Ejercicio inventado', sets: 3 }],
+    });
+
+    expect(out.routine).toBeNull();
+    expect(out.deferred).toBe(true);
+    expect(out.unresolved[0]?.reason).toBe(coach.CREABLE_REASON);
+    expect(store.routines.value.find((item) => item.id === initial.id)).toEqual(before);
+  });
 });
 
 describe('applyWeek', () => {
@@ -950,6 +1026,43 @@ describe('applyWeek', () => {
     expect(store.schedule.value[addDays(LUNES, 1)]?.title).toBe('Futuro');
   });
 
+  it('no pisa el plan previo si todos los ejercicios del día están vetados', () => {
+    store.setDay(LUNES, {
+      status: 'planned',
+      type: 'entreno',
+      title: 'Plan guardado',
+      plan: [{ exId: pressId(), sets: 3 }],
+    });
+    store.setExerciseAllowed(pressId(), false);
+    const out = coach.applyWeek(
+      {
+        days: [{ date: LUNES, type: 'entreno', title: 'Propuesta imposible', exercises: [{ name: NOMBRE }] }],
+      },
+      LUNES,
+    );
+
+    expect(out.days).toBe(0);
+    expect(out.omittedDates).toEqual([LUNES]);
+    expect(out.unresolved[0]?.reason).toBe('Ejercicio vetado en Ajustes');
+    expect(store.schedule.value[LUNES]).toMatchObject({
+      title: 'Plan guardado',
+      plan: [{ exId: pressId(), sets: 3 }],
+    });
+  });
+
+  it('no aplica fechas fuera de la semana solicitada', () => {
+    const otherWeek = addDays(LUNES, 14);
+    const out = coach.applyWeek(
+      { days: [{ date: otherWeek, type: 'descanso', title: 'Otra semana', exercises: [] }] },
+      LUNES,
+      LUNES,
+    );
+
+    expect(out.days).toBe(0);
+    expect(out.skipped).toBe(1);
+    expect(store.schedule.value[otherWeek]).toBeUndefined();
+  });
+
   it('lo que no resuelve se acumula en unresolved y no crea rutina vacía', () => {
     const aplicado = coach.applyWeek(
       {
@@ -977,8 +1090,10 @@ describe('applyWeek', () => {
       LUNES,
     );
 
-    expect(aplicado.days).toBe(2);
-    /* los ejercicios reconocibles van al plan del día; el día 2 NO tenía ninguno */
+    expect(aplicado.days).toBe(1);
+    expect(aplicado.skipped).toBe(0);
+    expect(aplicado.omittedDates).toEqual([addDays(LUNES, 1)]);
+    /* el segundo día, con solo un nombre desconocido, se deja intacto */
     expect(aplicado.routines).toBe(0);
     expect(store.schedule.value[LUNES]?.plan).toBeDefined();
     expect(aplicado.unresolved.map((u) => u.name)).toEqual([
@@ -987,8 +1102,7 @@ describe('applyWeek', () => {
     ]);
     expect(aplicado.unresolved[0]?.reason).toContain('inclinado');
     expect(aplicado.unresolved[1]?.reason).toBe('no está en tu biblioteca');
-    expect(store.schedule.value[addDays(LUNES, 1)]?.routineId).toBeUndefined();
-    expect(store.schedule.value[addDays(LUNES, 1)]?.plan).toBeUndefined();
+    expect(store.schedule.value[addDays(LUNES, 1)]).toBeUndefined();
   });
 
   it('sanea los números raros del modelo antes de guardarlos', () => {

@@ -395,7 +395,7 @@ describe('sugerencia de peso', () => {
     expect(s.weight).toBe(102.5);
     expect(s.prev).toBe(100);
     expect(s.prevReps).toBe(5);
-    expect(s.basis).toContain('última vez 100 kg × 5');
+    expect(s.basis).toContain('Sube a 102,5 kg');
   });
 
   it('no salta más de un incremento aunque Epley dé mucho más', () => {
@@ -405,8 +405,8 @@ describe('sugerencia de peso', () => {
 
   it('si pides más repeticiones, el peso baja de verdad', () => {
     const s = suggestWeight(conHistorial, 'ex-press', { targetReps: 8, unit: 'kg' });
-    expect(s.weight).toBeCloseTo(92.11, 2);
-    expect(s.weight).toBeLessThan(100);
+    expect(s.weight).toBe(100);
+    expect(s.basis).toContain('0 de 1 series previstas');
   });
 
   it('usa las reps del rango del ejercicio cuando no se pide ninguna', () => {
@@ -436,6 +436,59 @@ describe('sugerencia de peso', () => {
     expect(s.kg).toBe(0);
     expect(s.prev).toBe(0);
     expect(s.prevReps).toBe(12);
+    expect(s.basis).toContain('no se puede inferir un peso');
+    expect(s.basis).not.toContain('Repite 0 kg');
+  });
+
+  it('considera todas las series: una 10,7,6,5 no autoriza subir para 10x4', () => {
+    const history = [
+      sesion('2026-09-20', [press([serie(25, 10), serie(25, 7), serie(25, 6), serie(25, 5)])]),
+    ];
+    const s = suggestWeight(history, 'ex-press', { targetReps: 10, targetSets: 4, unit: 'kg' });
+    expect(s.weight).toBe(25);
+    expect(s.basis).toContain('Repite 25 kg');
+    expect(s.basis).toContain('1 de 4 series previstas');
+  });
+
+  it('sube un incremento si todas las series alcanzan el objetivo con RPE razonable', () => {
+    const history = [
+      sesion('2026-09-20', [
+        press([
+          { ...serie(25, 10), rpe: 7 },
+          { ...serie(25, 11), rpe: 8 },
+          { ...serie(25, 10), rpe: 8 },
+          { ...serie(25, 10), rpe: 8 },
+        ]),
+      ]),
+    ];
+    const s = suggestWeight(history, 'ex-press', { targetReps: 10, targetSets: 4, unit: 'kg' });
+    expect(s.weight).toBe(27.5);
+    expect(s.basis).toContain('4 de 4 series previstas');
+    expect(s.basis).toContain('RPE medio 7,8');
+  });
+
+  it('frena si una serie tuvo RPE 9 aunque las otras fueran fáciles', () => {
+    const history = [
+      sesion('2026-09-20', [
+        press([
+          { ...serie(25, 10), rpe: 5 },
+          { ...serie(25, 10), rpe: 5 },
+          { ...serie(25, 10), rpe: 9 },
+          { ...serie(25, 10), rpe: 5 },
+        ]),
+      ]),
+    ];
+    const s = suggestWeight(history, 'ex-press', { targetReps: 10, targetSets: 4, unit: 'kg' });
+    expect(s.weight).toBe(25);
+    expect(s.basis).toContain('RPE 9 en una serie');
+  });
+
+  it('con pesos variables conserva un peso realmente levantado y explica la variación', () => {
+    const history = [sesion('2026-09-20', [press([serie(20, 10), serie(30, 10)])])];
+    const s = suggestWeight(history, 'ex-press', { targetReps: 10, targetSets: 2, unit: 'kg' });
+    expect(s.weight).toBe(30);
+    expect(s.basis).toContain('peso variable');
+    expect(s.basis).toContain('última carga registrada: 30 kg');
   });
 });
 

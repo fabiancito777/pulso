@@ -101,6 +101,7 @@ function repRangeOf(
 /** Un vistazo a un ejercicio en una sesión concreta. */
 interface Point {
   date: string;
+  startedAt: string;
   /** kg de la mejor serie */
   kg: number;
   reps: number;
@@ -272,9 +273,31 @@ export function buildInsights(params: BuildInsightsParams): Insights {
     maxDeviations = 20,
   } = params;
 
-  const ordered = [...sessions].sort((a, b) => (sessionDate(a) < sessionDate(b) ? -1 : 1));
+  const ordered = [...sessions].sort(
+    (a, b) =>
+      sessionDate(a).localeCompare(sessionDate(b)) ||
+      String(a.startedAt ?? '').localeCompare(String(b.startedAt ?? '')),
+  );
   const window = ordered.slice(-Math.max(1, Math.trunc(num(maxSessions, 12))));
   if (!window.length) return emptyInsights();
+  /* La ventana limita tendencias y avisos recientes, pero no decide qué es un
+     récord: cada punto reciente se compara con el mejor registro anterior de
+     todo el historial. */
+  const allHistory = new Map<string, { date: string; startedAt: string; e1rm: number }[]>();
+  for (const session of ordered) {
+    for (const entry of session.entries) {
+      const top = topSet(session, entry);
+      if (!top) continue;
+      const point = {
+        date: sessionDate(session),
+        startedAt: String(session.startedAt ?? ''),
+        e1rm: round(e1rm(setKg(top, session.unit), top.reps), 2),
+      };
+      const history = allHistory.get(entry.exId);
+      if (history) history.push(point);
+      else allHistory.set(entry.exId, [point]);
+    }
+  }
 
   const names = new Map<string, string>();
   for (const ex of exercises) names.set(ex.id, ex.name);
@@ -295,6 +318,7 @@ export function buildInsights(params: BuildInsightsParams): Insights {
       if (!top) continue;
       const point: Point = {
         date: sessionDate(session),
+        startedAt: String(session.startedAt ?? ''),
         kg: round(setKg(top, session.unit), 2),
         reps: num(top.reps),
         e1rm: round(e1rm(setKg(top, session.unit), top.reps), 2),
@@ -321,7 +345,11 @@ export function buildInsights(params: BuildInsightsParams): Insights {
     const name = nameOf(exId);
 
     const reasons: string[] = [];
-    const before = pts.slice(0, -1);
+    const before = (allHistory.get(exId) ?? []).filter(
+      (point) =>
+        point.date < latest.date ||
+        (point.date === latest.date && point.startedAt < latest.startedAt),
+    );
     let isPr = false;
     if (before.length) {
       const oldBest = Math.max(...before.map((p) => p.e1rm));

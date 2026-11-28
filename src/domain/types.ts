@@ -275,7 +275,7 @@ export interface ActiveEntry {
   notes: string;
   /** Consejo copiado de la rutina/plan al crear la entrada. */
   cue?: string;
-  /** de dónde sale el peso propuesto: "última vez 60 kg × 8 · hace 3 días" */
+  /** explicación legible de la sugerencia, repetición exacta o peso prescrito */
   basis?: string;
   /**
    * id del par de superserie (`domain/supersets`): dos entradas CONSECUTIVAS con
@@ -371,6 +371,8 @@ export interface PlanItem {
   repMax?: number;
   rest?: number;
   weight?: number | null;
+  /** motivo del peso propuesto; si falta y hay peso, se muestra «prescrito» */
+  basis?: string;
   /** Series guardadas al repetir una sesión; no forma parte de planes normales. */
   repeatSets?: { weight: number | null; reps: number }[];
   /** Unidad en que se registraron las series repetidas. */

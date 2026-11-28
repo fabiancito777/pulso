@@ -301,6 +301,25 @@ describe('propuesta: local vs IA', () => {
     expect(planFromJson(undefined)).toBeNull();
   });
 
+  it('filtra días de IA que no pertenecen a la semana solicitada', () => {
+    const from = '2026-09-28';
+    const inWeek = addDays(from, 3);
+    const outside = addDays(from, 14);
+    const plan = planFromJson(
+      { days: [{ date: inWeek, type: 'entreno' }, { date: outside, type: 'descanso' }] },
+      from,
+    );
+
+    expect(plan?.weekFrom).toBe(from);
+    expect(plan?.preview.days.map((day) => day.iso)).toEqual([inWeek]);
+    expect((plan?.raw as { days: { date: string }[] }).days.map((day) => day.date)).toEqual([inWeek]);
+    expect(plan?.ignoredOutsideWeek).toBe(1);
+
+    const noMatch = planFromJson({ days: [{ date: outside, type: 'descanso' }] }, from);
+    expect(noMatch?.preview.days).toEqual([]);
+    expect(noMatch?.ignoredOutsideWeek).toBe(1);
+  });
+
   it('preview de fechas distingue altas, actualizaciones y días pasados omitidos', () => {
     const yesterday = addDays(today(), -1);
     const existing = addDays(today(), 2);

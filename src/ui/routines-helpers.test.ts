@@ -102,9 +102,9 @@ describe('matchExercises', () => {
     expect(matchExercises('', hidden, [], hidden.length).map((ex) => ex.id)).not.toContain(
       target.id,
     );
-    expect(
-      matchExercises(target.name, hidden, [], hidden.length).map((ex) => ex.id),
-    ).not.toContain(target.id);
+    expect(matchExercises(target.name, hidden, [], hidden.length).map((ex) => ex.id)).not.toContain(
+      target.id,
+    );
   });
 
   it('con la consulta vacía los ★ salen primero sin mover el resto', () => {
@@ -206,7 +206,15 @@ describe('toSuggestion', () => {
     focus: 'Pecho · tríceps',
     rationale: ['Toca pecho tras 48 h', ''],
     exercises: [
-      { name: 'Press de Piso con Mancuernas', sets: 4, repMin: 6, repMax: 10, rest: 180, weight: 60, superset: 'A' },
+      {
+        name: 'Press de Piso con Mancuernas',
+        sets: 4,
+        repMin: 6,
+        repMax: 10,
+        rest: 180,
+        weight: 60,
+        superset: 'A',
+      },
       { name: 'Press de Piso con Mancuernas EXTRA', sets: 3, weight: '', superset: 'A' },
       { name: 'Remo con polea para gemelos', sets: 3 },
     ],
@@ -375,7 +383,7 @@ describe('generateAuto', () => {
     for (const item of items) {
       expect(item.weight).not.toBeNull();
       expect(item.weight).toBeGreaterThan(0);
-      expect(item.basis.startsWith('última vez')).toBe(true);
+      expect(/^(Sube a|Repite) /.test(item.basis)).toBe(true);
     }
   });
 

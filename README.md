@@ -38,16 +38,17 @@ pantalla completa y funciona offline).
 ## Qué incluye
 
 ### Perfiles
+
 - **Varios perfiles en el mismo dispositivo** (hasta 6) con un chip en la barra superior: un toque
   abre la hoja, otro cambia. Cada perfil tiene sus ajustes, equipo, sesiones, rutinas, calendario y
   chat; la **API key del coach se comparte** entre todos.
 - Cambiar de perfil con una sesión activa la **guarda en ese perfil** (y avisa); al volver, la
   retomas donde estaba, con su descanso.
-- **Gestión** en *Ajustes → Perfil*: crear, usar, renombrar y borrar. El perfil principal usa
+- **Gestión** en _Ajustes → Perfil_: crear, usar, renombrar y borrar. El perfil principal usa
   `pulso.state`; los demás, `pulso.state.<id>`, así que los datos existentes no se migran.
 - **Backups**: por perfil (formato de siempre) o un archivo con **todos los perfiles**. La key se
   incluye solo si marcas la opción.
-- **Sincronización móvil ↔ PC sin cuentas** (*Ajustes → Datos*): un **código de pareja** vincula los
+- **Sincronización móvil ↔ PC sin cuentas** (_Ajustes → Datos_): un **código de pareja** vincula los
   dispositivos y los datos viajan **cifrados con AES-GCM** (el servidor solo ve un hash y un texto
   cifrado). Las sesiones y rutinas se **suman** (nunca se pisan), los ajustes van por «último cambio
   gana» y, si los dos cambiaron lo mismo, la app **pregunta** antes de decidir. La sesión en curso se
@@ -56,6 +57,7 @@ pantalla completa y funciona offline).
   `node tools/sync-dev.mjs`.
 
 ### Hoy / Entrenar
+
 - El plan del día recoge la sesión prevista. **Ver los N ejercicios** despliega la lista sin arrancar el
   entreno; puedes volver a plegarla antes de empezar.
 - **Empezar** es la acción principal del plan; **Saltar** aparece en su menú, marca hoy como descanso y conserva
@@ -70,7 +72,7 @@ pantalla completa y funciona offline).
 - Al pulsar **Finalizar sesión**, el resumen confirma series, duración y récords nuevos. **Ver detalle**
   despliega volumen, RPE, series por ejercicio y nota; **Listo** cierra la hoja y **Ver progreso** abre
   las estadísticas. Calendario y Repetir quedan como accesos secundarios.
-- **Modo súper simple** (*Ajustes → Entreno*). Muestra la sesión activa en negro y lima, con **Finalizar**
+- **Modo súper simple** (_Ajustes → Entreno_). Muestra la sesión activa en negro y lima, con **Finalizar**
   arriba, el progreso y el descanso a la vista, y una tabla para apuntar peso, repeticiones y series.
   Toca **Pulso** para volver a Ajustes sin cerrar la sesión. El modo se guarda por perfil y viene
   apagado de fábrica. En la vista habitual puedes editar el RPE y borrar series.
@@ -87,7 +89,7 @@ pantalla completa y funciona offline).
   (Unlicense) para los curls de muñeca a un brazo.
 - **Consejo del ejercicio y nota personal**. Abre **Ver consejo** para consultar la indicación de la
   rutina o de la biblioteca. En modo súper simple está en `⋯`, junto a **Nota personal**, donde puedes
-  guardar cómo te sentiste. En *Ajustes → Entreno* puedes dejar visibles el consejo y el descanso
+  guardar cómo te sentiste. En _Ajustes → Entreno_ puedes dejar visibles el consejo y el descanso
   configurado para cada ejercicio.
 - **Temporizador de descanso**. En la vista habitual, **Resumen / Descanso** alterna entre el progreso
   y la cuenta atrás, con `−15 s`, `+15 s` y **Saltar**. En el modo súper simple, el resumen sigue
@@ -107,7 +109,7 @@ pantalla completa y funciona offline).
   crear o editar ejercicios propios. Un valor de `0` desactiva el descanso de ese ejercicio. Si no
   tiene un tiempo asignado, se usa el descanso general.
 - **Aviso de fin aunque no estés mirando la app**: al terminar suena el pitido, vibra y lanza una
-  **notificación del sistema**; con la app en segundo plano la lanza el *service worker*
+  **notificación del sistema**; con la app en segundo plano la lanza el _service worker_
   (`public/sw.js`), y con el
   móvil bloqueado la recibes si instalas la app como PWA (Añadir a pantalla de inicio; en iOS es
   requisito, 16.4+). El aviso es un **pitido largo (~3,5 s) + vibración + notificación**: el aviso queda
@@ -115,10 +117,12 @@ pantalla completa y funciona offline).
   quede congelada o cerrada. Como último recurso (iOS o navegadores sin service worker), el audio en
   silencio se activa **solo durante el descanso**, para no atenuar otras apps, y se apaga al terminar.
   Durante la sesión la pantalla se mantiene encendida (Wake Lock) y se recupera al volver a la app.
-- **Autollenado progresivo**: cada serie se rellena con el peso sugerido a partir de tu última sesión
-  del mismo ejercicio (fórmula de Epley) + tu incremento configurado. Si no tienes historial el campo
-  queda **vacío** (no en 0), así que un ejercicio a peso corporal no parece pesar 0 kg.
-- **RPE por serie opcional** (*Ajustes → Entreno*). Añade una columna en la vista habitual para
+- **Autollenado progresivo**: la sugerencia considera las series de la última sesión, las reps y series
+  prescritas, el RPE apuntado y tu incremento configurado. Solo sube si se completan las series previstas
+  con las reps objetivo y un esfuerzo razonable; si no, mantiene la carga. Los pesos se comparan en kg,
+  aunque cada sesión conserve su unidad. La explicación aparece bajo el ejercicio. Sin historial, el campo
+  queda **vacío**; si la carga varió, usa una referencia realmente levantada.
+- **RPE por serie opcional** (_Ajustes → Entreno_). Añade una columna en la vista habitual para
   apuntar el esfuerzo de cada serie (1-10). Se guarda con la sesión y aparece en el detalle.
 - **Calculadora de discos** integrada (y como herramienta suelta) con **modo de carga**: barra, **1
   mancuerna** (unilateral) o **2 mancuernas** cargables. El mismo inventario no rinde igual en cada caso
@@ -134,6 +138,7 @@ pantalla completa y funciona offline).
 - Panel del día: tira semanal, KPIs (sesiones, volumen, series), últimas sesiones.
 
 ### Rutinas
+
 - Biblioteca de rutinas propias (crear, editar, duplicar, borrar, agendar, empezar).
 - Las rutinas guardadas aparecen primero; **Nueva rutina** abre opciones para empezar desde cero,
   usar una plantilla local o pedir una propuesta al coach.
@@ -145,6 +150,7 @@ pantalla completa y funciona offline).
 - Generador automático (rotando ejercicios que ya hiciste recientemente) y generador con IA.
 
 ### Plan (calendario)
+
 - Vista semanal en siete filas compactas; al seleccionar un día se abre el mismo detalle que en la vista mensual.
   Incluye estados (planificado / hecho / descanso / saltado) y navegación entre semanas.
 - Asignar cualquier rutina a un día, o guardar un plan de ejercicios concreto para ese día.
@@ -159,10 +165,17 @@ pantalla completa y funciona offline).
 - Vista mensual con heatmap de adherencia y resumen semanal (volumen por grupo, planificadas vs hechas).
 
 ### Coach AI (Gemini)
+
 - Chat con contexto real: perfil, objetivo, equipamiento, inventario de discos, ejercicios permitidos y
   prohibidos, historial reciente, días desde el último estímulo por grupo, récords y plan de la semana.
-- Acciones rápidas: sesión de hoy, plan de la semana, análisis de progreso, revisión de volumen,
+- Acciones rápidas: sugerir un entreno, plan de la semana, análisis de progreso, revisión de volumen,
   plan para romper un récord.
+- **Sugerir entreno** deja la propuesta como tarjeta en el chat. **Empezar este entreno** inicia esa
+  prescripción desde los ejercicios disponibles, sin guardar una rutina; **Guardar como rutina** es
+  independiente. Si hay ejercicios nuevos, primero puedes crearlos o descartarlos y luego reintentar.
+  Una sesión activa nunca se reemplaza. El historial del chat conserva un resumen corto del orden,
+  las series, repeticiones, peso y descanso de las tarjetas, para que el siguiente turno pueda
+  modificarlas sin reenviar todo el JSON.
 - Propone el **descanso por ejercicio** (compuestos 180-240 s, auxiliares 90-120 s, aislamientos
   60-75 s), que puedes ajustar a mano durante la sesión, en la rutina o en tus ejercicios.
 - En Ajustes → Coach AI quedan a la vista la **API key**, su estado y la prueba de conexión. En
@@ -178,6 +191,7 @@ pantalla completa y funciona offline).
   se identifican como generadas en el dispositivo y pueden aplicarse sin conectar el coach.
 
 ### Progreso (estadísticas)
+
 - Puedes abrir una **demostración temporal** con sesiones de ejemplo desde Progreso o Ajustes → Datos. Las sesiones
   de demostración no se mezclan con tu historial guardado ni se sincronizan; salir de la demostración vuelve a tus
   datos reales. También puedes generar otra muestra desde el panel.
@@ -195,16 +209,18 @@ pantalla completa y funciona offline).
 - Rangos: 4 / 8 / 12 semanas / 6 meses / todo.
 
 ### PWA (instalable y sin conexión)
+
 - **Se instala como app** (Añadir a pantalla de inicio / icono de instalar del navegador) y abre a pantalla
-  completa, sin barra del navegador. Desde *Ajustes → Datos → Instalar como aplicación* hay un botón que usa el
+  completa, sin barra del navegador. Desde _Ajustes → Datos → Instalar como aplicación_ hay un botón que usa el
   diálogo nativo si está disponible y, si no (p. ej. Safari en iOS), explica los pasos.
-- **Funciona sin conexión**: el *service worker* (`public/sw.js`) cachea el shell (HTML, CSS, JS e iconos) la primera
+- **Funciona sin conexión**: el _service worker_ (`public/sw.js`) cachea el shell (HTML, CSS, JS e iconos) la primera
   vez y luego sirve **network-first con respaldo en caché**, así que online siempre entra la versión nueva y
   offline abre igual. Los datos ya eran locales, así que todo queda disponible.
 - Las notificaciones de fin de descanso siguen funcionando con la app en segundo plano o el móvil bloqueado
   (requiere servirla por `http/https` y, en iOS, tenerla instalada).
 
 ### Ajustes
+
 - **Perfil**: nombre, nivel, objetivo (hipertrofia, fuerza, perder grasa, salud), días/semana, unidades kg/lb.
 - **Apariencia**: tema **AMOLED (negro puro #000)**, oscuro o claro; 10 acentos de color; sonido y volumen;
   vibración; notificaciones; mantener pantalla encendida durante la sesión.
@@ -235,7 +251,7 @@ pantalla completa y funciona offline).
   cifrada mediante el Worker. La API key se excluye de la sincronización.
 - Cuando usas el coach en línea, Pulso envía el contexto descrito abajo a Gemini con tu API key.
   Las notas personales nuevas por ejercicio se guardan aparte, fuera de ese contexto.
-- Exporta una copia desde *Ajustes → Datos* de vez en cuando: borrar los datos del navegador borra la app.
+- Exporta una copia desde _Ajustes → Datos_ de vez en cuando: borrar los datos del navegador borra la app.
 
 ## Modelos y thinking
 
@@ -306,14 +322,14 @@ fuera de sí mismo, así que se prueba sin navegador.
 
 ## Herramientas de desarrollo
 
-| Comando | Qué hace |
-|---|---|
-| `npm run dev` | Servidor de desarrollo con HMR en http://localhost:5173. |
-| `npm run typecheck` | `tsc --noEmit` con `strict`. |
-| `npm run lint` | ESLint con reglas tipadas. |
-| `npm run test` | Vitest offline para dominio, estado y UI. |
-| `npm run verify` | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
-| `npm run format` | Prettier sobre el proyecto. |
+| Comando             | Qué hace                                                                |
+| ------------------- | ----------------------------------------------------------------------- |
+| `npm run dev`       | Servidor de desarrollo con HMR en http://localhost:5173.                |
+| `npm run typecheck` | `tsc --noEmit` con `strict`.                                            |
+| `npm run lint`      | ESLint con reglas tipadas.                                              |
+| `npm run test`      | Vitest offline para dominio, estado y UI.                               |
+| `npm run verify`    | typecheck + lint + test + build: la puerta antes de dar algo por bueno. |
+| `npm run format`    | Prettier sobre el proyecto.                                             |
 
 ---
 
@@ -324,11 +340,11 @@ fuera de sí mismo, así que se prueba sin navegador.
 - **Tests**: viven en `src/**/*.test.ts` (Vitest), sin navegador; los flujos de modal y timer
   que no se pueden probar así se verifican con Playwright.
 - **Modo demo**: `?demo=1` carga 8 semanas de sesiones de ejemplo con datos para probar gráficos y
-  calendario. Se quitan desde *Ajustes → Datos*.
+  calendario. Se quitan desde _Ajustes → Datos_.
 - **Datos base e iconos**: `src/domain/catalog.ts` contiene grupos, material y opciones del coach;
   los ejercicios iniciales están en `src/domain/seed.ts`. Ambos ficheros y `src/ui/icons.ts` se editan
   a mano con cuidado; las comprobaciones de dominio están en `src/domain/data.test.ts`.
-- **Añadir un ejercicio**: a la semilla (`src/domain/seed.ts`) o desde *Ajustes → Ejercicios* (los propios
+- **Añadir un ejercicio**: a la semilla (`src/domain/seed.ts`) o desde _Ajustes → Ejercicios_ (los propios
   se fusionan con la semilla al recargar, conservando tus flags de permitido/prohibido).
 - **Añadir una pestaña**: amplía `TABS` en `src/app/router.ts` y añade la vista en `src/ui/`.
 - **Estado**: todo pasa por los setters de `src/state/store.ts` (lectura-modificación-escritura),
@@ -343,13 +359,11 @@ Mejoras que encajan de forma natural si quieres seguir:
 1. **Wearables / salud**: importar pasos, sueño y pulso (Apple Health / Google Fit) para correlacionar
    volumen, recuperación y ritmo cardíaco.
 2. **Series de aproximación y RIR** con plantillas por ejercicio (calentamiento automático al 40/60/80 %).
-3. **Autorregulación**: sugerir el peso de la próxima sesión con doble progresión real (si completas el tope
-   de reps en todas las series, sube; si no, mantén) y avisar de estancamientos por ejercicio.
-4. **Métricas corporales**: peso, medidas y fotos, con gráficos sobre las mismas líneas temporales.
-5. **Stack**: si más adelante quieres migrar, el código está separado por responsabilidades (store, planner,
+3. **Métricas corporales**: peso, medidas y fotos, con gráficos sobre las mismas líneas temporales.
+4. **Stack**: si más adelante quieres migrar, el código está separado por responsabilidades (store, planner,
    charts, vistas), así que portar a React/Svelte/Vue o a React Native/Expo sería directo manteniendo el modelo de datos.
-6. **i18n**: los textos están en español dentro de los módulos; extraerlos a un diccionario es sencillo.
-7. **Más estadísticas**: volumen efectivo por serie, distribución de RPE, tiempo bajo tensión y comparativas
+5. **i18n**: los textos están en español dentro de los módulos; extraerlos a un diccionario es sencillo.
+6. **Más estadísticas**: volumen efectivo por serie, distribución de RPE, tiempo bajo tensión y comparativas
    entre bloques de 4 semanas (mesociclos).
 
 ## Limitaciones conocidas

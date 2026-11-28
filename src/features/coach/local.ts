@@ -18,7 +18,7 @@
  *   `generador`, que es como antes etiquetaba la rutina nacida aquí.
  */
 import { daysSince, groupSets, lastTrained, sessionsSince } from '@/domain/analytics';
-import { GOAL_REPS, GOAL_SETS, GROUPS, goalLabel, groupKeysInUse, groupLabel } from '@/domain/data';
+import { GOAL_REPS, GOAL_SETS, GROUPS, goalLabel, groupKeysInUse, groupLabel, isAvailable } from '@/domain/data';
 import { addDays, startOfWeek } from '@/domain/dates';
 import { clamp, int, num } from '@/domain/num';
 import type { PlanExercise, PlanInput, SuggestFn } from '@/domain/plan';
@@ -37,7 +37,9 @@ export interface SuggestExercise {
   repMin: number;
   repMax: number;
   /** en la unidad del usuario (0 = peso corporal) */
-  weight: number;
+  weight: number | null;
+  /** motivo del peso sugerido, para que la tarjeta de sesión conserve su origen */
+  basis?: string;
   rest: number;
   notes: string;
 }
@@ -112,7 +114,10 @@ function toSuggestExercises(items: readonly PlanExercise[]): SuggestExercise[] {
     sets: item.sets,
     repMin: item.repMin,
     repMax: item.repMax,
-    weight: item.weight,
+    /* `0` de analytics es un centinela cuando aún no hay carga sugerida; al
+       persistirlo como prescripción se inicia como 0 kg en vez de vacío. */
+    weight: item.weightAvailable ? item.weight : null,
+    basis: item.basis,
     rest: item.rest,
     notes: item.notes,
   }));
@@ -155,11 +160,19 @@ export function localSuggest(params: LocalParams): SuggestJSON {
   /* cardio y movilidad se miden en minutos: aquí no puntúan (antes). Y los grupos
      sin ningún ejercicio (cardio/movilidad de serie y los añadidos a mano) no
      son candidatos: puntuarlos haría que un grupo vacío gastara un hueco. */
-  const skip = new Set(['cardio', 'movilidad']);
+  const skip = new Set(['cardio', 'movilidad', 'core']);
   const inUse = groupKeysInUse(exercises);
-  const scored: ScoredGroup[] = sinHistorial
-    ? []
-    : GROUPS.filter((g) => !skip.has(g.key) && inUse.has(g.key))
+  /* Solo puntúan grupos con al menos un ejercicio permitido y disponible.
+     `inUse` por sí solo cuenta ejercicios vetados o sin material, que podían
+     ocupar los primeros puestos y dejar huecos en la sugerencia. */
+  const eligibleGroups = new Set(
+    exercises
+      .filter((ex) => ex.allowed && isAvailable(ex, equipment))
+      .map((ex) => ex.group),
+  );
+  const scored: ScoredGroup[] = GROUPS.filter(
+    (g) => !skip.has(g.key) && inUse.has(g.key) && eligibleGroups.has(g.key),
+  )
         .map((g) => {
           const isoLast = last[g.key] ?? null;
           const days = daysSince(isoLast, todayIso);
@@ -176,48 +189,64 @@ export function localSuggest(params: LocalParams): SuggestJSON {
   const items: PlanExercise[] = [];
   const rationale: string[] = [];
 
-  scored.slice(0, counts.length).forEach((entry, i) => {
-    const picked = pickForGroup(input, entry.key, counts[i], { used, rotate: 2 });
-    if (!picked.length) return; /* sin material: el grupo no sale  */
-    for (const ex of picked) used[ex.id] = true;
+  /* Sin historial se conserva la receta de cuerpo completo cuando tiene
+     opciones. Si está vacía (p. ej. vetaron esos grupos), la puntuación
+     disponible de arriba actúa como respaldo también el primer día. */
+  if (sinHistorial) {
     items.push(
       ...richItems(
         input,
-        picked.map((ex) => ({
-          exId: ex.id,
-          sets: ex.type === 'compuesto' ? targetSets : Math.max(3, targetSets - 1),
-          repMin: ex.repMin,
-          repMax: ex.repMax,
-          reps: Math.round((ex.repMin + ex.repMax) / 2),
-          rest: ex.rest,
-        })),
+        itemsFromRecipe(input, [['cuadriceps', 1], ['pecho', 1], ['espalda', 1]], { rotate: 2 }),
         richOpts,
       ),
     );
-    rationale.push(
-      `${groupLabel(entry.key)}: ${
-        entry.days === null ? 'sin estímulo registrado' : `hace ${entry.days} días`
-      } · ${plural(entry.sets, 'serie', 'series')} en los últimos 7 días`,
-    );
-  });
+    if (items.length) {
+      for (const item of items) used[item.exId] = true;
+      rationale.push('Sugerencia genérica de cuerpo completo: aún no hay historial suficiente.');
+    }
+  }
 
-  if (!items.length) {
-    items.push(
-      ...richItems(
-        input,
-        itemsFromRecipe(
+  /* El primer día conserva su receta de cuerpo completo cuando funciona. Si
+     no ofrece ningún ejercicio, cae al ranking disponible como cualquier
+     otro día. */
+  const suggestTarget = sinHistorial ? 3 : 6;
+  const useScoredFallback = !sinHistorial || items.length < suggestTarget;
+  if (useScoredFallback) {
+    /* Los huecos de un grupo sin suficientes ejercicios pasan al siguiente
+       elegible, manteniendo el reparto 2/2/1/1. */
+    let groupSlot = 0;
+    let remaining = sinHistorial && items.length > 0 ? suggestTarget - items.length : counts[0];
+    for (const entry of scored) {
+      if (items.length >= suggestTarget) break;
+      const requested = Math.min(remaining, suggestTarget - items.length);
+      const picked = pickForGroup(input, entry.key, requested, { used, rotate: 2 });
+      if (!picked.length) continue;
+      for (const ex of picked) used[ex.id] = true;
+      items.push(
+        ...richItems(
           input,
-          [
-            ['cuadriceps', 1],
-            ['pecho', 1],
-            ['espalda', 1],
-          ],
-          { rotate: 2 },
+          picked.map((ex) => ({
+            exId: ex.id,
+            sets: ex.type === 'compuesto' ? targetSets : Math.max(3, targetSets - 1),
+            repMin: ex.repMin,
+            repMax: ex.repMax,
+            reps: Math.round((ex.repMin + ex.repMax) / 2),
+            rest: ex.rest,
+          })),
+          richOpts,
         ),
-        richOpts,
-      ),
-    );
-    rationale.push('Sugerencia genérica de cuerpo completo: aún no hay historial suficiente.');
+      );
+      rationale.push(
+        `${groupLabel(entry.key)}: ${
+          entry.days === null ? 'sin estímulo registrado' : `hace ${entry.days} días`
+        } · ${plural(entry.sets, 'serie', 'series')} en los últimos 7 días`,
+      );
+      remaining -= picked.length;
+      while (remaining <= 0 && groupSlot < counts.length) {
+        groupSlot++;
+        remaining = counts[groupSlot] ?? 1;
+      }
+    }
   }
 
   /* un bloque de core si no ha salido por las plantillas */
@@ -242,6 +271,8 @@ export function localSuggest(params: LocalParams): SuggestJSON {
       );
     }
   }
+
+  if (!items.length) rationale.push('No hay ejercicios permitidos y disponibles para sugerir.');
 
   const groups = [...new Set(items.map((item) => item.group))];
   const goalReps = GOAL_REPS[settings.goal] ?? [8, 12];

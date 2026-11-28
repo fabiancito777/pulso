@@ -49,6 +49,7 @@ import {
   normalizeCoachRoutineItem,
   readCoachRoutineProposal,
 } from '@/domain/coach-routine';
+import { isAvailable, missingEquipment } from '@/domain/data';
 import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import {
   addDays,
@@ -61,6 +62,7 @@ import {
 } from '@/domain/dates';
 import { fmtVol } from '@/domain/format';
 import { matchExercise, unresolvedName } from '@/domain/match';
+import { MATCH_THRESHOLD } from '@/domain/match';
 import type { UnresolvedName } from '@/domain/match';
 import { clamp, int, num, uid } from '@/domain/num';
 import { WEIGHT_MAX } from '@/domain/prescription';
@@ -149,6 +151,8 @@ export interface CoachTaskOpts {
    * llamada. Se reenvía a cada llamada de la tarea.
    */
   onSlow?: () => void;
+  /** lunes local de la semana que se quiere planificar (por defecto la actual) */
+  from?: string;
 }
 
 /** Lo que devuelve `runCoachTask`, listo para pintar en la vista del coach. */
@@ -209,6 +213,9 @@ export interface CoachOutcome {
  * criterio de `partitionUnresolved` (tarjeta de confirmación en vez de aviso).
  */
 export const CREABLE_REASON = 'no está en tu biblioteca';
+
+/** Item resuelto para aplicación o inicio directo, con motivo de peso opcional. */
+export type CoachResolvedItem = RoutineItem & { basis?: string };
 
 /* ---------- constantes ---------- */
 
@@ -288,12 +295,12 @@ function dayIsoOf(value: unknown): string {
  * matcher) y el candidato más parecido, para que quien aplique la propuesta
  * avise. Un solo fallo no debe borrar un ejercicio sin decir nada.
  */
-function resolveItems(list: unknown): {
-  items: RoutineItem[];
+export function resolveCoachItems(list: unknown): {
+  items: CoachResolvedItem[];
   unresolved: UnresolvedName[];
 } {
   if (!Array.isArray(list)) return { items: [], unresolved: [] };
-  const items: RoutineItem[] = [];
+  const items: CoachResolvedItem[] = [];
   const unresolved: UnresolvedName[] = [];
   for (const raw of list) {
     if (!isPlainRecord(raw)) continue;
@@ -308,7 +315,23 @@ function resolveItems(list: unknown): {
       } else if (name) {
         const match = matchExercise(name, exercises.value);
         ex = match.ex ?? null;
-        if (!ex) failure = unresolvedName(name, match);
+        if (!ex && match.candidate && match.score >= MATCH_THRESHOLD) {
+          if (!match.candidate.allowed) {
+            failure = {
+              name,
+              reason: 'Ejercicio vetado en Ajustes',
+              candidate: { id: match.candidate.id, name: match.candidate.name },
+            };
+          } else if (!isAvailable(match.candidate, equipment.value)) {
+            const missing = missingEquipment(match.candidate, equipment.value);
+            failure = {
+              name,
+              reason: `No disponible: falta ${missing.join(', ') || 'material'}`,
+              candidate: { id: match.candidate.id, name: match.candidate.name },
+            };
+          }
+        }
+        if (!ex && !failure) failure = unresolvedName(name, match);
       } else if (exId) {
         /* sin nombre solo queda el id, que es como lo pinta la UI */
         failure = { name: exId, reason: 'ya no está en tu biblioteca' };
@@ -317,6 +340,26 @@ function resolveItems(list: unknown): {
     if (!ex) {
       /* un objeto sin nombre ni id no es un ejercicio perdido: no hay nada que avisar */
       if (failure) unresolved.push(failure);
+      continue;
+    }
+    /* Un plan no anula las preferencias del usuario ni su material actual.
+       La misma regla se usa para sugerencias y días del calendario. */
+    const proposedName = name || ex.name;
+    if (!ex.allowed) {
+      unresolved.push({
+        name: proposedName,
+        reason: 'Ejercicio vetado en Ajustes',
+        candidate: { id: ex.id, name: ex.name },
+      });
+      continue;
+    }
+    if (!isAvailable(ex, equipment.value)) {
+      const missing = missingEquipment(ex, equipment.value);
+      unresolved.push({
+        name: proposedName,
+        reason: `No disponible: falta ${missing.join(', ') || 'material'}`,
+        candidate: { id: ex.id, name: ex.name },
+      });
       continue;
     }
     /* El modelo es libre de devolver `sets: 40` o `rest: 50000`: sin este
@@ -329,7 +372,7 @@ function resolveItems(list: unknown): {
       rest: ex.rest,
       weight: null,
     });
-    items.push({
+    const item: CoachResolvedItem = {
       exId: ex.id,
       sets: normalized.prescription.sets,
       repMin: normalized.prescription.repMin,
@@ -341,7 +384,10 @@ function resolveItems(list: unknown): {
       ...(normalized.superset
         ? { superset: normalized.superset }
         : {}),
-    });
+    };
+    const basis = firstString(raw, ['basis']);
+    if (basis) item.basis = basis;
+    items.push(item);
   }
   return { items: uniqueSupersetIds(items), unresolved };
 }
@@ -353,7 +399,7 @@ function resolveItems(list: unknown): {
  * reescriben a ids propios (`ss-…`), uno por run consecutivo. La letra que se pinta
  * («SS A») sale del orden del grupo, no del id, así que no se pierde nada.
  */
-function uniqueSupersetIds(items: RoutineItem[]): RoutineItem[] {
+function uniqueSupersetIds<T extends RoutineItem>(items: T[]): T[] {
   const used = items.map((item) => item.superset ?? '').filter(Boolean);
   return freshSupersetIds(items, used);
 }
@@ -591,7 +637,7 @@ export async function runCoachTask(
 
   /* 1 · contexto (también lo necesita el plan local: la fecha de hoy) */
   const todayIso = iso(new Date(clock()));
-  const from = startOfWeek(todayIso);
+  const from = startOfWeek(task === 'plan' && opts.from ? opts.from : todayIso);
   const to = addDays(from, 6);
 
   /* 0 · sin API key: NADA de red */
@@ -618,6 +664,7 @@ export async function runCoachTask(
     active: active.value,
     opts: {
       todayIso,
+      ...(task === 'plan' ? { weekFrom: from } : {}),
       maxSessions: opts.maxSessions ?? SESSIONS_BY_TASK[task],
       extra: contextExtra(task, todayIso, from, to),
     },
@@ -828,6 +875,8 @@ export interface SuggestionOutcome {
   unresolved: UnresolvedName[];
   /** `true` si se actualizó una rutina existente en vez de crear una nueva */
   updated?: boolean;
+  /** hay ejercicios desconocidos pendientes de crear o descartar; no se guardó */
+  deferred?: boolean;
 }
 
 /**
@@ -842,16 +891,31 @@ export interface SuggestionOutcome {
 export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
   const proposal = readCoachRoutineProposal(sug);
   if (!proposal) return { routine: null, unresolved: [] };
-  const { items, unresolved } = resolveItems(proposal.entries);
+  const { items, unresolved } = resolveCoachItems(proposal.entries);
+  const isUpdate = isPlainRecord(sug) && firstString(sug, ['action']) === 'update';
+  /* No guardar parcialmente una propuesta con ejercicios que esperan la
+     decisión explícita de crear o descartar. Tampoco se actualiza una rutina
+     existente si cualquier item quedó fuera: eso sería una actualización parcial. */
+  if (
+    unresolved.some((entry) => entry.reason === CREABLE_REASON) ||
+    (isUpdate && unresolved.length > 0)
+  ) {
+    return { routine: null, unresolved, deferred: true };
+  }
   if (!items.length) return { routine: null, unresolved };
 
   const source = routineSource(proposal.source);
   const focus = proposal.focus;
   const notes = joinNotes(proposal.notes, proposal.rationale.join(' '));
+  const routineItems: RoutineItem[] = items.map((item) => {
+    const clean = { ...item };
+    delete clean.basis;
+    return clean;
+  });
 
   /* Un bloque ```rutina``` con "action":"update" debe editar la rutina que ya
      existe (por id o por nombre normalizado), no crear un duplicado. */
-  if (isPlainRecord(sug) && firstString(sug, ['action']) === 'update') {
+  if (isUpdate) {
     const routineId = firstString(sug, ['routineId']);
     const target = firstString(sug, ['target', 'title']);
     const existing = routines.value.find(
@@ -864,7 +928,7 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
         name: firstString(sug, ['title']) || existing.name,
         focus: focus || existing.focus,
         notes: notes || existing.notes,
-        items,
+        items: routineItems,
       });
       if (updated) return { routine: updated, unresolved, updated: true };
     }
@@ -875,7 +939,7 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
     focus,
     source,
     notes,
-    items,
+    items: routineItems,
   });
   return { routine, unresolved, updated: false };
 }
@@ -900,18 +964,22 @@ export function applySuggestionAsRoutine(sug: unknown): SuggestionOutcome {
 export function applyWeek(
   plan: unknown,
   todayIso: string = today(),
+  expectedFrom?: string,
 ): {
   days: number;
   routines: number;
   unresolved: UnresolvedName[];
   /** días del plan que se ignoraron por ser anteriores a hoy */
   skipped: number;
+  /** fechas no escritas porque todos sus ejercicios eran inviables */
+  omittedDates?: string[];
 } {
   const out: {
     days: number;
     routines: number;
     unresolved: UnresolvedName[];
     skipped: number;
+    omittedDates?: string[];
   } = {
     days: 0,
     routines: 0,
@@ -921,26 +989,56 @@ export function applyWeek(
   if (!isPlainRecord(plan) || !Array.isArray(plan.days)) return out;
 
   const source = firstString(plan, ['source']) || 'ia';
+  const omittedDates: string[] = [];
+  const weekFrom = expectedFrom ? startOfWeek(expectedFrom) : '';
+  const weekTo = weekFrom ? addDays(weekFrom, 6) : '';
   for (const raw of plan.days) {
     if (!isPlainRecord(raw)) continue;
     const dayIso = dayIsoOf(raw.date) || dayIsoOf(raw.iso);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) continue;
+    /* Defensa final: ninguna propuesta puede escribir fuera de la semana que
+       el usuario tenía abierta aunque el modelo ignore el rango solicitado. */
+    if (weekFrom && (dayIso < weekFrom || dayIso > weekTo)) {
+      out.skipped++;
+      continue;
+    }
     if (dayIso < todayIso) {
       out.skipped++;
       continue;
     }
 
     const list = Array.isArray(raw.exercises) ? raw.exercises : raw.items;
-    const { items, unresolved } = resolveItems(list);
+    const { items, unresolved } = resolveCoachItems(list);
     out.unresolved.push(...unresolved);
+    const routineId = firstString(raw, ['routineId']);
+    const linkedRoutine = routineId ? routines.value.find((candidate) => candidate.id === routineId) : null;
+    let linkedItems: RoutineItem[] = [];
+    let linkedSafe = false;
+    if (linkedRoutine) {
+      const checked = resolveCoachItems(linkedRoutine.items);
+      out.unresolved.push(...checked.unresolved);
+      linkedItems = checked.items;
+      linkedSafe = checked.unresolved.length === 0;
+    }
+    const hadExerciseProposal = Array.isArray(list) && list.length > 0;
     const type =
       typeof raw.type === 'string' && DAY_KEYS.includes(raw.type)
         ? raw.type
-        : items.length
+        : items.length || hadExerciseProposal || linkedRoutine
           ? 'entreno'
           : 'descanso';
     const title = firstString(raw, ['title']) || (type === 'descanso' ? 'Descanso' : 'Entreno');
     const focus = firstString(raw, ['focus']);
+    if (type !== 'descanso' && hadExerciseProposal && items.length === 0) {
+      /* No borres el plan previo ni escribas un entreno vacío cuando todo lo
+         propuesto está vetado, sin material o sin resolver. */
+      omittedDates.push(dayIso);
+      continue;
+    }
+    if (type !== 'descanso' && linkedRoutine && !linkedSafe && linkedItems.length === 0) {
+      omittedDates.push(dayIso);
+      continue;
+    }
     const patch: ScheduleDay = {
       type,
       title,
@@ -949,23 +1047,23 @@ export function applyWeek(
       source,
       restorePlan: undefined,
     };
-    if (items.length) {
-      /* Los días del plan NO crean rutinas desechables: si el modelo enlaza una
-         rutina que ya existe se usa, y si no los ejercicios van directos en el
-         `plan` del día (listos para entrenar desde Hoy, sin ensuciar Rutinas). */
-      const routineId = firstString(raw, ['routineId']);
-      if (routineId && routines.value.some((candidate) => candidate.id === routineId)) {
-        patch.routineId = routineId;
-      } else {
-        patch.plan = items;
-        patch.routineId = undefined;
-      }
+    /* Un routineId nunca salta la comprobación actual de vetos/material. */
+    if (linkedRoutine && linkedSafe && type !== 'descanso') {
+      patch.routineId = linkedRoutine.id;
+      out.routines++;
+    } else if (items.length) {
+      patch.plan = items;
+      patch.routineId = undefined;
+    } else if (linkedItems.length) {
+      patch.plan = linkedItems;
+      patch.routineId = undefined;
     }
     setDay(dayIso, patch);
     out.days++;
   }
 
-  setMeta({ lastPlanAt: nowTs() });
+  if (omittedDates.length) out.omittedDates = omittedDates;
+  if (out.days > 0) setMeta({ lastPlanAt: nowTs() });
   return out;
 }
 

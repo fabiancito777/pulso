@@ -41,8 +41,8 @@ import { fmtDur, fmtN, fmtVol } from '@/domain/format';
 import { int, num, sum } from '@/domain/num';
 import { maxLoadable } from '@/domain/plates';
 import { supersetPosition } from '@/domain/supersets';
-import { toKg, unitLabel } from '@/domain/units';
-import type { Exercise, Session } from '@/domain/types';
+import { fromKg, toKg, unitLabel } from '@/domain/units';
+import type { Exercise, Session, Unit } from '@/domain/types';
 import { consolidatedHistory } from './history';
 import { buildInsights, planChangeBullets } from './insights';
 import type { BuildContextParams, CoachRoutine } from './types';
@@ -94,6 +94,7 @@ function sessionLine(
   routines: readonly CoachRoutine[],
   nameOf: NameOf,
   goalRange: readonly [number, number],
+  displayUnit: Unit,
 ): string {
   const routine = session.routineId
     ? (routines.find((candidate) => candidate.id === session.routineId) ?? null)
@@ -105,7 +106,7 @@ function sessionLine(
     const detail = done
       .map(
         (set) =>
-          `${fmtN(set.weight)}x${fmtN(set.reps)}` +
+          `${set.weight === null ? 'sin peso anotado' : `${fmtN(fromKg(toKg(set.weight, session.unit), displayUnit), 1)} ${unitLabel(displayUnit)}`}×${fmtN(set.reps)}` +
           (set.rpe != null ? `@${fmtN(set.rpe, 1)}` : ''),
       )
       .join(', ');
@@ -166,7 +167,16 @@ function sessionLine(
  * HISTORIAL (por defecto 10, como ).
  */
 export function buildContext(params: BuildContextParams): string {
-  const { settings, sessions, routines, schedule, equipment, exercises, active, opts = {} } = params;
+  const {
+    settings,
+    sessions,
+    routines,
+    schedule,
+    equipment,
+    exercises,
+    active,
+    opts = {},
+  } = params;
   const todayIso = opts.todayIso ?? today();
   const lim = Math.max(1, int(opts.maxSessions, 10));
   const nameOf = nameOfFor(exercises);
@@ -273,7 +283,7 @@ export function buildContext(params: BuildContextParams): string {
     .slice(0, lim);
   if (!recent.length) out.push('Sin sesiones registradas todavía.');
   for (const session of recent) {
-    const line = sessionLine(session, routines, nameOf, goalReps);
+    const line = sessionLine(session, routines, nameOf, goalReps, settings.units);
     if (line) out.push(line);
   }
   out.push('');
@@ -303,7 +313,7 @@ export function buildContext(params: BuildContextParams): string {
     .map(
       ({ exId, pr }) =>
         `${nameOf(exId)}: 1RM est. ${fmtN(pr.e1rm)} kg` +
-        ` (${fmtN(pr.weight)}x${fmtN(pr.reps)} el ${pr.date})`,
+        ` (${fmtN(fromKg(pr.weight, settings.units), 1)} ${unitLabel(settings.units)}×${fmtN(pr.reps)} el ${pr.date})`,
     );
   if (prLines.length) out.push(`Récords (1RM estimado): ${prLines.join(' | ')}`);
   const tot = totals(sessions, todayIso);
@@ -403,13 +413,15 @@ export function buildContext(params: BuildContextParams): string {
   out.push('');
 
   /* ---------- plan semanal ---------- */
-  out.push('=== PLAN SEMANAL (semana en curso, día a día) ===');
-  /* La semana empieza en lunes, pero si hoy cae a finales de semana el plan
-     puede llegar hasta seis días DESPUÉS de hoy: se cubren las dos ventanas. */
-  const weekStart = startOfWeek(todayIso);
+  const weekStart = startOfWeek(opts.weekFrom ?? todayIso);
   const weekEnd = addDays(weekStart, 6);
   const horizonEnd = addDays(todayIso, 6);
-  const planEnd = weekEnd > horizonEnd ? weekEnd : horizonEnd;
+  const planEnd = opts.weekFrom ? weekEnd : horizonEnd > weekEnd ? horizonEnd : weekEnd;
+  out.push(
+    opts.weekFrom
+      ? `=== PLAN SEMANAL (${weekStart} → ${weekEnd}, día a día) ===`
+      : '=== PLAN SEMANAL (semana en curso, día a día) ===',
+  );
   for (let iso = weekStart; iso <= planEnd; iso = addDays(iso, 1)) {
     const day = schedule[iso] ?? {};
     const routine = day.routineId ? (routines.find((r) => r.id === day.routineId) ?? null) : null;
@@ -421,9 +433,7 @@ export function buildContext(params: BuildContextParams): string {
         const names = [
           ...new Set(
             daySessions.flatMap((session) =>
-              session.entries.map((entry) =>
-                nameOf(entry.exId, entry.name),
-              ),
+              session.entries.map((entry) => nameOf(entry.exId, entry.name)),
             ),
           ),
         ].slice(0, 8);

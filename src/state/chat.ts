@@ -22,7 +22,10 @@ import { signal } from '@preact/signals';
 import type { AIExerciseProposal } from '@/domain/ai-exercise';
 import { norm } from '@/domain/text';
 import type { ChatMsg } from '@/features/coach/client';
+import type { CoachTask } from '@/features/coach/types';
+import type { Unit } from '@/domain/types';
 import { asProposal } from '@/features/coach/parse';
+import { HISTORY_MODEL_LIMIT } from '@/features/coach/prompts';
 
 import { onStateReplaced, readState, setChat } from './store';
 
@@ -54,6 +57,10 @@ export interface ChatLine {
   notes?: string;
   /** JSON de `suggest`/`plan` ya parseado, para la tarjeta con «Aplicar» */
   payload?: unknown;
+  /** tarea estructurada de origen: permite ofrecer «Empezar» en sugerencias */
+  task?: CoachTask;
+  /** unidad activa al generar el payload; no reinterpretar pesos antiguos */
+  unit?: Unit;
   /** ejercicios que el modelo pidió consultar (transparencia) */
   consulted?: string[];
   /** ejercicios NUEVOS propuestos: tarjeta de confirmación en el chat */
@@ -111,6 +118,9 @@ export function asChatLines(value: unknown): ChatLine[] {
     if (asString(raw.thoughts)) line.thoughts = asString(raw.thoughts);
     if (asString(raw.notes)) line.notes = asString(raw.notes);
     if (raw.payload !== undefined && raw.payload !== null) line.payload = raw.payload;
+    if (raw.task === 'suggest' || raw.task === 'plan' || raw.task === 'analyze' || raw.task === 'chat')
+      line.task = raw.task;
+    if (raw.unit === 'kg' || raw.unit === 'lb') line.unit = raw.unit;
     if (Array.isArray(raw.consulted)) {
       const list = raw.consulted.filter((item): item is string => typeof item === 'string');
       if (list.length) line.consulted = list;
@@ -172,6 +182,28 @@ export function markApplied(index: number): void {
   commit(
     chat.value.map((line, i) =>
       i === index ? { ...line, payload: { ...payload, done: true } } : line,
+    ),
+  );
+}
+
+/** Marca una sugerencia iniciada sin convertirla en una rutina guardada. */
+export function markStarted(index: number): void {
+  const payload = isPlain(chat.value[index]?.payload) ? chat.value[index]?.payload : null;
+  if (!payload) return;
+  commit(
+    chat.value.map((line, i) =>
+      i === index ? { ...line, payload: { ...payload, started: true } } : line,
+    ),
+  );
+}
+
+/** Marca una propuesta guardada como rutina sin alterar su estado de inicio. */
+export function markSaved(index: number): void {
+  const payload = isPlain(chat.value[index]?.payload) ? chat.value[index]?.payload : null;
+  if (!payload) return;
+  commit(
+    chat.value.map((line, i) =>
+      i === index ? { ...line, payload: { ...payload, saved: true } } : line,
     ),
   );
 }
@@ -238,7 +270,91 @@ export function promptHistory(list: readonly ChatLine[] = chat.value): ChatMsg[]
       (line): line is ChatLine & { role: 'user' | 'model' } =>
         line.role === 'user' || line.role === 'model',
     )
-    .map((line) => ({ role: line.role, text: line.text }));
+    .map((line) => ({ role: line.role, text: historyTurnText(line) }));
+}
+
+/**
+ * Conserva un resumen fiel de las tarjetas JSON en el historial del modelo.
+ * La respuesta visible puede ser una explicación genérica («Propuesta lista»),
+ * mientras que la tarjeta contiene el orden y la prescripción que el siguiente
+ * turno necesita para poder ajustar sin reenviar el JSON completo.
+ */
+export function historyTurnText(line: Pick<ChatLine, 'text' | 'payload' | 'unit'>): string {
+  const summary = summarizePayload(line.payload, line.unit);
+  if (!summary) return line.text;
+  const suffix = ` Propuesta: ${summary}`;
+  /* Mantener aquí el mismo máximo que boundedHistory aplica a cada respuesta
+     del modelo: se reserva espacio al resumen real y se acorta primero la prosa. */
+  const room = Math.max(0, HISTORY_MODEL_LIMIT - 2 - suffix.length);
+  const prose = line.text.replace(/\s+/g, ' ').trim().slice(0, room).trimEnd();
+  return `${prose}${prose ? ' ·' : ''}${suffix}`.slice(0, HISTORY_MODEL_LIMIT);
+}
+
+function summarizePayload(value: unknown, unit?: Unit): string {
+  if (!isPlain(value)) return '';
+  const days = Array.isArray(value.days) ? value.days.filter(isPlain) : [];
+  if (days.length) {
+    return days.map((day) => {
+      const date = asString(day.date ?? day.iso).slice(0, 10);
+      const title = asString(day.title ?? day.name) || asString(day.type) || 'día';
+      const items = Array.isArray(day.exercises)
+        ? day.exercises
+        : Array.isArray(day.items)
+          ? day.items
+          : [];
+      /* Reservar espacio para todos los días del plan: se acortan detalles de
+         cada fecha antes de dejar fuera el final de una semana larga. */
+      const exercises = summarizeExercises(items.slice(0, 2), unit);
+      return shorten(`${date ? `${date} ` : ''}${title}${exercises ? `(${exercises})` : ''}`, 58);
+    }).join('; ').slice(0, 470);
+  }
+  const exercises = Array.isArray(value.exercises)
+    ? value.exercises
+    : Array.isArray(value.items)
+      ? value.items
+      : [];
+  if (exercises.length) return summarizeExercises(exercises, unit);
+  return '';
+}
+
+function summarizeList<T>(items: readonly T[], render: (item: T) => string): string {
+  let result = '';
+  for (const item of items) {
+    const next = render(item);
+    const joined = result ? `${result}; ${next}` : next;
+    if (joined.length > 470) return `${result || next.slice(0, 470)}…`;
+    result = joined;
+  }
+  return result;
+}
+
+function summarizeExercises(items: readonly unknown[], unit?: Unit): string {
+  return summarizeList(items, (item) => {
+    if (!isPlain(item)) return '';
+    const name = asString(item.name ?? item.title ?? item.exercise ?? item.exId) || 'ejercicio';
+    const setCount = compactValue(item.sets);
+    const repsValue = compactValue(item.reps);
+    const min = compactValue(item.repMin);
+    const max = compactValue(item.repMax);
+    const sets = setCount ? `${setCount}x` : '';
+    const reps = repsValue || (min ? (max && max !== min ? `${min}-${max}` : min) : '');
+    const weightValue = compactValue(item.weight);
+    const weight = weightValue ? `@${weightValue}${unit ? unit : ''}` : '';
+    const restValue = item.rest ?? item.restSec;
+    const restText = compactValue(restValue);
+    const rest = restText ? `/d${restText}s` : '';
+    const prescription = `${sets}${reps}${weight}${rest}`;
+    return `${name}${prescription ? ` ${prescription}` : ''}`;
+  });
+}
+
+function compactValue(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function shorten(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`;
 }
 
 /* ---------- markdown mínimo ---------- */
