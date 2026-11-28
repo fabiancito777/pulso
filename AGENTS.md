@@ -228,6 +228,11 @@ permitida, historial serie a serie, días desde el último estímulo, récords, 
 semanal), `prompts.ts` arma la petición, `parse.ts` tolera JSON envuelto, `local.ts` es el
 planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
 
+- **Coach centrado en conversación**: al iniciar muestra solo accesos a «Sugerir entreno» y
+  «Planificar semana». Las demás acciones, la memoria editable y el estado/prueba de conexión viven
+  en «Opciones» de la cabecera, implementado con el `Modal` compartido. Las tarjetas y los avisos de
+  origen local se conservan en el historial conversacional.
+
 - **Modelos** en `AI_MODELS` (`src/domain/catalog.ts`). `gemini-4-hydrogen` es el predeterminado
   desde la migración v5. `gemini-3.8-flash` y `gemini-3.5-flash-lite` están disponibles como respaldo.
   El selector usa ese catálogo local.
@@ -272,6 +277,11 @@ planificador **sin key**, `memory.ts` guarda lo que el usuario pide recordar.
 - **Demostración de Progreso** usa señales en memoria para las sesiones de ejemplo. No se añaden al
   historial persistido ni se sincronizan; salir vuelve a los datos reales. `?demo=1` inicia una muestra
   temporal, y los datos demo persistidos de versiones anteriores se limpian durante la carga.
+- **Comparación por ejercicio**: al seleccionar un ejercicio se comparan las reps de cada serie entre
+  las dos sesiones más recientes con series completadas. Si coinciden número de series y cargas
+  (normalizadas a kg), se muestra el delta por serie y total; si cambia alguno, se muestran ambas
+  sesiones separadas. La UI convierte las cargas a la unidad del perfil y etiqueta el peso corporal.
+  La ordenación prioriza la fecha ISO local de la sesión, incluso en históricos sin hora fiable.
 
 ### Sincronización y perfiles
 

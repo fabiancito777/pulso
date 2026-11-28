@@ -34,6 +34,7 @@ import { today } from '@/domain/dates';
 import { fmtTime } from '@/domain/format';
 import { num } from '@/domain/num';
 import type { Exercise, Session } from '@/domain/types';
+import { toKg } from '@/domain/units';
 
 /* ---------- resumen de una sesión (lista del historial) ---------- */
 
@@ -237,6 +238,70 @@ export function historyExerciseIds(sessions: readonly Session[]): string[] {
     for (const entry of session.entries) ids.add(entry.exId);
   }
   return [...ids];
+}
+
+export interface ExerciseSessionReps {
+  id: string;
+  date: string;
+  unit: Session['unit'];
+  sets: { weight: number | null; reps: number }[];
+}
+
+export interface ExerciseSessionComparison {
+  latest: ExerciseSessionReps;
+  previous: ExerciseSessionReps | null;
+  /** Per-set delta, only when count and normalized loads match. */
+  repsDelta: number[] | null;
+}
+
+/** Reps from the two latest sessions that contain completed sets for this exercise. */
+export function compareExerciseSessions(
+  sessions: readonly Session[],
+  exId: string,
+): ExerciseSessionComparison | null {
+  const matching = sessions
+    .map((session) => {
+      const sets = session.entries
+        .filter((entry) => entry.exId === exId)
+        .flatMap((entry) => entry.sets)
+        .filter((set) => set.done && set.reps > 0)
+        .map((set) => ({ weight: set.weight, reps: set.reps }));
+      return { session, sets };
+    })
+    .filter(({ sets }) => sets.length > 0)
+    .sort((a, b) => {
+      const byDate = sessionDate(b.session).localeCompare(sessionDate(a.session));
+      if (byDate) return byDate;
+      const ta = Date.parse(a.session.endedAt ?? a.session.startedAt);
+      const tb = Date.parse(b.session.endedAt ?? b.session.startedAt);
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0) || b.session.id.localeCompare(a.session.id);
+    });
+  const latestRow = matching[0];
+  if (!latestRow) return null;
+  const snapshot = (row: (typeof matching)[number]): ExerciseSessionReps => ({
+    id: row.session.id,
+    date: sessionDate(row.session),
+    unit: row.session.unit,
+    sets: row.sets,
+  });
+  const latest = snapshot(latestRow);
+  const older = matching[1];
+  if (!older) return { latest, previous: null, repsDelta: null };
+  const previous = snapshot(older);
+  const sameLoadPattern = latest.sets.length === previous.sets.length &&
+    latest.sets.every((set, index) => {
+      const old = previous.sets[index];
+      if (!old) return false;
+      if (set.weight === null || old.weight === null) return set.weight === old.weight;
+      return Math.abs(toKg(set.weight, latest.unit) - toKg(old.weight, previous.unit)) < 0.01;
+    });
+  return {
+    latest,
+    previous,
+    repsDelta: sameLoadPattern
+      ? latest.sets.map((set, index) => set.reps - (previous.sets[index]?.reps ?? set.reps))
+      : null,
+  };
 }
 
 /** Snapshot para el encabezado de esta semana (semana local de lunes a domingo). */

@@ -22,6 +22,7 @@ import type { Exercise, Session, SessionEntry, SetLog, Unit } from '@/domain/typ
 
 import {
   historyExerciseIds,
+  compareExerciseSessions,
   currentWeekSummary,
   exerciseProgressSummary,
   lastStimulusRows,
@@ -310,6 +311,31 @@ describe('resúmenes de la vista principal', () => {
 });
 
 /* ---------- topExercises / historyExerciseIds ---------- */
+
+describe('compareExerciseSessions', () => {
+  it('compara reps por serie y suma el delta cuando la carga es equivalente entre unidades', () => {
+    const older = sesion('2026-09-20', [entrada('press', [serie(45.359, 8), serie(45.359, 7)])]);
+    const latest = sesion('2026-09-24', [entrada('press', [serie(100, 9), serie(100, 8)])], { unit: 'lb' });
+    expect(compareExerciseSessions([latest, older], 'press')?.repsDelta).toEqual([1, 1]);
+  });
+
+  it('separa sesiones si cambian carga o número de series y omite series sin marcar', () => {
+    const older = sesion('2026-09-20', [entrada('press', [serie(50, 8), serie(50, 7)])]);
+    const latest = sesion('2026-09-24', [entrada('press', [serie(55, 8), serie(55, 7), serie(55, 6, false)])]);
+    expect(compareExerciseSessions([older, latest], 'press')).toMatchObject({
+      latest: { sets: [{ weight: 55, reps: 8 }, { weight: 55, reps: 7 }] },
+      previous: { sets: [{ weight: 50, reps: 8 }, { weight: 50, reps: 7 }] },
+      repsDelta: null,
+    });
+  });
+
+  it('usa la fecha de entrenamiento primero y devuelve vacío cuando no hay series registradas', () => {
+    const older = sesion('2026-09-20', [entrada('dominadas', [serie(null, 6)])], { startedAt: '2026-09-20T13:00:00.000Z' });
+    const latest = sesion('2026-09-22', [entrada('dominadas', [serie(0, 8)])], { startedAt: '2026-09-22T07:00:00.000Z' });
+    expect(compareExerciseSessions([older, latest], 'dominadas')?.latest.date).toBe('2026-09-22');
+    expect(compareExerciseSessions([sesion('2026-09-24', [entrada('press', [])])], 'press')).toBeNull();
+  });
+});
 
 describe('topExercises', () => {
   const lista = [

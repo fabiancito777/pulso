@@ -86,6 +86,7 @@ import { active, equipment, exercises, patchSettings, settings } from '@/state/s
 import { startFromPlan } from '@/state/session';
 import { HelpBtn } from '@/ui/HelpModal';
 import { Icon } from '@/ui/Icon';
+import { Modal } from '@/ui/Modal';
 import { toast } from '@/ui/toast';
 
 import '../styles/coach.css';
@@ -1078,25 +1079,8 @@ export function CoachView() {
   const wait = useCoachWait();
   const [draft, setDraft] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  /* Carril de acciones rápidas: el degradado del borde solo tiene sentido si de
-     verdad hay chips fuera de la vista, así que se mide el desbordamiento. */
-  const rail = useRef<HTMLDivElement>(null);
-  const [moreChips, setMoreChips] = useState(false);
-
-  useEffect(() => {
-    const el = rail.current;
-    if (!el) return;
-    const update = (): void => setMoreChips(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener('scroll', update);
-      ro.disconnect();
-    };
-  }, []);
 
   /* El historial puede cambiar FUERA de esta vista (import de datos, «Borrar
      todo»): al montar se vuelve a leer de `state.chat`. */
@@ -1429,97 +1413,60 @@ export function CoachView() {
 
   return (
     <section class="coach-view">
-      <StatusCard />
-
-      {/* El ⓘ va en la cabecera, no al lado del carril: si comparte fila con los
-          chips les roba ancho y el último queda cortado a media palabra. */}
-      <div class="mt-s">
-        <span class="label help-h3">
-          Acciones rápidas
-          <HelpBtn id="coach.quick" title="Acciones rápidas" />
-        </span>
-        <div class={`hr-scroll hr-fade mt-s${moreChips ? ' has-more' : ''}`} ref={rail}>
-          {QUICK_ACTIONS.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              class="chip"
-              disabled={wait.running}
-              /* micro-pista sin CSS: si la caja tiene texto, el chip lo manda
-                 junto a su pregunta en vez de ignorarlo */
-              title={draft.trim() ? 'Tu texto se enviará como contexto' : undefined}
-              onClick={() => {
-                const text = chipText(action.ask, draft);
-                if (draft.trim()) setDraft(''); /* ya se envió: la caja queda vacía */
-                void run(action.task, text, action.jump);
-              }}
-            >
-              <Icon name={action.icon} />
-              {action.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <MemoryPanel />
-
-      <div class="between mt">
+      <div class="between coach-heading">
         <span class="label help-h3">
           Conversación
           <HelpBtn id="tab.coach" title="Coach" />
         </span>
-        {msgs.length ? (
+        <button type="button" class="btn quiet sm" aria-label="Opciones del coach" onClick={() => setMenuOpen(true)}>
+          <Icon name="gear" />
+          Opciones
+        </button>
+      </div>
+
+      {msgs.length ? (
+        <div class="between coach-clear-row">
+          <span class="tiny muted">Tu conversación</span>
           <button
             type="button"
             class="btn quiet sm"
             onClick={() => {
-              if (confirmClear) {
-                clearChat();
-                setConfirmClear(false);
-              } else {
-                setConfirmClear(true);
-              }
+              if (confirmClear) { clearChat(); setConfirmClear(false); }
+              else setConfirmClear(true);
             }}
           >
-            <Icon name="trash" />
-            {confirmClear ? '¿Seguro?' : 'Limpiar'}
+            <Icon name="trash" />{confirmClear ? '¿Seguro?' : 'Limpiar'}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div class="chat" role="log" aria-live="polite" aria-relevant="additions" ref={scroller}>
         {msgs.length ? (
           msgs.map((line, i) => (
-            <Bubble
-              key={`${line.ts ?? ''}-${i}`}
-              line={line}
-              index={i}
-              onApply={apply}
-              onCreate={create}
-            />
+            <Bubble key={`${line.ts ?? ''}-${i}`} line={line} index={i} onApply={apply} onCreate={create} />
           ))
         ) : (
-          <div class="empty">
+          <div class="empty coach-empty">
             <Icon name="sparkles" />
-            <div>Habla con tu coach</div>
-            <div class="tiny">
-              Pregunta por técnica, volumen o pídele un plan concreto: ya conoce tu material, tus
-              rutinas y tu historial.
+            <div>¿En qué te ayudo?</div>
+            <div class="tiny">Escribe tu pregunta o empieza con una propuesta para hoy o para toda la semana.</div>
+            <div class="coach-empty-actions">
+              {QUICK_ACTIONS.slice(0, 2).map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  class="btn primary"
+                  disabled={wait.running}
+                  onClick={() => { const text = chipText(action.ask, draft); if (draft.trim()) setDraft(''); void run(action.task, text); }}
+                >
+                  <Icon name={action.icon} />{action.label}
+                </button>
+              ))}
             </div>
           </div>
         )}
         {wait.running ? (
-          <div class="msg ai">
-            <span class="coach-typing">
-              <span class="typing">
-                <i />
-                <i />
-                <i />
-              </span>
-              <span class="tiny muted">Pensando…</span>
-              <WaitMeta wait={wait} />
-            </span>
-          </div>
+          <div class="msg ai"><span class="coach-typing"><span class="typing"><i /><i /><i /></span><span class="tiny muted">Pensando…</span><WaitMeta wait={wait} /></span></div>
         ) : null}
       </div>
 
@@ -1532,24 +1479,41 @@ export function CoachView() {
             aria-label="Mensaje"
             placeholder={hasKey ? 'Escribe tu pregunta…' : 'Configura la API key para chatear'}
             onInput={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           />
-          <button
-            type="button"
-            class="btn primary icon"
-            disabled={wait.running || !hasKey || !draft.trim()}
-            title="Enviar"
-            onClick={send}
-          >
+          <button type="button" class="btn primary icon" disabled={wait.running || !hasKey || !draft.trim()} title="Enviar" onClick={send}>
             <Icon name="chev-r" />
           </button>
         </div>
       </div>
+
+      {menuOpen ? (
+        <Modal title="Opciones del coach" onClose={() => setMenuOpen(false)} help="coach.quick">
+          <StatusCard />
+          <div class="label mt">Acciones</div>
+          <div class="coach-menu-actions">
+            {QUICK_ACTIONS.slice(2).map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              class="btn ghost"
+              disabled={wait.running}
+              title={draft.trim() ? 'Tu texto se enviará como contexto' : undefined}
+              onClick={() => {
+                const text = chipText(action.ask, draft);
+                if (draft.trim()) setDraft(''); /* ya se envió: la caja queda vacía */
+                setMenuOpen(false);
+                void run(action.task, text, action.jump);
+              }}
+            >
+              <Icon name={action.icon} />
+              {action.label}
+            </button>
+          ))}
+          </div>
+          <MemoryPanel />
+        </Modal>
+      ) : null}
     </section>
   );
 }

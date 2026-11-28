@@ -56,6 +56,35 @@
   gap: 8px;
 }
 
+.pg2-session-compare {
+  margin: 0 0 14px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--surface-2, var(--surface));
+}
+
+.pg2-compare-sessions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pg2-compare-compact {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 14px;
+}
+
+.pg2-compare-session {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 4px;
+  padding-top: 7px;
+}
+
 .pg2-week-stats > div,
 .pg2-exercise-stats > div {
   min-width: 0;

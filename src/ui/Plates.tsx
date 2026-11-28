@@ -79,7 +79,6 @@ export function Plates({
     () => maxLoadable({ plates, bars, mode, barKey }),
     [plates, bars, mode, barKey],
   );
-
   const usable = res ? Math.round(fromKg(res.achieveKg, unit) * 100) / 100 : null;
 
   function pickMode(next: PlateModeKey) {
@@ -174,15 +173,23 @@ export function Plates({
 
       {res ? (
         <>
-          <div class="card tight">
-            {res.noPlates ? (
-              <div class="tiny muted">Sin discos: usa {dual(res.achieveKg, unit)} y listo.</div>
-            ) : (
-              <div class="kv">
-                <span class="k">Por {res.per}</span>
-                <span class="v">{perHoleWords(res)}</span>
-              </div>
-            )}
+          <div class="card tight plates-result">
+            <div class="plates-result-main">
+              <span class="plates-result-label">
+                {res.noPlates
+                  ? 'Sin discos'
+                  : res.mode === 'bar'
+                    ? 'Por lado'
+                    : res.mode === 'db2'
+                      ? 'Por extremo · cada mancuerna'
+                      : 'Por extremo'}
+              </span>
+              <strong>
+                {res.noPlates
+                  ? `usa ${dual(res.achieveKg, unit)}`
+                  : perHoleWords(res) || 'sin discos'}
+              </strong>
+            </div>
             <div class="kv">
               <span class="k">
                 {res.mode === 'bar'
@@ -207,26 +214,13 @@ export function Plates({
             </div>
             {res.noPlates ? null : (
               <>
-                <div class="kv">
-                  <span class="k">Discos</span>
-                  <span class="v">
-                    {fmtN(res.discsTotal, 0)} en total
-                    {res.mode === 'db2' ? ` · ${fmtN(res.discsPerHole * 2, 0)} por mancuerna` : ''}
-                  </span>
-                </div>
-                <div class="kv">
-                  <span class="k">{res.mode === 'bar' ? 'Barra' : 'Mango'}</span>
-                  <span class="v">{dual(res.handleKg, unit)}</span>
-                </div>
-                <div class="kv">
-                  <span class="k">
-                    {res.mode === 'bar'
-                      ? 'Máximo en la barra'
-                      : res.mode === 'none'
-                        ? 'Máximo'
-                        : 'Máximo por mancuerna'}
-                  </span>
-                  <span class="v">{dual(max.totalKg, unit)}</span>
+                <div class="tiny muted plates-result-meta">
+                  {fmtN(res.discsTotal, 0)} discos en total
+                  {res.mode === 'db2'
+                    ? ` · ${fmtN(res.discsPerHole * 2, 0)} por mancuerna`
+                    : ''}
+                  {` · ${res.mode === 'bar' ? 'barra' : 'mango'} ${dual(res.handleKg, unit)}`}
+                  {` · máximo ${dual(max.totalKg, unit)}`}
                 </div>
               </>
             )}

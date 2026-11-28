@@ -166,6 +166,7 @@ pantalla completa y funciona offline).
 
 ### Coach AI (Gemini)
 
+- La vista prioriza la conversación: al empezar aparecen accesos a **Sugerir entreno** y **Planificar semana**; las demás acciones, memoria y conexión están en **Opciones** de la cabecera.
 - Chat con contexto real: perfil, objetivo, equipamiento, inventario de discos, ejercicios permitidos y
   prohibidos, historial reciente, días desde el último estímulo por grupo, récords y plan de la semana.
 - Acciones rápidas: sugerir un entreno, plan de la semana, análisis de progreso, revisión de volumen,
@@ -199,6 +200,7 @@ pantalla completa y funciona offline).
 - La tarjeta **Esta semana** resume sesiones, series y volumen; **Últimos récords** muestra las marcas
   mejoradas recientemente y permite abrir la tabla completa.
 - Busca un ejercicio en el historial para ver su última sesión, mejor marca y curva de 1RM estimado.
+- Al elegir ejercicio, compara las reps serie a serie de las dos últimas sesiones con la misma carga y número de series; si alguno cambia, muestra las dos sesiones por separado. Convierte las cargas entre kg y lb y contempla ejercicios con peso corporal.
 - **Ver estadísticas** despliega los gráficos y sus filtros. El historial se lista en la misma vista;
   **Ver todo** abre la lista completa y cada fila abre su detalle, desde donde puedes repetir la sesión.
 - Gráficos SVG propios (sin librerías): volumen por semana, sesiones, series, minutos, donut de reparto

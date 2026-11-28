@@ -40,13 +40,12 @@
    tarjeta de estado (`section`, 20 px de base.css) y el `.mt-s` del carril de
    chips se sumarían (28 px) en vez de quedarse en 20. Aquí se recupera el
    ritmo de antes y, de paso, esos 8 px vuelven a la conversación. */
-.coach-view > section:first-child {
-  margin-bottom: 0;
-}
-
-.coach-view > section:first-child + * {
-  margin-top: 20px;
-}
+.coach-heading { flex: 0 0 auto; margin-bottom: 8px; }
+.coach-clear-row { flex: 0 0 auto; margin-bottom: 6px; }
+.coach-empty { width: 100%; }
+.coach-empty-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.coach-menu-actions { display: grid; gap: 8px; margin-top: 8px; }
+.coach-menu-actions .btn { justify-content: flex-start; }
 
 /* La conversación se desborda por dentro: así el composer se queda abajo sin
    tener que recorrer toda la historia para escribir. */

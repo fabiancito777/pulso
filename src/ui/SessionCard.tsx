@@ -279,12 +279,13 @@ export function SessionDock({
  * (ping-pong) solo si de verdad sobra texto, así que los nombres cortos no se
  * mueven y no se pierde el `ellipsis` en los demás.
  */
-function ExName({ name }: { name: string }) {
+function ExName({ name, simple = false }: { name: string; simple?: boolean }) {
   const box = useRef<HTMLSpanElement>(null);
   const text = useRef<HTMLSpanElement>(null);
   const [shift, setShift] = useState(0);
 
   useEffect(() => {
+    if (!simple) return;
     const el = box.current;
     const tx = text.current;
     if (!el || !tx) return;
@@ -297,7 +298,15 @@ function ExName({ name }: { name: string }) {
     ro.observe(el);
     ro.observe(tx);
     return () => ro.disconnect();
-  }, [name]);
+  }, [name, simple]);
+
+  if (!simple) {
+    return (
+      <span class="ex-name ex-name-wrap" title={name}>
+        {name}
+      </span>
+    );
+  }
 
   const duration = Math.max(3, Math.min(14, shift / 22));
   return (
@@ -323,6 +332,7 @@ function SetRow(props: {
   locked?: boolean;
   simple?: boolean;
   last?: boolean;
+  pending?: boolean;
 }) {
   const { entry, entryIndex: i, setIndex: j, unit, locked, simple } = props;
   const set = entry.sets[j];
@@ -331,7 +341,7 @@ function SetRow(props: {
   const readValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
   return (
     <div
-      class={`set-row${set.done ? ' done' : ''}${showRpe && !simple ? ' with-rpe' : ''}${simple ? ` simple-set-row${props.last ? ' last' : ''}` : ''}`}
+      class={`set-row${set.done ? ' done' : ''}${props.pending && !simple ? ' pending' : ''}${showRpe && !simple ? ' with-rpe' : ''}${simple ? ` simple-set-row${props.last ? ' last' : ''}` : ''}`}
     >
       <span class="set-idx">{j + 1}</span>
       <input
@@ -500,6 +510,7 @@ function EntryCard(props: {
   const highlight = props.highlight === true;
   const ex = exercises.value.find((e) => e.id === en.exId);
   const doneSets = en.sets.filter((s) => s.done).length;
+  const firstPendingSet = en.sets.findIndex((set) => !set.done);
   const volume = entryVolume(en, unit);
   const showRpe = settingsSignal.value.showRpe;
   const prefs = settingsSignal.value;
@@ -590,7 +601,7 @@ function EntryCard(props: {
                 SS {props.superset.letter} · {props.superset.position}/{props.superset.size}
               </span>
             ) : null}
-            <ExName name={en.name} />
+            <ExName name={en.name} simple={props.simple} />
             {props.simple && props.collapsed ? (
               <span class="simple-collapsed-meta">
                 {doneSets} de {en.sets.length} series
@@ -782,6 +793,7 @@ function EntryCard(props: {
               locked={complete}
               simple={props.simple}
               last={j === en.sets.length - 1}
+              pending={j === firstPendingSet}
             />
           ))}
           {complete ? (

@@ -6,7 +6,8 @@ import { resolveExercise } from '@/domain/data';
 import { addDays, label as dateLabel, startOfWeek, today } from '@/domain/dates';
 import { fmtN, fmtVol } from '@/domain/format';
 import { norm } from '@/domain/text';
-import { demoMode, exercises, sessions } from '@/state/store';
+import { fromKg, toKg, unitLabel } from '@/domain/units';
+import { demoMode, exercises, sessions, settings } from '@/state/store';
 import { pickExercise, pickedExercise } from '@/state/progress';
 
 import { LineChart, ProgressCharts } from './charts';
@@ -17,6 +18,7 @@ import { PrTableButton } from './PrTableModal';
 import { SessionHistory } from './SessionHistory';
 import {
   currentWeekSummary,
+  compareExerciseSessions,
   exerciseProgressSummary,
   historyExerciseIds,
   latestRecords,
@@ -34,8 +36,8 @@ function exerciseName(id: string): string {
   return id;
 }
 
-function setLabel(set: { weight: number | null; reps: number }): string {
-  return `${set.weight === null ? 'Peso corporal' : `${fmtN(set.weight)} kg`} × ${fmtN(set.reps, 0)}`;
+function setLabel(set: { weight: number | null; reps: number }, sourceUnit: 'kg' | 'lb' = 'kg'): string {
+  return `${set.weight === null || set.weight === 0 ? 'Peso corporal' : `${fmtN(fromKg(toKg(set.weight, sourceUnit), settings.value.units))} ${unitLabel(settings.value.units)}`} × ${fmtN(set.reps, 0)}`;
 }
 
 function EmptyAction() {
@@ -164,6 +166,15 @@ function ExerciseProgress() {
       : exactMatches.find((item) => item.id === pickedExercise.value);
   const selected = exactQuery ?? (query ? null : chosen);
   const stats = selected ? exerciseProgressSummary(sessions.value, selected.id) : null;
+  const comparison = selected ? compareExerciseSessions(sessions.value, selected.id) : null;
+  const repsDeltaTotal = comparison?.repsDelta?.reduce((total, value) => total + value, 0) ?? 0;
+  const uniformComparisonLoad = comparison?.latest.sets.every((set) => {
+    const first = comparison.latest.sets[0];
+    if (!first) return true;
+    if (set.weight === null || first.weight === null || set.weight === 0 || first.weight === 0)
+      return (set.weight === null || set.weight === 0) && (first.weight === null || first.weight === 0);
+    return Math.abs(toKg(set.weight, comparison.latest.unit) - toKg(first.weight, comparison.latest.unit)) < 0.01;
+  }) ?? false;
   const repsOnly = Boolean(stats && stats.best.e1rm <= 0);
   const chartPoints = repsOnly
     ? (stats?.repsTrend ?? [])
@@ -225,6 +236,29 @@ function ExerciseProgress() {
       ) : null}
       {selected && stats ? (
         <div class="pg2-exercise-result" aria-live="polite">
+          {comparison ? (
+            <div class="pg2-session-compare">
+              <div class="tiny muted pg2-trend-heading">Repeticiones por serie · últimas sesiones</div>
+              {comparison.previous && comparison.repsDelta && uniformComparisonLoad ? (
+                <div class="pg2-compare-compact">
+                  <strong>{setLabel(comparison.latest.sets[0] ?? { weight: null, reps: 0 }, comparison.latest.unit).replace(/ × .*/, '')}</strong>
+                  <span>{comparison.previous.sets.map((set) => set.reps).join('/')} → {comparison.latest.sets.map((set) => set.reps).join('/')}</span>
+                  <b class={repsDeltaTotal > 0 ? 'ok' : ''}>{repsDeltaTotal > 0 ? '+' : ''}{repsDeltaTotal} reps</b>
+                </div>
+              ) : (
+                <div class="pg2-compare-sessions">
+                  {[comparison.previous, comparison.latest].filter(Boolean).map((session, index) => session ? (
+                    <div class="pg2-compare-session" key={session.id}>
+                      <span class="tiny muted">{comparison.previous ? (index === 0 ? 'Anterior' : 'Última') : 'Última'} · {dateLabel(session.date, 'medium')}</span>
+                      <div class="tiny">{session.sets.map((set, i) => `S${i + 1} ${setLabel(set, session.unit)}`).join(' · ')}</div>
+                    </div>
+                  ) : null)}
+                  {!comparison.previous ? <div class="tiny muted">Solo hay una sesión con series registradas.</div> : null}
+                  {comparison.previous && !comparison.repsDelta ? <div class="tiny muted">Cambió el peso o el número de series; se muestran ambas sesiones por separado.</div> : null}
+                </div>
+              )}
+            </div>
+          ) : <div class="pg2-section-empty">Aún no hay series registradas para comparar.</div>}
           <div class="pg2-exercise-stats">
             <div>
               <span>Última · {dateLabel(stats.date, 'medium')}</span>
